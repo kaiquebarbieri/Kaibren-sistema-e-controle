@@ -1,11 +1,23 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import {
+  InsertMonthlySnapshot,
+  InsertOrder,
+  InsertOrderItem,
+  InsertProduct,
+  InsertProductUpload,
+  InsertUser,
+  monthlySnapshots,
+  orderItems,
+  orders,
+  productUploads,
+  products,
+  users,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -56,8 +68,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       values.role = user.role;
       updateSet.role = user.role;
     } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
+      values.role = "admin";
+      updateSet.role = "admin";
     }
 
     if (!values.lastSignedIn) {
@@ -89,4 +101,162 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function createProductUpload(input: InsertProductUpload) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(productUploads).values(input).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function replaceProducts(items: InsertProduct[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  if (items.length === 0) {
+    return { inserted: 0 };
+  }
+
+  await db.delete(products);
+  await db.insert(products).values(items);
+  return { inserted: items.length };
+}
+
+export async function getLatestProductUpload() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(productUploads).orderBy(desc(productUploads.createdAt)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function searchProducts(query?: string, limit = 25) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const normalizedQuery = (query ?? "").trim();
+  const filters = normalizedQuery
+    ? or(like(products.sku, `%${normalizedQuery}%`), like(products.titulo, `%${normalizedQuery}%`))
+    : undefined;
+
+  const rows = await db
+    .select()
+    .from(products)
+    .where(filters)
+    .orderBy(products.sku)
+    .limit(limit);
+
+  return rows;
+}
+
+export async function listProducts(limit = 100) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(products).orderBy(products.titulo).limit(limit);
+}
+
+export async function createOrder(input: InsertOrder) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(orders).values(input).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function insertOrderItems(items: InsertOrderItem[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) return;
+  await db.insert(orderItems).values(items);
+}
+
+export async function updateOrderStatus(orderId: number, status: "draft" | "created" | "finalized" | "cancelled") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(orders)
+    .set({
+      status,
+      finalizedAt: status === "finalized" ? new Date() : null,
+    })
+    .where(eq(orders.id, orderId));
+}
+
+export async function listOrders() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(orders).orderBy(desc(orders.createdAt));
+}
+
+export async function getOrderWithItems(orderId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const orderRows = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  const itemRows = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)).orderBy(orderItems.id);
+
+  return {
+    order: orderRows[0] ?? null,
+    items: itemRows,
+  };
+}
+
+export async function upsertMonthlySnapshot(input: InsertMonthlySnapshot) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select()
+    .from(monthlySnapshots)
+    .where(and(eq(monthlySnapshots.periodYear, input.periodYear!), eq(monthlySnapshots.periodMonth, input.periodMonth!)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(monthlySnapshots)
+      .set({
+        totalPedidos: input.totalPedidos,
+        totalCliente: input.totalCliente,
+        totalMondial: input.totalMondial,
+        totalComissaoEvertonMondial: input.totalComissaoEvertonMondial,
+        totalLucro: input.totalLucro,
+        margemMedia: input.margemMedia,
+        atualizadoEm: input.atualizadoEm,
+      })
+      .where(eq(monthlySnapshots.id, existing[0].id));
+
+    return existing[0].id;
+  }
+
+  const result = await db.insert(monthlySnapshots).values(input).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function getMonthlySummary(periodYear?: number, periodMonth?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [];
+  if (periodYear) conditions.push(eq(orders.periodYear, periodYear));
+  if (periodMonth) conditions.push(eq(orders.periodMonth, periodMonth));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const rows = await db
+    .select({
+      totalPedidos: sql<number>`count(*)`,
+      totalCliente: sql<string>`coalesce(sum(${orders.totalCliente}), 0)`,
+      totalMondial: sql<string>`coalesce(sum(${orders.totalMondial}), 0)`,
+      totalComissaoEvertonMondial: sql<string>`coalesce(sum(${orders.totalComissaoEvertonMondial}), 0)`,
+      totalLucro: sql<string>`coalesce(sum(${orders.totalLucro}), 0)`,
+      margemMedia: sql<string>`coalesce(avg(${orders.margemPedido}), 0)`,
+    })
+    .from(orders)
+    .where(whereClause);
+
+  return rows[0] ?? {
+    totalPedidos: 0,
+    totalCliente: "0.0000",
+    totalMondial: "0.0000",
+    totalComissaoEvertonMondial: "0.0000",
+    totalLucro: "0.0000",
+    margemMedia: "0.000000",
+  };
+}
