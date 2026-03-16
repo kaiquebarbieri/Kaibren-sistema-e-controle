@@ -30,3 +30,5 @@
 - [x] Gerar e disponibilizar duas planilhas do pedido ao salvar, uma para o cliente e outra para a Mondial
 - [x] Corrigir o fluxo de adicionar produto por SKU para manter o item salvo na lista e permitir incluir vários produtos em sequência
 - [x] Corrigir a falha persistente no clique do botão de adicionar produto por SKU na tela de compra
+- [x] Exibir todos os 149 SKUs importados no painel sem limitar a visualização a 30 itens
+- [x] Mostrar com clareza o valor pago à Mondial junto do valor de revenda em todas as áreas principais do fluxo de produtos e pedidos

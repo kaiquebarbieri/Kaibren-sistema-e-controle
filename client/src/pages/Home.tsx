@@ -303,7 +303,7 @@ export default function Home() {
   const dashboardRef = useRef<HTMLElement | null>(null);
   const ordersRef = useRef<HTMLElement | null>(null);
 
-  const productsQuery = trpc.products.search.useQuery({ query, limit: 30 });
+  const productsQuery = trpc.products.search.useQuery({ query, limit: 500 });
   const allProductsQuery = trpc.products.list.useQuery({ limit: 500 });
   const latestUploadQuery = trpc.products.latestUpload.useQuery();
   const ordersQuery = trpc.orders.list.useQuery();
@@ -859,9 +859,10 @@ export default function Home() {
                 <div className="md:col-span-2">
                   <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por SKU ou Título" />
                 </div>
-                <div className="flex items-center rounded-xl border border-dashed border-border px-4 text-sm text-muted-foreground">
-                  {productsQuery.data?.length ?? 0} produtos encontrados
+                  <div className="flex items-center rounded-xl border border-dashed border-border px-4 text-sm text-muted-foreground">
+                  {productsQuery.data?.length ?? 0} produtos encontrados na tela
                 </div>
+
               </div>
               <ScrollArea className="h-[420px] rounded-2xl border border-border/60">
                 <Table>
@@ -869,8 +870,8 @@ export default function Home() {
                     <TableRow>
                       <TableHead>SKU</TableHead>
                       <TableHead>Título</TableHead>
-                      <TableHead>Valor Produto</TableHead>
-                      <TableHead>Preço Desejado</TableHead>
+                      <TableHead>Valor Mondial</TableHead>
+                      <TableHead>Valor Revenda</TableHead>
                       <TableHead>Lucro</TableHead>
                       <TableHead>Everton Mondial</TableHead>
                       <TableHead className="text-right">Ação</TableHead>
@@ -881,8 +882,18 @@ export default function Home() {
                       <TableRow key={product.id}>
                         <TableCell className="font-medium">{product.sku}</TableCell>
                         <TableCell className="max-w-[320px] truncate">{product.titulo}</TableCell>
-                        <TableCell>{formatCurrency(product.valorProduto)}</TableCell>
-                        <TableCell>{formatCurrency(product.precoFinal || product.precoDesejado)}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">{formatCurrency(product.valorProduto)}</span>
+                            <span className="text-xs text-muted-foreground">Valor pago à Mondial</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">{formatCurrency(product.precoFinal || product.precoDesejado)}</span>
+                            <span className="text-xs text-muted-foreground">Valor de revenda</span>
+                          </div>
+                        </TableCell>
                         <TableCell>{formatCurrency(product.lucro)}</TableCell>
                         <TableCell>{formatCurrency(product.comissao)}</TableCell>
                         <TableCell className="text-right">
@@ -928,8 +939,15 @@ export default function Home() {
                   {selectedQuickProduct ? (
                     <div className="rounded-xl bg-background p-3 text-sm shadow-sm">
                       <div className="font-medium text-foreground">{selectedQuickProduct.sku} — {selectedQuickProduct.titulo}</div>
-                      <div className="mt-1 text-muted-foreground">
-                        Mondial: {formatCurrency(selectedQuickProduct.valorProduto)} · Cliente: {formatCurrency(selectedQuickProduct.precoFinal || selectedQuickProduct.precoDesejado)}
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        <div className="rounded-lg border border-border/60 p-2">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Valor pago à Mondial</div>
+                          <div className="font-semibold text-foreground">{formatCurrency(selectedQuickProduct.valorProduto)}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/60 p-2">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Valor de revenda</div>
+                          <div className="font-semibold text-foreground">{formatCurrency(selectedQuickProduct.precoFinal || selectedQuickProduct.precoDesejado)}</div>
+                        </div>
                       </div>
                     </div>
                   ) : skuQuickEntry.trim() ? (
