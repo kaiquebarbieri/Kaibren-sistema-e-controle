@@ -107,6 +107,9 @@ export default function Products() {
     });
   }, [productsQuery.data, query]);
 
+  const hasQueryError = productsQuery.isError;
+  const queryErrorMessage = productsQuery.error?.message ?? "Não foi possível carregar os produtos agora.";
+
   function getEditingValues(product: ProductRow): ProductEditValues {
     return editingValues[product.id] ?? {
       valorProduto: String(product.valorProduto ?? "0"),
@@ -228,7 +231,13 @@ export default function Products() {
             <CardContent className="space-y-4">
               <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por SKU ou nome do produto" />
 
-              {visibleProducts.length === 0 ? (
+              {hasQueryError ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900">
+                  <p className="font-medium">Não consegui carregar os SKUs neste momento.</p>
+                  <p className="mt-2 text-amber-800/90">{queryErrorMessage}</p>
+                  <p className="mt-2 text-amber-800/90">Atualize a página. Se continuar vazio, entre novamente no sistema para restaurar a sessão e recarregar o catálogo.</p>
+                </div>
+              ) : visibleProducts.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border/60 py-10 text-center text-sm text-muted-foreground">
                   Nenhum produto encontrado para essa busca.
                 </div>

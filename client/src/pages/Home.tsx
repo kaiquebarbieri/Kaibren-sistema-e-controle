@@ -459,7 +459,6 @@ export default function Home() {
     setMenuSection(section);
     const map: Record<string, React.RefObject<HTMLElement | null>> = {
       "visao-geral": overviewRef,
-      importacao: overviewRef,
       clientes: customerRef,
       produtos: productsRef,
       simulacao: simulationRef,

@@ -50,3 +50,5 @@
 
 - [x] Restaurar exibição clara do valor de revenda ao cliente no menu Produtos sem perder o valor pago à Mondial
 - [x] Ajustar o menu Produtos para exibir corretamente os valores em telas pequenas
+- [ ] Restaurar a listagem completa de SKUs no menu Produtos após o ajuste responsivo
+- [x] Remover o menu Importação da navegação principal do sistema

@@ -29,7 +29,6 @@ import {
   LogOut,
   PackageSearch,
   PanelLeft,
-  Upload,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -38,7 +37,6 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral", href: "/" },
-  { icon: Upload, label: "Importação", section: "importacao", href: "/#importacao" },
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
   { icon: Calculator, label: "Simulação", section: "simulacao", href: "/#simulacao" },
   { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/#pedidos" },
