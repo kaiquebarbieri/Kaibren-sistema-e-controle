@@ -15,6 +15,13 @@
       "when": 1773682677263,
       "tag": "0001_red_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1773684512245,
+      "tag": "0002_giant_shaman",
+      "breakpoints": true
     }
   ]
 }

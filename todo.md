@@ -13,3 +13,18 @@
 - [x] Enviar notificação automática ao proprietário quando um pedido for criado ou finalizado
 - [x] Escrever testes vitest para cálculos, importação e fluxos principais
 - [x] Validar interface funcional e limpa para operação comercial
+- [x] Importar a planilha TabelaCKDistribuidora_V7.xlsx enviada pelo usuário e deixar todos os SKUs salvos no sistema
+- [x] Criar importação administrativa da planilha enviada na conversa para salvar automaticamente todos os SKUs sem upload manual no painel
+- [x] Corrigir os botões da interface que não estão funcionando no sistema da CK Distribuidora
+- [ ] Melhorar o design do dashboard com visão separada de compras pessoais, vendas para clientes, lucro e total consolidado do mês
+- [ ] Criar cadastro completo de clientes com busca por nome e dados para reaproveitar no fluxo de pedidos
+- [ ] Permitir classificar pedidos como pessoal ou cliente e salvar o lucro da operação no dashboard mensal
+- [ ] Criar cadastro completo de clientes com busca por nome e reaproveitamento no pedido
+- [ ] Permitir classificar pedidos entre cliente e pessoal com impacto correto nos totais do dashboard
+- [ ] Redesenhar o dashboard para destacar total comprado no mês, total vendido para clientes e lucro salvo
+- [ ] Exibir no fluxo de montagem de compra o lucro previsto antes de salvar o pedido e persistir esse resultado no histórico
+- [x] Adicionar seleção rápida de produtos por SKU no fluxo de configuração da compra
+- [x] Gerar automaticamente duas planilhas estruturadas do pedido, uma para Cliente e outra para Mondial
+- [x] Incluir logo Kaibren nas planilhas exportadas com SKU, nome do produto e valores correspondentes
+- [x] Disponibilizar seleção direta por número SKU na configuração da compra com preenchimento automático do produto
+- [x] Gerar e disponibilizar duas planilhas do pedido ao salvar, uma para o cliente e outra para a Mondial

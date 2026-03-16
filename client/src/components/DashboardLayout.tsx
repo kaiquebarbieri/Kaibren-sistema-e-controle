@@ -32,29 +32,34 @@ import {
   Upload,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Visão geral", path: "/" },
-  { icon: Upload, label: "Importação", path: "/" },
-  { icon: PackageSearch, label: "Produtos", path: "/" },
-  { icon: Calculator, label: "Simulação", path: "/" },
-  { icon: ClipboardList, label: "Pedidos", path: "/" },
-  { icon: BarChart3, label: "Dashboard mensal", path: "/" },
-];
+  { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral" },
+  { icon: Upload, label: "Importação", section: "importacao" },
+  { icon: PackageSearch, label: "Produtos", section: "produtos" },
+  { icon: Calculator, label: "Simulação", section: "simulacao" },
+  { icon: ClipboardList, label: "Pedidos", section: "pedidos" },
+  { icon: BarChart3, label: "Dashboard mensal", section: "dashboard-mensal" },
+] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
 const MIN_WIDTH = 220;
 const MAX_WIDTH = 420;
 
+type DashboardLayoutProps = {
+  children: React.ReactNode;
+  onNavigate?: (section: string) => void;
+  activeSection?: string;
+};
+
 export default function DashboardLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+  onNavigate,
+  activeSection = "visao-geral",
+}: DashboardLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
@@ -103,7 +108,11 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
+      <DashboardLayoutContent
+        setSidebarWidth={setSidebarWidth}
+        onNavigate={onNavigate}
+        activeSection={activeSection}
+      >
         {children}
       </DashboardLayoutContent>
     </SidebarProvider>
@@ -113,19 +122,22 @@ export default function DashboardLayout({
 type DashboardLayoutContentProps = {
   children: React.ReactNode;
   setSidebarWidth: (width: number) => void;
+  onNavigate?: (section: string) => void;
+  activeSection: string;
 };
 
 function DashboardLayoutContent({
   children,
   setSidebarWidth,
+  onNavigate,
+  activeSection,
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
-  const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location) ?? menuItems[0];
+  const activeMenuItem = menuItems.find(item => item.section === activeSection) ?? menuItems[0];
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -172,7 +184,7 @@ function DashboardLayoutContent({
             <div className="flex w-full items-center gap-3 px-2 transition-all">
               <button
                 onClick={toggleSidebar}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Alternar navegação"
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
@@ -191,14 +203,12 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0 px-2 py-3">
             <SidebarMenu className="gap-1">
               {menuItems.map(item => {
-                const isActive = item.path === "/" && activeMenuItem.label === item.label;
+                const isActive = item.section === activeSection;
                 return (
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
                       isActive={isActive}
-                      onClick={() => {
-                        setLocation("/");
-                      }}
+                      onClick={() => onNavigate?.(item.section)}
                       tooltip={item.label}
                       className="h-10 font-normal"
                     >

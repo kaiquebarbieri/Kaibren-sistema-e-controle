@@ -12,6 +12,16 @@ O sistema será estruturado como um painel interno de gestão comercial com foco
 | `order_items` | Registrar os produtos e quantidades de cada pedido | SKU, título, quantidade, valores de venda, valores de compra, comissão Everton Mondial, lucro por item |
 | `monthly_snapshots` | Consolidar indicadores por mês para o dashboard | mês, ano, total de pedidos, total cliente, total Mondial, total de custos, total de lucro, margem média |
 
+## Expansão da próxima iteração
+
+| Novo requisito | Direção de implementação |
+| --- | --- |
+| **Cadastro de clientes** | Criar base própria de clientes com nome e dados reutilizáveis no momento de montar um pedido. |
+| **Pedidos pessoais** | Permitir salvar compras do próprio negócio ou do proprietário para compor o total comprado do mês sem confundir com vendas da distribuidora. |
+| **Dashboard segmentado** | Separar indicadores de compras pessoais, vendas para clientes, lucro mensal e consolidado da operação. |
+| **Busca por cliente** | Permitir localizar cliente já cadastrado pelo nome ao iniciar um novo pedido. |
+| **Lucro persistido** | Manter o lucro salvo em cada pedido para compor o dashboard mensal sem recálculo manual. |
+
 ## Regras de negócio
 
 | Regra | Descrição |
@@ -21,6 +31,8 @@ O sistema será estruturado como um painel interno de gestão comercial com foco
 | Busca operacional | A montagem do pedido deve permitir encontrar produtos por SKU e por trecho do Título |
 | Rastreabilidade | O arquivo Excel original precisa ficar salvo em S3 e vinculado ao catálogo importado |
 | Auditoria financeira | Totais mensais devem refletir somatórios de pedidos e itens sem perder os valores originais de cada operação |
+| Separação operacional | Pedidos do tipo pessoal e pedidos do tipo cliente devem ser mostrados de forma separada no dashboard e no histórico |
+| Cadastro reaproveitável | Clientes cadastrados devem poder ser buscados pelo nome e vinculados a novos pedidos |
 
 ## Fluxos principais
 
@@ -31,3 +43,22 @@ O segundo fluxo é a simulação de pedido. O usuário pesquisa por SKU ou Títu
 O terceiro fluxo é a finalização do pedido. Nesse momento, o sistema grava o histórico completo, gera as duas listas operacionais separadas e envia uma notificação ao proprietário informando a criação ou a conclusão do pedido.
 
 O quarto fluxo é o acompanhamento mensal. O dashboard consolida compras, custos, lucros e margem por período selecionado, usando os pedidos registrados no sistema como fonte de verdade.
+
+O quinto fluxo será o cadastro e reaproveitamento de clientes. O usuário poderá cadastrar todos os clientes recorrentes, localizá-los pelo nome durante a montagem da compra e usar seus dados para agilizar a criação de pedidos.
+
+O sexto fluxo será a classificação da operação entre pedido de cliente e pedido pessoal. Assim, o dashboard poderá mostrar quanto foi comprado no mês para uso próprio, quanto foi vendido para clientes da distribuidora e quanto de lucro foi gerado nas revendas salvas.
+
+## Identidade visual Kaibren para exportações e interface
+
+A identidade visual confirmada para esta etapa usa a marca **KaiBren Peças & Utilidades** como referência para as planilhas geradas e para o acabamento visual do fluxo de pedidos.
+
+| Elemento | Valor definido |
+| --- | --- |
+| Nome da marca | KaiBren Peças & Utilidades |
+| Logo CDN | https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/kaibren-logo_40d0a45a.png |
+| Ouro | #D4AF37 |
+| Preto | #1C1C1C |
+| Marfim | #F5F2E9 |
+| Cinza | #8E8E8E |
+
+As exportações devem gerar duas versões separadas por pedido, mantendo a mesma identidade visual: uma planilha para o **cliente**, com SKU, nome do produto, quantidade e valor de venda, e outra planilha para a **Mondial**, com SKU, nome do produto, quantidade, valor de compra e coluna de Everton Mondial.

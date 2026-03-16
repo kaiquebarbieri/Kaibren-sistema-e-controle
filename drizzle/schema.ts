@@ -62,10 +62,28 @@ export const products = mysqlTable("products", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const customers = mysqlTable("customers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  reference: varchar("reference", { length: 255 }),
+  document: varchar("document", { length: 64 }),
+  phone: varchar("phone", { length: 64 }),
+  email: varchar("email", { length: 320 }),
+  city: varchar("city", { length: 160 }),
+  state: varchar("state", { length: 80 }),
+  notes: text("notes"),
+  isActive: int("isActive").notNull().default(1),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
+  customerId: int("customerId"),
   customerName: varchar("customerName", { length: 255 }).notNull(),
   customerReference: varchar("customerReference", { length: 255 }),
+  orderType: mysqlEnum("orderType", ["customer", "personal"]).default("customer").notNull(),
   status: mysqlEnum("status", ["draft", "created", "finalized", "cancelled"]).default("draft").notNull(),
   periodYear: int("periodYear").notNull(),
   periodMonth: int("periodMonth").notNull(),
@@ -109,8 +127,12 @@ export const monthlySnapshots = mysqlTable("monthly_snapshots", {
   periodYear: int("periodYear").notNull(),
   periodMonth: int("periodMonth").notNull(),
   totalPedidos: int("totalPedidos").notNull().default(0),
+  totalPedidosCliente: int("totalPedidosCliente").notNull().default(0),
+  totalPedidosPessoais: int("totalPedidosPessoais").notNull().default(0),
   totalCliente: decimal("totalCliente", { precision: 14, scale: 4 }).notNull().default("0.0000"),
   totalMondial: decimal("totalMondial", { precision: 14, scale: 4 }).notNull().default("0.0000"),
+  totalComprasPessoais: decimal("totalComprasPessoais", { precision: 14, scale: 4 }).notNull().default("0.0000"),
+  totalVendasClientes: decimal("totalVendasClientes", { precision: 14, scale: 4 }).notNull().default("0.0000"),
   totalComissaoEvertonMondial: decimal("totalComissaoEvertonMondial", { precision: 14, scale: 4 }).notNull().default("0.0000"),
   totalLucro: decimal("totalLucro", { precision: 14, scale: 4 }).notNull().default("0.0000"),
   margemMedia: decimal("margemMedia", { precision: 14, scale: 6 }).notNull().default("0.000000"),
@@ -123,6 +145,8 @@ export type ProductUpload = typeof productUploads.$inferSelect;
 export type InsertProductUpload = typeof productUploads.$inferInsert;
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = typeof products.$inferInsert;
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = typeof customers.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 export type OrderItem = typeof orderItems.$inferSelect;

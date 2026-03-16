@@ -6,15 +6,19 @@ import { notifyOwner } from "./_core/notification";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { systemRouter } from "./_core/systemRouter";
 import {
+  createCustomer,
   createOrder,
   createProductUpload,
+  getCustomerById,
   getLatestProductUpload,
   getMonthlySummary,
   getOrderWithItems,
   insertOrderItems,
+  listCustomers,
   listOrders,
   listProducts,
   replaceProducts,
+  searchCustomers,
   searchProducts,
   updateOrderStatus,
   upsertMonthlySnapshot,
@@ -37,6 +41,17 @@ const importedProductSchema = z.object({
   Lucro: decimalString,
 });
 
+const customerInputSchema = z.object({
+  name: z.string().min(1),
+  reference: z.string().optional().nullable(),
+  document: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
 const orderItemInputSchema = z.object({
   productId: z.number().nullable().optional(),
   sku: z.string(),
@@ -53,8 +68,10 @@ const orderItemInputSchema = z.object({
 });
 
 const orderInputSchema = z.object({
+  customerId: z.number().int().positive().optional().nullable(),
   customerName: z.string().min(1),
   customerReference: z.string().optional().nullable(),
+  orderType: z.enum(["customer", "personal"]).default("customer"),
   periodYear: z.number().int(),
   periodMonth: z.number().int().min(1).max(12),
   notes: z.string().optional().nullable(),
@@ -74,14 +91,16 @@ function formatMargin(value: number) {
   return value.toFixed(6);
 }
 
-function computeOrderTotals(items: z.infer<typeof orderItemInputSchema>[]) {
+function computeOrderTotals(items: z.infer<typeof orderItemInputSchema>[], orderType: "customer" | "personal") {
   const totals = items.reduce(
     (acc, item) => {
       const quantidade = toNumber(item.quantidade);
-      const totalCliente = toNumber(item.precoFinal || item.precoDesejado) * quantidade;
+      const totalClienteBruto = toNumber(item.precoFinal || item.precoDesejado) * quantidade;
       const totalMondial = toNumber(item.valorProduto) * quantidade;
       const totalComissaoEvertonMondial = toNumber(item.comissao) * quantidade;
-      const totalLucro = toNumber(item.lucroUnitario) * quantidade;
+      const totalLucroBruto = toNumber(item.lucroUnitario) * quantidade;
+      const totalCliente = orderType === "personal" ? 0 : totalClienteBruto;
+      const totalLucro = orderType === "personal" ? 0 : totalLucroBruto;
 
       acc.totalCliente += totalCliente;
       acc.totalMondial += totalMondial;
@@ -184,19 +203,56 @@ export const appRouter = router({
         };
       }),
   }),
+  customers: router({
+    list: protectedProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional())
+      .query(async ({ input }) => {
+        return listCustomers(input?.limit ?? 100);
+      }),
+    search: protectedProcedure
+      .input(z.object({ query: z.string().optional(), limit: z.number().int().min(1).max(100).default(20) }).optional())
+      .query(async ({ input }) => {
+        return searchCustomers(input?.query, input?.limit ?? 20);
+      }),
+    create: protectedProcedure
+      .input(customerInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        const customerId = await createCustomer({
+          name: input.name,
+          reference: input.reference ?? null,
+          document: input.document ?? null,
+          phone: input.phone ?? null,
+          email: input.email ?? null,
+          city: input.city ?? null,
+          state: input.state ?? null,
+          notes: input.notes ?? null,
+          createdByUserId: ctx.user.id,
+        });
+
+        const created = await getCustomerById(customerId);
+        await notifyOwner({
+          title: "Cliente cadastrado",
+          content: `O cliente ${input.name} foi cadastrado na base da CK Distribuidora.`,
+        });
+
+        return created;
+      }),
+  }),
   orders: router({
     simulate: protectedProcedure
-      .input(z.object({ items: z.array(orderItemInputSchema).min(1) }))
+      .input(z.object({ orderType: z.enum(["customer", "personal"]).default("customer"), items: z.array(orderItemInputSchema).min(1) }))
       .mutation(async ({ input }) => {
-        const totals = computeOrderTotals(input.items);
+        const totals = computeOrderTotals(input.items, input.orderType);
 
-        const customerList = input.items.map(item => ({
-          sku: item.sku,
-          titulo: item.titulo,
-          quantidade: item.quantidade,
-          precoVendaUnitario: formatMoney(toNumber(item.precoFinal || item.precoDesejado)),
-          totalCliente: formatMoney(toNumber(item.precoFinal || item.precoDesejado) * toNumber(item.quantidade)),
-        }));
+        const customerList = input.orderType === "personal"
+          ? []
+          : input.items.map(item => ({
+              sku: item.sku,
+              titulo: item.titulo,
+              quantidade: item.quantidade,
+              precoVendaUnitario: formatMoney(toNumber(item.precoFinal || item.precoDesejado)),
+              totalCliente: formatMoney(toNumber(item.precoFinal || item.precoDesejado) * toNumber(item.quantidade)),
+            }));
 
         const mondialList = input.items.map(item => ({
           sku: item.sku,
@@ -223,10 +279,12 @@ export const appRouter = router({
     create: protectedProcedure
       .input(orderInputSchema)
       .mutation(async ({ ctx, input }) => {
-        const totals = computeOrderTotals(input.items);
+        const totals = computeOrderTotals(input.items, input.orderType);
         const orderId = await createOrder({
+          customerId: input.customerId ?? null,
           customerName: input.customerName,
           customerReference: input.customerReference ?? null,
+          orderType: input.orderType,
           status: input.status,
           periodYear: input.periodYear,
           periodMonth: input.periodMonth,
@@ -255,11 +313,11 @@ export const appRouter = router({
             precoDesejado: item.precoDesejado,
             precoFinal: item.precoFinal,
             margemFinal: item.margemFinal,
-            lucroUnitario: item.lucroUnitario,
-            totalCliente: formatMoney(toNumber(item.precoFinal || item.precoDesejado) * toNumber(item.quantidade)),
+            lucroUnitario: input.orderType === "personal" ? "0.0000" : item.lucroUnitario,
+            totalCliente: input.orderType === "personal" ? "0.0000" : formatMoney(toNumber(item.precoFinal || item.precoDesejado) * toNumber(item.quantidade)),
             totalMondial: formatMoney(toNumber(item.valorProduto) * toNumber(item.quantidade)),
             totalComissaoEvertonMondial: formatMoney(toNumber(item.comissao) * toNumber(item.quantidade)),
-            totalLucro: formatMoney(toNumber(item.lucroUnitario) * toNumber(item.quantidade)),
+            totalLucro: input.orderType === "personal" ? "0.0000" : formatMoney(toNumber(item.lucroUnitario) * toNumber(item.quantidade)),
           }))
         );
 
@@ -268,8 +326,12 @@ export const appRouter = router({
           periodYear: input.periodYear,
           periodMonth: input.periodMonth,
           totalPedidos: Number(monthly.totalPedidos ?? 0),
+          totalPedidosCliente: Number(monthly.totalPedidosCliente ?? 0),
+          totalPedidosPessoais: Number(monthly.totalPedidosPessoais ?? 0),
           totalCliente: String(monthly.totalCliente ?? "0.0000"),
           totalMondial: String(monthly.totalMondial ?? "0.0000"),
+          totalComprasPessoais: String(monthly.totalComprasPessoais ?? "0.0000"),
+          totalVendasClientes: String(monthly.totalVendasClientes ?? "0.0000"),
           totalComissaoEvertonMondial: String(monthly.totalComissaoEvertonMondial ?? "0.0000"),
           totalLucro: String(monthly.totalLucro ?? "0.0000"),
           margemMedia: String(monthly.margemMedia ?? "0.000000"),
@@ -277,9 +339,10 @@ export const appRouter = router({
         });
 
         const actionLabel = input.status === "finalized" ? "finalizado" : "criado";
+        const orderKind = input.orderType === "personal" ? "pessoal" : "de cliente";
         await notifyOwner({
           title: `Pedido ${actionLabel}`,
-          content: `Pedido #${orderId} do cliente ${input.customerName} com total cliente de ${formatMoney(totals.totalCliente)} e lucro de ${formatMoney(totals.totalLucro)}.`,
+          content: `Pedido #${orderId} ${orderKind} salvo para ${input.customerName} com compra Mondial de ${formatMoney(totals.totalMondial)} e lucro de ${formatMoney(totals.totalLucro)}.`,
         });
 
         return getOrderWithItems(orderId);
@@ -295,7 +358,7 @@ export const appRouter = router({
 
         await notifyOwner({
           title: "Pedido finalizado",
-          content: `Pedido #${input.orderId} do cliente ${result.order.customerName} foi finalizado.`,
+          content: `Pedido #${input.orderId} de ${result.order.customerName} foi finalizado.`,
         });
 
         return result;

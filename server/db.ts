@@ -1,6 +1,8 @@
 import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  customers,
+  InsertCustomer,
   InsertMonthlySnapshot,
   InsertOrder,
   InsertOrderItem,
@@ -137,20 +139,50 @@ export async function searchProducts(query?: string, limit = 25) {
     ? or(like(products.sku, `%${normalizedQuery}%`), like(products.titulo, `%${normalizedQuery}%`))
     : undefined;
 
-  const rows = await db
-    .select()
-    .from(products)
-    .where(filters)
-    .orderBy(products.sku)
-    .limit(limit);
-
-  return rows;
+  return db.select().from(products).where(filters).orderBy(products.sku).limit(limit);
 }
 
 export async function listProducts(limit = 100) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.select().from(products).orderBy(products.titulo).limit(limit);
+}
+
+export async function createCustomer(input: InsertCustomer) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(customers).values(input).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function listCustomers(limit = 100) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(customers).orderBy(customers.name).limit(limit);
+}
+
+export async function searchCustomers(query?: string, limit = 20) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const normalizedQuery = (query ?? "").trim();
+  const filters = normalizedQuery
+    ? or(
+        like(customers.name, `%${normalizedQuery}%`),
+        like(customers.reference, `%${normalizedQuery}%`),
+        like(customers.document, `%${normalizedQuery}%`),
+        like(customers.phone, `%${normalizedQuery}%`)
+      )
+    : undefined;
+
+  return db.select().from(customers).where(filters).orderBy(customers.name).limit(limit);
+}
+
+export async function getCustomerById(customerId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function createOrder(input: InsertOrder) {
@@ -213,8 +245,12 @@ export async function upsertMonthlySnapshot(input: InsertMonthlySnapshot) {
       .update(monthlySnapshots)
       .set({
         totalPedidos: input.totalPedidos,
+        totalPedidosCliente: input.totalPedidosCliente,
+        totalPedidosPessoais: input.totalPedidosPessoais,
         totalCliente: input.totalCliente,
         totalMondial: input.totalMondial,
+        totalComprasPessoais: input.totalComprasPessoais,
+        totalVendasClientes: input.totalVendasClientes,
         totalComissaoEvertonMondial: input.totalComissaoEvertonMondial,
         totalLucro: input.totalLucro,
         margemMedia: input.margemMedia,
@@ -242,19 +278,27 @@ export async function getMonthlySummary(periodYear?: number, periodMonth?: numbe
   const rows = await db
     .select({
       totalPedidos: sql<number>`count(*)`,
+      totalPedidosCliente: sql<number>`coalesce(sum(case when ${orders.orderType} = 'customer' then 1 else 0 end), 0)`,
+      totalPedidosPessoais: sql<number>`coalesce(sum(case when ${orders.orderType} = 'personal' then 1 else 0 end), 0)`,
       totalCliente: sql<string>`coalesce(sum(${orders.totalCliente}), 0)`,
       totalMondial: sql<string>`coalesce(sum(${orders.totalMondial}), 0)`,
+      totalComprasPessoais: sql<string>`coalesce(sum(case when ${orders.orderType} = 'personal' then ${orders.totalMondial} else 0 end), 0)`,
+      totalVendasClientes: sql<string>`coalesce(sum(case when ${orders.orderType} = 'customer' then ${orders.totalCliente} else 0 end), 0)`,
       totalComissaoEvertonMondial: sql<string>`coalesce(sum(${orders.totalComissaoEvertonMondial}), 0)`,
-      totalLucro: sql<string>`coalesce(sum(${orders.totalLucro}), 0)`,
-      margemMedia: sql<string>`coalesce(avg(${orders.margemPedido}), 0)`,
+      totalLucro: sql<string>`coalesce(sum(case when ${orders.orderType} = 'customer' then ${orders.totalLucro} else 0 end), 0)`,
+      margemMedia: sql<string>`coalesce(avg(case when ${orders.orderType} = 'customer' then ${orders.margemPedido} else null end), 0)`,
     })
     .from(orders)
     .where(whereClause);
 
   return rows[0] ?? {
     totalPedidos: 0,
+    totalPedidosCliente: 0,
+    totalPedidosPessoais: 0,
     totalCliente: "0.0000",
     totalMondial: "0.0000",
+    totalComprasPessoais: "0.0000",
+    totalVendasClientes: "0.0000",
     totalComissaoEvertonMondial: "0.0000",
     totalLucro: "0.0000",
     margemMedia: "0.000000",
