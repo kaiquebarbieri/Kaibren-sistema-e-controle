@@ -49,3 +49,4 @@
 - [ ] Corrigir a diferença entre o menu Produtos exibido na Manus e o menu Produtos da versão publicada, garantindo o mesmo layout e comportamento nas duas versões
 
 - [x] Restaurar exibição clara do valor de revenda ao cliente no menu Produtos sem perder o valor pago à Mondial
+- [x] Ajustar o menu Produtos para exibir corretamente os valores em telas pequenas

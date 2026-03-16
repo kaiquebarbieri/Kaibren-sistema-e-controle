@@ -223,89 +223,159 @@ export default function Products() {
           <Card className="border-border/60 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl"><PackageSearch className="h-5 w-5" /> Produtos cadastrados</CardTitle>
-              <CardDescription>Edite separadamente o valor pago à Mondial e o valor vendido ao cliente. Os dois preços continuam disponíveis em cada produto.</CardDescription>
+              <CardDescription>Edite separadamente o valor pago à Mondial e o valor vendido ao cliente. Em telas pequenas, cada produto aparece em cartão para facilitar a leitura.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por SKU ou nome do produto" />
-              <div className="overflow-x-auto rounded-2xl border border-border/60">
-                <ScrollArea className="h-[620px] w-full">
-                  <Table className="min-w-[1180px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead className="min-w-[420px]">Título do produto</TableHead>
-                        <TableHead className="min-w-[190px]">Valor Mondial</TableHead>
-                        <TableHead className="min-w-[220px]">Valor de venda ao cliente</TableHead>
-                        <TableHead>Lucro Atual</TableHead>
-                        <TableHead>Margem Atual</TableHead>
-                        <TableHead className="text-right">Salvar</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {visibleProducts.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                            Nenhum produto encontrado para essa busca.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        visibleProducts.map(product => {
-                          const editing = getEditingValues(product);
-                          return (
-                            <TableRow key={product.id}>
-                              <TableCell className="font-medium whitespace-nowrap">{product.sku}</TableCell>
-                              <TableCell className="min-w-[420px] max-w-[420px] whitespace-normal break-words leading-5">{product.titulo}</TableCell>
-                              <TableCell>
-                                <div className="flex min-w-[190px] items-center rounded-md border border-input bg-background px-3">
-                                  <span className="mr-2 text-sm text-muted-foreground">R$</span>
-                                  <Input
-                                    className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                    value={editing.valorProduto}
-                                    onChange={event =>
-                                      setEditingValues(current => ({
-                                        ...current,
-                                        [product.id]: { ...editing, valorProduto: normalizeMoneyInput(event.target.value) },
-                                      }))
-                                    }
-                                    placeholder="0,00"
-                                  />
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="min-w-[220px] space-y-1">
-                                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Venda ao cliente</div>
-                                  <div className="flex items-center rounded-md border border-input bg-background px-3">
+
+              {visibleProducts.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border/60 py-10 text-center text-sm text-muted-foreground">
+                  Nenhum produto encontrado para essa busca.
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4 lg:hidden">
+                    {visibleProducts.map(product => {
+                      const editing = getEditingValues(product);
+                      return (
+                        <div key={product.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 space-y-1">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">SKU {product.sku}</div>
+                              <h3 className="text-sm font-semibold leading-5 text-foreground">{product.titulo}</h3>
+                            </div>
+                            <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending}>
+                              <Save className="mr-2 h-4 w-4" />
+                              Salvar
+                            </Button>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Valor Mondial</Label>
+                              <div className="flex items-center rounded-md border border-input bg-background px-3">
+                                <span className="mr-2 text-sm text-muted-foreground">R$</span>
+                                <Input
+                                  className="border-0 px-0 shadow-none focus-visible:ring-0"
+                                  value={editing.valorProduto}
+                                  onChange={event =>
+                                    setEditingValues(current => ({
+                                      ...current,
+                                      [product.id]: { ...editing, valorProduto: normalizeMoneyInput(event.target.value) },
+                                    }))
+                                  }
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Valor de venda ao cliente</Label>
+                              <div className="flex items-center rounded-md border border-input bg-background px-3">
+                                <span className="mr-2 text-sm text-muted-foreground">R$</span>
+                                <Input
+                                  className="border-0 px-0 shadow-none focus-visible:ring-0"
+                                  value={editing.precoFinal}
+                                  onChange={event =>
+                                    setEditingValues(current => ({
+                                      ...current,
+                                      [product.id]: { ...editing, precoFinal: normalizeMoneyInput(event.target.value) },
+                                    }))
+                                  }
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 rounded-xl bg-muted/40 p-3 sm:grid-cols-2">
+                            <div>
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Lucro atual</div>
+                              <div className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(product.lucro)}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Margem atual</div>
+                              <div className="mt-1 text-sm font-semibold text-foreground">{formatPercent(product.margemFinal)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden overflow-x-auto rounded-2xl border border-border/60 lg:block">
+                    <ScrollArea className="h-[620px] w-full">
+                      <Table className="min-w-[1180px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>SKU</TableHead>
+                            <TableHead className="min-w-[420px]">Título do produto</TableHead>
+                            <TableHead className="min-w-[190px]">Valor Mondial</TableHead>
+                            <TableHead className="min-w-[220px]">Valor de venda ao cliente</TableHead>
+                            <TableHead>Lucro Atual</TableHead>
+                            <TableHead>Margem Atual</TableHead>
+                            <TableHead className="text-right">Salvar</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {visibleProducts.map(product => {
+                            const editing = getEditingValues(product);
+                            return (
+                              <TableRow key={product.id}>
+                                <TableCell className="font-medium whitespace-nowrap">{product.sku}</TableCell>
+                                <TableCell className="min-w-[420px] max-w-[420px] whitespace-normal break-words leading-5">{product.titulo}</TableCell>
+                                <TableCell>
+                                  <div className="flex min-w-[190px] items-center rounded-md border border-input bg-background px-3">
                                     <span className="mr-2 text-sm text-muted-foreground">R$</span>
                                     <Input
                                       className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                      value={editing.precoFinal}
+                                      value={editing.valorProduto}
                                       onChange={event =>
                                         setEditingValues(current => ({
                                           ...current,
-                                          [product.id]: { ...editing, precoFinal: normalizeMoneyInput(event.target.value) },
+                                          [product.id]: { ...editing, valorProduto: normalizeMoneyInput(event.target.value) },
                                         }))
                                       }
                                       placeholder="0,00"
                                     />
                                   </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>{formatCurrency(product.lucro)}</TableCell>
-                              <TableCell>{formatPercent(product.margemFinal)}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap">
-                                <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending}>
-                                  <Save className="mr-2 h-4 w-4" />
-                                  Salvar
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="min-w-[220px] space-y-1">
+                                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Venda ao cliente</div>
+                                    <div className="flex items-center rounded-md border border-input bg-background px-3">
+                                      <span className="mr-2 text-sm text-muted-foreground">R$</span>
+                                      <Input
+                                        className="border-0 px-0 shadow-none focus-visible:ring-0"
+                                        value={editing.precoFinal}
+                                        onChange={event =>
+                                          setEditingValues(current => ({
+                                            ...current,
+                                            [product.id]: { ...editing, precoFinal: normalizeMoneyInput(event.target.value) },
+                                          }))
+                                        }
+                                        placeholder="0,00"
+                                      />
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{formatCurrency(product.lucro)}</TableCell>
+                                <TableCell>{formatPercent(product.margemFinal)}</TableCell>
+                                <TableCell className="text-right whitespace-nowrap">
+                                  <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending}>
+                                    <Save className="mr-2 h-4 w-4" />
+                                    Salvar
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </section>
