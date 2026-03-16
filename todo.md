@@ -32,3 +32,8 @@
 - [x] Corrigir a falha persistente no clique do botão de adicionar produto por SKU na tela de compra
 - [x] Exibir todos os 149 SKUs importados no painel sem limitar a visualização a 30 itens
 - [x] Mostrar com clareza o valor pago à Mondial junto do valor de revenda em todas as áreas principais do fluxo de produtos e pedidos
+- [ ] Importar a nova planilha CatálogoProdutosC.K.Atacados(5).xlsx com SKUs e valores de revenda
+- [ ] Cruzar a planilha de revenda com a próxima planilha de custos pagos para separar corretamente valor de venda e valor pago por SKU
+- [ ] Importar a planilha TabelaCKPreçoquepagonamondial.xlsx usando a coluna Preço de Compra como valor pago à Mondial
+- [ ] Cruzar por SKU a base de revenda com a base de custo da Mondial para atualizar custo, lucro e margem corretos no sistema
+- [x] Adicionar no topo do sistema campos globais editáveis para imposto e valor do Everton com recálculo automático dos preços, custos, lucro e margem

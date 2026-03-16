@@ -82,6 +82,11 @@ type CustomerForm = {
   notes: string;
 };
 
+type PricingSettings = {
+  impostoPercentual: string;
+  valorEverton: string;
+};
+
 type SimulationResult = ReturnType<typeof buildSimulation>;
 
 const KAIBREN_LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/kaibren-logo_40d0a45a.png";
@@ -139,6 +144,34 @@ function createEmptyCustomerForm(): CustomerForm {
     city: "",
     state: "",
     notes: "",
+  };
+}
+
+function createDefaultPricingSettings(): PricingSettings {
+  return {
+    impostoPercentual: "0",
+    valorEverton: "0.75",
+  };
+}
+
+function applyPricingSettings(product: ProductRow, settings: PricingSettings): ProductRow {
+  const precoRevenda = Number(product.precoFinal || product.precoDesejado || 0);
+  const impostoPercentual = Number(settings.impostoPercentual || 0);
+  const valorEverton = Number(settings.valorEverton || 0);
+  const valorBaseMondial = Number(product.valorProduto || 0);
+  const valorImposto = precoRevenda * (impostoPercentual / 100);
+  const valorMondialAjustado = Math.max(precoRevenda - valorImposto - valorEverton, 0);
+  const valorMondialFinal = valorBaseMondial > 0 ? valorMondialAjustado : valorMondialAjustado;
+  const lucroAjustado = precoRevenda - valorMondialFinal - valorEverton - valorImposto;
+  const margemAjustada = valorMondialFinal > 0 ? lucroAjustado / valorMondialFinal : 0;
+
+  return {
+    ...product,
+    imposto: valorImposto.toString(),
+    comissao: valorEverton.toString(),
+    valorProduto: valorMondialFinal.toString(),
+    lucro: lucroAjustado.toString(),
+    margemFinal: margemAjustada.toString(),
   };
 }
 
@@ -287,6 +320,7 @@ export default function Home() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("new");
   const [customerForm, setCustomerForm] = useState<CustomerForm>(() => createEmptyCustomerForm());
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>(() => createDefaultPricingSettings());
   const [orderType, setOrderType] = useState<"customer" | "personal">("customer");
   const [notes, setNotes] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
@@ -376,19 +410,23 @@ export default function Home() {
 
   const localSimulation = useMemo(() => buildSimulation(cart, orderType), [cart, orderType]);
 
+  const adjustedProducts = useMemo(() => {
+    return ((allProductsQuery.data ?? []) as ProductRow[]).map(product => applyPricingSettings(product, pricingSettings));
+  }, [allProductsQuery.data, pricingSettings]);
+
   const quickSkuMatches = useMemo(() => {
     const normalized = skuQuickEntry.trim().toLowerCase();
     if (!normalized) return [] as ProductRow[];
-    return ((allProductsQuery.data ?? []) as ProductRow[])
+    return adjustedProducts
       .filter(product => product.sku.toLowerCase().includes(normalized))
       .slice(0, 8);
-  }, [allProductsQuery.data, skuQuickEntry]);
+  }, [adjustedProducts, skuQuickEntry]);
 
   const selectedQuickProduct = useMemo(() => {
     const normalized = skuQuickEntry.trim().toLowerCase();
     if (!normalized) return null;
-    return ((allProductsQuery.data ?? []) as ProductRow[]).find(product => product.sku.toLowerCase() === normalized) ?? null;
-  }, [allProductsQuery.data, skuQuickEntry]);
+    return adjustedProducts.find(product => product.sku.toLowerCase() === normalized) ?? null;
+  }, [adjustedProducts, skuQuickEntry]);
 
   function navigateToSection(section: string) {
     setMenuSection(section);
@@ -678,6 +716,36 @@ export default function Home() {
                   <UserPlus className="mr-2 h-4 w-4" />
                   Cadastrar cliente
                 </Button>
+              </div>
+              <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-2">
+                  <Label className="text-slate-200">Imposto (%)</Label>
+                  <Input
+                    value={pricingSettings.impostoPercentual}
+                    onChange={event => setPricingSettings(current => ({ ...current, impostoPercentual: event.target.value }))}
+                    placeholder="Ex.: 8.5"
+                    className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-200">Valor Everton</Label>
+                  <Input
+                    value={pricingSettings.valorEverton}
+                    onChange={event => setPricingSettings(current => ({ ...current, valorEverton: event.target.value }))}
+                    placeholder="Ex.: 0.75"
+                    className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                  />
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-300">Dedução de imposto</div>
+                  <div className="mt-2 text-xl font-semibold text-white">{pricingSettings.impostoPercentual || "0"}%</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-300">Esse percentual é descontado automaticamente no cálculo do valor líquido do produto.</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-300">Everton Mondial</div>
+                  <div className="mt-2 text-xl font-semibold text-white">{formatCurrency(pricingSettings.valorEverton)}</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-300">Esse valor é abatido automaticamente do cálculo para atualizar custo, lucro e margem.</p>
+                </div>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
