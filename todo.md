@@ -37,3 +37,4 @@
 - [ ] Importar a planilha TabelaCKPreçoquepagonamondial.xlsx usando a coluna Preço de Compra como valor pago à Mondial
 - [ ] Cruzar por SKU a base de revenda com a base de custo da Mondial para atualizar custo, lucro e margem corretos no sistema
 - [x] Adicionar no topo do sistema campos globais editáveis para imposto e valor do Everton com recálculo automático dos preços, custos, lucro e margem
+- [x] Corrigir o menu Produtos para exibir os itens importados das planilhas no painel

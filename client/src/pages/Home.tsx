@@ -428,6 +428,16 @@ export default function Home() {
     return adjustedProducts.find(product => product.sku.toLowerCase() === normalized) ?? null;
   }, [adjustedProducts, skuQuickEntry]);
 
+  const visibleProducts = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return adjustedProducts;
+    return adjustedProducts.filter(product => {
+      const sku = product.sku.toLowerCase();
+      const titulo = product.titulo.toLowerCase();
+      return sku.includes(normalized) || titulo.includes(normalized);
+    });
+  }, [adjustedProducts, query]);
+
   function navigateToSection(section: string) {
     setMenuSection(section);
     const map: Record<string, React.RefObject<HTMLElement | null>> = {
@@ -928,7 +938,7 @@ export default function Home() {
                   <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por SKU ou Título" />
                 </div>
                   <div className="flex items-center rounded-xl border border-dashed border-border px-4 text-sm text-muted-foreground">
-                  {productsQuery.data?.length ?? 0} produtos encontrados na tela
+                  {visibleProducts.length} produtos encontrados na tela
                 </div>
 
               </div>
@@ -946,7 +956,14 @@ export default function Home() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(productsQuery.data ?? []).map(product => (
+                    {visibleProducts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                          Nenhum produto encontrado com esse SKU ou título.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    {visibleProducts.map(product => (
                       <TableRow key={product.id}>
                         <TableCell className="font-medium">{product.sku}</TableCell>
                         <TableCell className="max-w-[320px] truncate">{product.titulo}</TableCell>
