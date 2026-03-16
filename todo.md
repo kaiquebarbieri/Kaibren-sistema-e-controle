@@ -38,3 +38,14 @@
 - [ ] Cruzar por SKU a base de revenda com a base de custo da Mondial para atualizar custo, lucro e margem corretos no sistema
 - [x] Adicionar no topo do sistema campos globais editáveis para imposto e valor do Everton com recálculo automático dos preços, custos, lucro e margem
 - [x] Corrigir o menu Produtos para exibir os itens importados das planilhas no painel
+- [x] Atualizar os valores pagos à Mondial no sistema cruzando a planilha TabelaCKPreçoquepagonamondial.xlsx por SKU e corrigindo o custo dos produtos cadastrados
+- [x] Adicionar edição manual de valor pago e valor de venda nos produtos para ajuste direto no sistema
+- [x] Corrigir a exibição da opção Editar no menu Produtos para permitir edição manual de valor pago e valor de venda
+- [x] Criar um menu próprio de Produtos com cadastro de novos SKUs e edição aberta de valor pago e valor de venda
+- [x] Remover a listagem de produtos da tela inicial e deixar essa gestão apenas no menu Produtos
+- [x] Finalizar a reorganização com menu dedicado de Produtos, edição aberta de preços e remoção da listagem de produtos da tela inicial
+- [x] Consolidar o novo menu de Produtos com cadastro funcional de SKU, edição aberta de valor pago e valor de venda e remoção definitiva da listagem da Home
+- [x] Corrigir no menu Produtos a sobreposição do nome do produto com os campos de preço e formatar valor Mondial e valor Revenda como moeda em reais
+- [ ] Corrigir a diferença entre o menu Produtos exibido na Manus e o menu Produtos da versão publicada, garantindo o mesmo layout e comportamento nas duas versões
+
+- [x] Restaurar exibição clara do valor de revenda ao cliente no menu Produtos sem perder o valor pago à Mondial

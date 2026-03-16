@@ -148,6 +148,32 @@ export async function listProducts(limit = 100) {
   return db.select().from(products).orderBy(products.titulo).limit(limit);
 }
 
+export async function updateProductPricingById(input: {
+  id: number;
+  valorProduto: string;
+  precoDesejado?: string | null;
+  precoFinal: string;
+  lucro: string;
+  margemFinal: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(products)
+    .set({
+      valorProduto: input.valorProduto,
+      precoDesejado: input.precoDesejado ?? input.precoFinal,
+      precoFinal: input.precoFinal,
+      lucro: input.lucro,
+      margemFinal: input.margemFinal,
+    })
+    .where(eq(products.id, input.id));
+
+  const rows = await db.select().from(products).where(eq(products.id, input.id)).limit(1);
+  return rows[0] ?? null;
+}
+
 export async function createCustomer(input: InsertCustomer) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

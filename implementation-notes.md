@@ -62,3 +62,13 @@ A identidade visual confirmada para esta etapa usa a marca **KaiBren Peças & Ut
 | Cinza | #8E8E8E |
 
 As exportações devem gerar duas versões separadas por pedido, mantendo a mesma identidade visual: uma planilha para o **cliente**, com SKU, nome do produto, quantidade e valor de venda, e outra planilha para a **Mondial**, com SKU, nome do produto, quantidade, valor de compra e coluna de Everton Mondial.
+
+## Edição manual de preços por produto
+
+A próxima melhoria adiciona edição manual inline na seção **Produtos** para ajustar diretamente o **valor pago à Mondial** (`valorProduto`) e o **valor de venda** (`precoFinal`, mantendo compatibilidade com `precoDesejado`). O fluxo previsto é abrir edição por linha na tabela, permitir salvar os dois campos, persistir a alteração no backend por `id` do produto e recalcular imediatamente os valores de lucro e margem exibidos na interface e no fluxo de montagem do pedido. Essas alterações também devem alimentar automaticamente as listas **Cliente** e **Mondial** geradas no sistema.
+
+## Reorganização do módulo de Produtos
+
+A gestão de produtos passará a existir em um menu próprio de Produtos, separado da tela inicial. Essa área dedicada deve concentrar a busca por SKU e título, o cadastro manual de novos produtos e a edição aberta de valor pago à Mondial e valor de venda, sem depender de botões ocultos em tabelas comprimidas.
+
+A tela inicial deixará de exibir a tabela completa de produtos e ficará focada em indicadores, clientes, configuração de compra e histórico. O novo menu de Produtos deve funcionar como um catálogo operacional, com formulário de cadastro no topo e lista editável abaixo, permitindo que o usuário altere preços diretamente com persistência clara por linha.

@@ -32,16 +32,17 @@ import {
   Upload,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral" },
-  { icon: Upload, label: "Importação", section: "importacao" },
-  { icon: PackageSearch, label: "Produtos", section: "produtos" },
-  { icon: Calculator, label: "Simulação", section: "simulacao" },
-  { icon: ClipboardList, label: "Pedidos", section: "pedidos" },
-  { icon: BarChart3, label: "Dashboard mensal", section: "dashboard-mensal" },
+  { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral", href: "/" },
+  { icon: Upload, label: "Importação", section: "importacao", href: "/#importacao" },
+  { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
+  { icon: Calculator, label: "Simulação", section: "simulacao", href: "/#simulacao" },
+  { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/#pedidos" },
+  { icon: BarChart3, label: "Dashboard mensal", section: "dashboard-mensal", href: "/#dashboard-mensal" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -134,6 +135,7 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
   const { state, toggleSidebar } = useSidebar();
+  const [, setLocation] = useLocation();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -208,7 +210,14 @@ function DashboardLayoutContent({
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
                       isActive={isActive}
-                      onClick={() => onNavigate?.(item.section)}
+                      onClick={() => {
+                        if (item.href === "/produtos") {
+                          setLocation(item.href);
+                          return;
+                        }
+                        setLocation(item.href);
+                        onNavigate?.(item.section);
+                      }}
                       tooltip={item.label}
                       className="h-10 font-normal"
                     >

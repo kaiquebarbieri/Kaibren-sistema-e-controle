@@ -87,6 +87,12 @@ type PricingSettings = {
   valorEverton: string;
 };
 
+type ProductEditState = {
+  productId: number | null;
+  valorProduto: string;
+  precoFinal: string;
+};
+
 type SimulationResult = ReturnType<typeof buildSimulation>;
 
 const KAIBREN_LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/kaibren-logo_40d0a45a.png";
@@ -321,6 +327,7 @@ export default function Home() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("new");
   const [customerForm, setCustomerForm] = useState<CustomerForm>(() => createEmptyCustomerForm());
   const [pricingSettings, setPricingSettings] = useState<PricingSettings>(() => createDefaultPricingSettings());
+  const [editingProduct, setEditingProduct] = useState<ProductEditState>({ productId: null, valorProduto: "", precoFinal: "" });
   const [orderType, setOrderType] = useState<"customer" | "personal">("customer");
   const [notes, setNotes] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
@@ -400,6 +407,16 @@ export default function Home() {
       setTimeout(() => {
         productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const updateProductPricingMutation = trpc.products.updatePricing.useMutation({
+    onSuccess: async updated => {
+      toast.success(`Valores do produto ${updated.sku} atualizados.`);
+      setEditingProduct({ productId: null, valorProduto: "", precoFinal: "" });
+      await productsQuery.refetch();
+      await allProductsQuery.refetch();
     },
     onError: error => toast.error(error.message),
   });
@@ -554,6 +571,33 @@ export default function Home() {
   function removeItem(sku: string) {
     setCart(current => current.filter(item => item.sku !== sku));
     toast.success(`Item ${sku} removido da compra.`);
+  }
+
+  function startEditingProduct(product: ProductRow) {
+    setEditingProduct({
+      productId: product.id,
+      valorProduto: String(product.valorProduto ?? "0"),
+      precoFinal: String(product.precoFinal || product.precoDesejado || "0"),
+    });
+  }
+
+  function cancelEditingProduct() {
+    setEditingProduct({ productId: null, valorProduto: "", precoFinal: "" });
+  }
+
+  async function saveEditingProduct(product: ProductRow) {
+    if (!editingProduct.productId || editingProduct.productId !== product.id) {
+      toast.error("Selecione um produto válido para editar.");
+      return;
+    }
+
+    await updateProductPricingMutation.mutateAsync({
+      id: product.id,
+      valorProduto: editingProduct.valorProduto || "0",
+      precoFinal: editingProduct.precoFinal || "0",
+      imposto: pricingSettings.impostoPercentual || "0",
+      comissao: pricingSettings.valorEverton || "0",
+    });
   }
 
   function applyCustomer(customer: CustomerRow) {
@@ -927,70 +971,15 @@ export default function Home() {
         </section>
 
         <section ref={productsRef} className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <Card className="border-border/60 shadow-sm">
+          <Card className="border-border/60 shadow-sm xl:col-span-2">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl"><PackageSearch className="h-5 w-5" /> Produtos e lista de compra</CardTitle>
-              <CardDescription>Pesquise por nome ou SKU, adicione os itens e mantenha os valores de cliente e Mondial separados.</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-xl"><PackageSearch className="h-5 w-5" /> Produtos movidos para menu próprio</CardTitle>
+              <CardDescription>Agora o cadastro de SKUs e a edição aberta de preços ficam no menu dedicado de Produtos.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="md:col-span-2">
-                  <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por SKU ou Título" />
-                </div>
-                  <div className="flex items-center rounded-xl border border-dashed border-border px-4 text-sm text-muted-foreground">
-                  {visibleProducts.length} produtos encontrados na tela
-                </div>
-
+              <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">
+                Para cadastrar novos itens, ajustar o valor pago à Mondial ou mudar o valor de revenda, use o menu <strong className="text-foreground">Produtos</strong> na lateral. A tela inicial agora fica focada em importação, clientes, simulação, pedidos e dashboard mensal.
               </div>
-              <ScrollArea className="h-[420px] rounded-2xl border border-border/60">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Valor Mondial</TableHead>
-                      <TableHead>Valor Revenda</TableHead>
-                      <TableHead>Lucro</TableHead>
-                      <TableHead>Everton Mondial</TableHead>
-                      <TableHead className="text-right">Ação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleProducts.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                          Nenhum produto encontrado com esse SKU ou título.
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                    {visibleProducts.map(product => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-medium">{product.sku}</TableCell>
-                        <TableCell className="max-w-[320px] truncate">{product.titulo}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground">{formatCurrency(product.valorProduto)}</span>
-                            <span className="text-xs text-muted-foreground">Valor pago à Mondial</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground">{formatCurrency(product.precoFinal || product.precoDesejado)}</span>
-                            <span className="text-xs text-muted-foreground">Valor de revenda</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{formatCurrency(product.lucro)}</TableCell>
-                        <TableCell>{formatCurrency(product.comissao)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button size="sm" variant="outline" onClick={() => addToCart(product as ProductRow)}>
-                            Adicionar
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
             </CardContent>
           </Card>
 
@@ -1176,7 +1165,7 @@ export default function Home() {
                         <TableCell>{formatCurrency(Number(item.valorProduto) * item.quantidade)}</TableCell>
                         <TableCell>{formatCurrency(Number(item.comissao) * item.quantidade)}</TableCell>
                         <TableCell>{formatCurrency(orderType === "customer" ? Number(item.lucroUnitario) * item.quantidade : 0)}</TableCell>
-                        <TableCell className="text-right">
+                          <TableCell className="text-right whitespace-nowrap">
                           <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)}>
                             Remover
                           </Button>

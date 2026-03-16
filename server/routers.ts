@@ -21,6 +21,7 @@ import {
   searchCustomers,
   searchProducts,
   updateOrderStatus,
+  updateProductPricingById,
   upsertMonthlySnapshot,
 } from "./db";
 import { storagePut } from "./storage";
@@ -143,6 +144,37 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional())
       .query(async ({ input }) => {
         return listProducts(input?.limit ?? 100);
+      }),
+    updatePricing: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        valorProduto: decimalString,
+        precoFinal: decimalString,
+        imposto: decimalString.optional(),
+        comissao: decimalString.optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const valorProduto = toNumber(input.valorProduto);
+        const precoFinal = toNumber(input.precoFinal);
+        const imposto = toNumber(input.imposto ?? 0);
+        const comissao = toNumber(input.comissao ?? 0);
+        const lucro = precoFinal - valorProduto - imposto - comissao;
+        const margemFinal = valorProduto === 0 ? 0 : lucro / valorProduto;
+
+        const updated = await updateProductPricingById({
+          id: input.id,
+          valorProduto: formatMoney(valorProduto),
+          precoDesejado: formatMoney(precoFinal),
+          precoFinal: formatMoney(precoFinal),
+          lucro: formatMoney(lucro),
+          margemFinal: formatMargin(margemFinal),
+        });
+
+        if (!updated) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });
+        }
+
+        return updated;
       }),
     search: protectedProcedure
       .input(z.object({ query: z.string().optional(), limit: z.number().int().min(1).max(100).default(25) }).optional())
