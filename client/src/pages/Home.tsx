@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
@@ -295,6 +295,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("resumo");
   const [menuSection, setMenuSection] = useState("visao-geral");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const skuQuickEntryRef = useRef<HTMLInputElement | null>(null);
   const overviewRef = useRef<HTMLElement | null>(null);
   const customerRef = useRef<HTMLElement | null>(null);
   const productsRef = useRef<HTMLElement | null>(null);
@@ -481,13 +482,21 @@ export default function Home() {
   }
 
   function addBySku() {
-    const product = selectedQuickProduct;
+    const normalized = skuQuickEntry.trim().toLowerCase();
+    const exactProduct = ((allProductsQuery.data ?? []) as ProductRow[]).find(product => product.sku.toLowerCase() === normalized);
+    const product = exactProduct ?? quickSkuMatches[0] ?? null;
+
     if (!product) {
       toast.error("Nenhum produto encontrado para esse SKU.");
       return;
     }
+
     addToCart(product);
-    setSkuQuickEntry("");
+    setActiveTab("mondial");
+    setTimeout(() => {
+      setSkuQuickEntry("");
+      skuQuickEntryRef.current?.focus();
+    }, 0);
   }
 
   function updateQuantity(sku: string, quantidade: number) {
@@ -609,6 +618,12 @@ export default function Home() {
     }
     exportMondialSheet();
   }
+
+  useEffect(() => {
+    if (skuQuickEntryRef.current) {
+      skuQuickEntryRef.current.focus();
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -894,6 +909,7 @@ export default function Home() {
                   <Label>Adicionar produto pelo número SKU</Label>
                   <div className="flex gap-2">
                     <Input
+                      ref={skuQuickEntryRef}
                       value={skuQuickEntry}
                       onChange={e => setSkuQuickEntry(e.target.value)}
                       onKeyDown={e => {
@@ -917,8 +933,25 @@ export default function Home() {
                       </div>
                     </div>
                   ) : skuQuickEntry.trim() ? (
-                    <div className="text-sm text-muted-foreground">
-                      Sugestões: {quickSkuMatches.map(item => item.sku).join(", ") || "nenhum SKU encontrado"}
+                    <div className="space-y-2 rounded-xl bg-background p-3 text-sm shadow-sm">
+                      <div className="font-medium text-foreground">Sugestões encontradas</div>
+                      <div className="flex flex-wrap gap-2">
+                        {quickSkuMatches.length > 0 ? quickSkuMatches.map(item => (
+                          <Button
+                            key={item.sku}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              addToCart(item);
+                              setSkuQuickEntry("");
+                              setTimeout(() => skuQuickEntryRef.current?.focus(), 0);
+                            }}
+                          >
+                            {item.sku}
+                          </Button>
+                        )) : <span className="text-muted-foreground">Nenhum SKU encontrado</span>}
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -991,6 +1024,23 @@ export default function Home() {
               <CardDescription>Cada item mostra o valor de compra, o valor de venda e a comissão Everton Mondial por unidade ou quantidade.</CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 rounded-2xl border border-dashed border-border/60 bg-muted/30 p-4 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Itens já adicionados na lista atual</span>
+                  <strong>{cart.length} produto(s)</strong>
+                </div>
+                {cart.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {cart.map(item => (
+                      <Badge key={`badge-${item.sku}`} variant="secondary" className="rounded-full px-3 py-1">
+                        {item.sku} · qtd {item.quantidade}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-muted-foreground">Digite um SKU acima e pressione Enter para começar a montar a lista.</p>
+                )}
+              </div>
               <ScrollArea className="h-[340px] rounded-2xl border border-border/60">
                 <Table>
                   <TableHeader>
