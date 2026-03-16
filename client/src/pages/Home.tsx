@@ -907,24 +907,24 @@ export default function Home() {
               <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-4">
                 <div className="space-y-2">
                   <Label>Adicionar produto pelo número SKU</Label>
-                  <div className="flex gap-2">
+                  <form
+                    className="flex gap-2"
+                    onSubmit={event => {
+                      event.preventDefault();
+                      addBySku();
+                    }}
+                  >
                     <Input
                       ref={skuQuickEntryRef}
                       value={skuQuickEntry}
                       onChange={e => setSkuQuickEntry(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addBySku();
-                        }
-                      }}
-                      placeholder="Digite o SKU e pressione Enter"
+                      placeholder="Digite o SKU e clique em adicionar"
                     />
-                    <Button type="button" variant="outline" onClick={addBySku}>
+                    <Button type="submit" variant="outline">
                       <Search className="mr-2 h-4 w-4" />
-                      Buscar SKU
+                      Adicionar SKU
                     </Button>
-                  </div>
+                  </form>
                   {selectedQuickProduct ? (
                     <div className="rounded-xl bg-background p-3 text-sm shadow-sm">
                       <div className="font-medium text-foreground">{selectedQuickProduct.sku} — {selectedQuickProduct.titulo}</div>

@@ -57,7 +57,7 @@ function addToCart(current: CartItem[], product: ProductRow): CartItem[] {
 }
 
 describe("sku quick entry behavior", () => {
-  it("keeps previous products in the list and allows sequential additions", () => {
+  it("keeps previous products in the list and allows sequential additions through the submit flow", () => {
     const productA: ProductRow = {
       id: 1,
       sku: "1001",

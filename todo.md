@@ -29,3 +29,4 @@
 - [x] Disponibilizar seleção direta por número SKU na configuração da compra com preenchimento automático do produto
 - [x] Gerar e disponibilizar duas planilhas do pedido ao salvar, uma para o cliente e outra para a Mondial
 - [x] Corrigir o fluxo de adicionar produto por SKU para manter o item salvo na lista e permitir incluir vários produtos em sequência
+- [x] Corrigir a falha persistente no clique do botão de adicionar produto por SKU na tela de compra
