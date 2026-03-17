@@ -479,6 +479,26 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return getMonthlySummary(input?.periodYear, input?.periodMonth);
       }),
+    yearlyEvolution: protectedProcedure.query(async () => {
+      const now = new Date();
+      const months: { year: number; month: number; label: string; vendas: string; lucro: string; compras: string }[] = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const year = d.getFullYear();
+        const month = d.getMonth() + 1;
+        const summary = await getMonthlySummary(year, month);
+        const label = `${String(month).padStart(2, "0")}/${year}`;
+        months.push({
+          year,
+          month,
+          label,
+          vendas: String(summary.totalVendasClientes),
+          lucro: String(summary.totalLucro),
+          compras: String(summary.totalComprasPessoais),
+        });
+      }
+      return months;
+    }),
   }),
 });
 

@@ -23,7 +23,6 @@ import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   BarChart3,
-  Calculator,
   ClipboardList,
   LayoutDashboard,
   LogOut,
@@ -40,9 +39,8 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral", href: "/" },
   { icon: UserPlus, label: "Clientes", section: "clientes", href: "/clientes" },
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
-  { icon: Calculator, label: "Simulação", section: "simulacao", href: "/#simulacao" },
-  { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/#pedidos" },
-  { icon: BarChart3, label: "Dashboard mensal", section: "dashboard-mensal", href: "/#dashboard-mensal" },
+  { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/pedidos" },
+  { icon: BarChart3, label: "Dashboard", section: "dashboard", href: "/dashboard" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -211,10 +209,6 @@ function DashboardLayoutContent({
                     <SidebarMenuButton
                       isActive={isActive}
                       onClick={() => {
-                        if (item.href === "/produtos" || item.href === "/clientes") {
-                          setLocation(item.href);
-                          return;
-                        }
                         setLocation(item.href);
                         onNavigate?.(item.section);
                       }}
