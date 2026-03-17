@@ -638,7 +638,9 @@ function CampaignDetail({
 
     // Add banner link at the end of the message if available
     if (campaign.bannerUrl) {
-      msg += `\n\n📸 Veja a promoção: ${campaign.bannerUrl}`;
+      // Ensure the banner URL has no spaces (encode them) so WhatsApp doesn't break the link
+      const safeUrl = campaign.bannerUrl.replace(/ /g, '%20');
+      msg += `\n\n📸 Veja a promoção: ${safeUrl}`;
     }
 
     // Build the WhatsApp Web URL

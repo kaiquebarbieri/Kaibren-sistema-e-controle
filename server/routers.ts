@@ -95,6 +95,7 @@ const orderInputSchema = z.object({
   periodMonth: z.number().int().min(1).max(12),
   notes: z.string().optional().nullable(),
   status: z.enum(["draft", "created", "finalized"]).default("created"),
+  campaignId: z.number().int().positive().optional().nullable(),
   items: z.array(orderItemInputSchema).min(1),
 });
 
@@ -685,6 +686,7 @@ export const appRouter = router({
           totalItens: totals.totalItens,
           createdByUserId: ctx.user.id,
           finalizedAt: input.status === "finalized" ? new Date() : null,
+          campaignId: input.campaignId ?? null,
         });
 
         await insertOrderItems(
@@ -725,6 +727,18 @@ export const appRouter = router({
           margemMedia: String(monthly.margemMedia ?? "0.000000"),
           atualizadoEm: Date.now(),
         });
+
+        // Update campaign conversion metrics if linked to a campaign
+        if (input.campaignId) {
+          const campaign = await getCampaignById(input.campaignId);
+          if (campaign) {
+            const revenueToAdd = toNumber(totals.totalCliente);
+            await updateCampaign(input.campaignId, {
+              totalConverted: (campaign.totalConverted ?? 0) + 1,
+              totalRevenue: formatMoney(toNumber(campaign.totalRevenue) + revenueToAdd),
+            });
+          }
+        }
 
         const actionLabel = input.status === "finalized" ? "finalizado" : "criado";
         const orderKind = input.orderType === "personal" ? "pessoal" : "de cliente";

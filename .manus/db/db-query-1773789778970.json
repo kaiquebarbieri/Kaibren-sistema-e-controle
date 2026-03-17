@@ -1,0 +1,28 @@
+{
+  "query": "SELECT id, title, bannerUrl, bannerFileKey FROM campaigns WHERE bannerUrl IS NOT NULL LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT id, title, bannerUrl, bannerFileKey FROM campaigns WHERE bannerUrl IS NOT NULL LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "title": "Promoção de Março 20% de desconto",
+      "bannerUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/generated/1773786939694.png",
+      "bannerFileKey": "NULL"
+    },
+    {
+      "id": "2",
+      "title": "Promoção",
+      "bannerUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-banners/1773788214308-329cfc619673a644-Base Mondial Original Do Ventilador 30 Cm V 37 6 Pas Preta .png",
+      "bannerFileKey": "1-banners/1773788214308-329cfc619673a644-Base Mondial Original Do Ventilador 30 Cm V 37 6 Pas Preta .png"
+    },
+    {
+      "id": "3",
+      "title": "Promoção",
+      "bannerUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-banners/1773789155357-a02abbfa2989eb0f-2_20250425_144452_0001 (2).png",
+      "bannerFileKey": "1-banners/1773789155357-a02abbfa2989eb0f-2_20250425_144452_0001 (2).png"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttitle\tbannerUrl\tbannerFileKey\n1\tPromoção de Março 20% de desconto\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/generated/1773786939694.png\tNULL\n2\tPromoção\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-banners/1773788214308-329cfc619673a644-Base Mondial Original Do Ventilador 30 Cm V 37 6 Pas Preta .png\t1-banners/1773788214308-329cfc619673a644-Base Mondial Original Do Ventilador 30 Cm V 37 6 Pas Preta .png\n3\tPromoção\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-banners/1773789155357-a02abbfa2989eb0f-2_20250425_144452_0001 (2).png\t1-banners/1773789155357-a02abbfa2989eb0f-2_20250425_144452_0001 (2).png\n",
+  "stderr": "",
+  "execution_time_ms": 50
+}

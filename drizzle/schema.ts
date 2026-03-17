@@ -98,6 +98,7 @@ export const orders = mysqlTable("orders", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   finalizedAt: timestamp("finalizedAt"),
+  campaignId: int("campaignId"),
 });
 
 export const orderItems = mysqlTable("order_items", {

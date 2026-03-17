@@ -295,11 +295,13 @@ export default function Orders() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeTab, setActiveTab] = useState("resumo");
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const skuQuickEntryRef = useRef<HTMLInputElement | null>(null);
 
   const allProductsQuery = trpc.products.list.useQuery({ limit: 500 });
   const ordersQuery = trpc.orders.list.useQuery();
   const customersQuery = trpc.customers.search.useQuery({ query: customerSearch, limit: 50 });
+  const campaignsQuery = trpc.marketing.campaigns.list.useQuery();
 
   const createCustomerMutation = trpc.customers.create.useMutation({
     onSuccess: async customer => {
@@ -328,6 +330,7 @@ export default function Orders() {
       setCart([]);
       setNotes("");
       setSkuQuickEntry("");
+      setSelectedCampaignId("");
       if (variables.orderType === "personal") {
         setSelectedCustomerId("new");
         setCustomerForm(createEmptyCustomerForm());
@@ -508,6 +511,7 @@ export default function Orders() {
       periodYear: Number(selectedYear),
       notes,
       status,
+      campaignId: selectedCampaignId && selectedCampaignId !== "none" ? Number(selectedCampaignId) : null,
       items: cart,
     });
 
@@ -825,6 +829,24 @@ export default function Orders() {
                 <div className="flex items-center justify-between"><span>Cliente</span><strong className="text-right truncate ml-2">{orderType === "personal" ? "Compra pessoal" : customerForm.name || "Não selecionado"}</strong></div>
                 <div className="flex items-center justify-between"><span>Referência</span><strong className="text-right truncate ml-2">{orderType === "personal" ? "Uso próprio" : customerForm.reference || "-"}</strong></div>
               </div>
+
+              {/* Vincular a campanha de marketing */}
+              {orderType === "customer" && (campaignsQuery.data ?? []).length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Veio de alguma campanha?</Label>
+                  <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+                    <SelectTrigger className="h-9 text-xs sm:text-sm">
+                      <SelectValue placeholder="Nenhuma campanha (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhuma campanha</SelectItem>
+                      {(campaignsQuery.data ?? []).map((c: any) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Observações</Label>
