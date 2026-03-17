@@ -786,17 +786,17 @@ export const appRouter = router({
       }),
     yearlyEvolution: protectedProcedure.query(async () => {
       const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
       const months: { year: number; month: number; label: string; vendas: string; lucro: string; compras: string }[] = [];
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const year = d.getFullYear();
-        const month = d.getMonth() + 1;
-        const summary = await getMonthlySummary(year, month);
-        const label = `${String(month).padStart(2, "0")}/${year}`;
+      const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+      // Start from January of current year (2026) up to current month
+      for (let m = 1; m <= currentMonth; m++) {
+        const summary = await getMonthlySummary(currentYear, m);
         months.push({
-          year,
-          month,
-          label,
+          year: currentYear,
+          month: m,
+          label: `${monthNames[m - 1]}/${currentYear}`,
           vendas: String(summary.totalVendasClientes),
           lucro: String(summary.totalLucro),
           compras: String(summary.totalComprasPessoais),

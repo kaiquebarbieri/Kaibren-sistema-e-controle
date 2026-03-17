@@ -114,3 +114,5 @@
 - [x] Corrigir link do banner que não abre a imagem no WhatsApp (URL com espaços encodada)
 - [x] Adicionar campo de vinculação de campanha no fluxo de pedidos para rastrear conversão manual
 - [x] Atualizar métricas de conversão no Marketing baseado nos pedidos vinculados a campanhas
+- [x] Corrigir gráfico do Dashboard para começar a partir de janeiro de 2026
+- [x] Corrigir gráfico do Dashboard para aparecer corretamente no celular

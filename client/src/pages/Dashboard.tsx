@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 
 /* ── Helpers ───────────────────────────────────────── */
@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstanceRef = useRef<Chart | null>(null);
+  const [chartHeight] = useState(() => window.innerWidth < 768 ? 260 : 340);
 
   const dashboardQuery = trpc.dashboard.monthly.useQuery({
     periodMonth: Number(selectedMonth),
@@ -333,7 +334,7 @@ export default function Dashboard() {
             <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
               <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" /> Evolução mês a mês
             </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Vendas, lucro e compras dos últimos 12 meses.</CardDescription>
+            <CardDescription className="text-xs sm:text-sm">Vendas, lucro e compras de 2026.</CardDescription>
           </CardHeader>
           <CardContent className="px-2 sm:px-6">
             {evolutionQuery.isLoading ? (
@@ -341,7 +342,7 @@ export default function Dashboard() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div className="relative h-[240px] sm:h-[340px] w-full">
+              <div style={{ position: "relative", width: "100%", height: `${chartHeight}px` }}>
                 <canvas ref={chartRef} />
               </div>
             )}
