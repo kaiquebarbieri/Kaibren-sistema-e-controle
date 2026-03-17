@@ -110,3 +110,4 @@
 - [x] Garantir que o banner/imagem subido apareça corretamente na campanha
 - [x] Simplificar criação de campanha como controle interno (nome, tipo, desconto, produtos)
 - [x] Dentro da campanha: subir banner, escrever/gerar mensagem, escolher clientes e disparar
+- [x] Incluir automaticamente o link do banner/imagem na mensagem do WhatsApp para o cliente ver a promoção

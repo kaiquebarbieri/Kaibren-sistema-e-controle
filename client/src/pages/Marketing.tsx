@@ -636,6 +636,11 @@ function CampaignDetail({
       msg = msg.replace(/\{produtos\}/g, productList);
     }
 
+    // Add banner link at the end of the message if available
+    if (campaign.bannerUrl) {
+      msg += `\n\n📸 Veja a promoção: ${campaign.bannerUrl}`;
+    }
+
     // Build the WhatsApp Web URL
     const encoded = encodeURIComponent(msg);
     const cleanPhone = phone.replace(/\D/g, "");
