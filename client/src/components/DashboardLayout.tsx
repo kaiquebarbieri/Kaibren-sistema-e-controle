@@ -24,7 +24,6 @@ import { useIsMobile } from "@/hooks/useMobile";
 import {
   BarChart3,
   ClipboardList,
-  LayoutDashboard,
   LogOut,
   PackageSearch,
   PanelLeft,
@@ -36,11 +35,10 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral", href: "/" },
+  { icon: BarChart3, label: "Dashboard", section: "dashboard", href: "/" },
   { icon: UserPlus, label: "Clientes", section: "clientes", href: "/clientes" },
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
   { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/pedidos" },
-  { icon: BarChart3, label: "Dashboard", section: "dashboard", href: "/dashboard" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -57,7 +55,7 @@ type DashboardLayoutProps = {
 export default function DashboardLayout({
   children,
   onNavigate,
-  activeSection = "visao-geral",
+  activeSection = "dashboard",
 }: DashboardLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);

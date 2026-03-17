@@ -66,8 +66,8 @@ export default function Dashboard() {
   // Everton: R$ 0,75 por item em TODAS as compras (pessoais e vendas)
   const comissaoEverton = Number(monthly?.totalComissaoEvertonMondial ?? 0);
 
-  // Total Mondial geral (vendas + compras pessoais)
-  const totalMondialGeral = Number(monthly?.totalMondial ?? 0);
+  // Imposto gerado nas vendas da distribuidora (apenas vendas para clientes)
+  const impostoVendas = vendasDoMes > 0 ? vendasDoMes * 0.0392 : 0;
 
   /* ── Chart ─────────────────────────────────────── */
 
@@ -218,17 +218,19 @@ export default function Dashboard() {
       <div className="flex flex-col gap-6 bg-background">
         {/* ── Header ─────────────────────────────── */}
         <div className="overflow-hidden rounded-[28px] border border-border/60 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-6 text-white shadow-sm lg:px-8 lg:py-8">
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-emerald-400" />
-                <span className="text-sm font-medium text-emerald-400">Dashboard de Performance</span>
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-emerald-400" />
+                  <span className="text-sm font-medium text-emerald-400">Dashboard de Performance</span>
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight">Resultados e evolução mensal</h1>
+                <p className="max-w-xl text-sm leading-6 text-slate-300">
+                  Acompanhe suas vendas, lucro líquido, compras do mês e a evolução mês a mês.
+                </p>
               </div>
-              <h1 className="text-3xl font-semibold tracking-tight">Resultados e evolução mensal</h1>
-              <p className="max-w-xl text-sm leading-6 text-slate-300">
-                Acompanhe suas vendas, lucro líquido, compras do mês e a evolução mês a mês.
-              </p>
-              <div className="flex flex-wrap gap-3 pt-2">
+              <div className="flex flex-wrap gap-3">
                 <div className="flex items-center gap-2">
                   <Label className="text-slate-300 text-sm">Mês</Label>
                   <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -253,8 +255,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ── Cards principais no header ──────── */}
-            <div className="grid gap-3 sm:grid-cols-2">
+            {/* ── Cards principais ──────── */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {/* Vendas do mês */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
@@ -264,16 +266,16 @@ export default function Dashboard() {
                 <div className="mt-1 text-xs text-slate-400">{pedidosCliente} pedido(s) para clientes</div>
               </div>
 
-              {/* Lucro líquido: vendas - custo Mondial - impostos - 0,75/item */}
+              {/* Lucro líquido */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
                   <TrendingUp className="h-4 w-4 text-blue-400" /> Lucro líquido
                 </div>
                 <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(lucroLiquido)}</div>
-                <div className="mt-1 text-xs text-slate-400">Após impostos e R$ 0,75/item</div>
+                <div className="mt-1 text-xs text-slate-400">Após impostos e Everton</div>
               </div>
 
-              {/* Compras pessoais: total pago à Mondial */}
+              {/* Compras pessoais */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
                   <ShoppingBag className="h-4 w-4 text-orange-400" /> Compras pessoais
@@ -282,54 +284,34 @@ export default function Dashboard() {
                 <div className="mt-1 text-xs text-slate-400">{pedidosPessoais} compra(s) no mês</div>
               </div>
 
-              {/* Everton: R$ 0,75 por item em todas as compras */}
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
-                  <Wallet className="h-4 w-4 text-yellow-400" /> Pagar ao Everton
+              {/* Everton Mondial - card independente com nome dele */}
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-amber-300">
+                  <Wallet className="h-4 w-4 text-amber-400" /> Everton Mondial
                 </div>
                 <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(comissaoEverton)}</div>
-                <div className="mt-1 text-xs text-slate-400">R$ 0,75 por item comprado</div>
+                <div className="mt-1 text-xs text-slate-400">R$ 0,75 por item em todas as compras</div>
+              </div>
+
+              {/* Imposto das vendas - card independente separado */}
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-red-300">
+                  <ArrowDownRight className="h-4 w-4 text-red-400" /> Imposto das vendas
+                </div>
+                <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(impostoVendas)}</div>
+                <div className="mt-1 text-xs text-slate-400">Gerado apenas nas vendas para clientes</div>
+              </div>
+
+              {/* Margem média */}
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
+                  <ArrowUpRight className="h-4 w-4 text-purple-400" /> Margem média
+                </div>
+                <div className="mt-2 text-2xl font-bold text-white">{formatPercent(margemMedia)}</div>
+                <div className="mt-1 text-xs text-slate-400">Pedidos de cliente</div>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* ── Cards de detalhamento ──────────────── */}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-border/60 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1.5">
-                <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" /> Vendas para clientes
-              </CardDescription>
-              <CardTitle className="text-base">Receita da distribuidora</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{formatCurrency(vendasDoMes)}</CardContent>
-          </Card>
-          <Card className="border-border/60 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5 text-blue-500" /> Lucro líquido
-              </CardDescription>
-              <CardTitle className="text-base">Vendas - custo - impostos - 0,75</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{formatCurrency(lucroLiquido)}</CardContent>
-          </Card>
-          <Card className="border-border/60 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1.5">
-                <ArrowDownRight className="h-3.5 w-3.5 text-orange-500" /> Compras pessoais
-              </CardDescription>
-              <CardTitle className="text-base">Total pago à Mondial</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{formatCurrency(comprasDoMesMondial)}</CardContent>
-          </Card>
-          <Card className="border-border/60 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardDescription>Margem média</CardDescription>
-              <CardTitle className="text-base">Pedidos de cliente</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{formatPercent(margemMedia)}</CardContent>
-          </Card>
         </div>
 
         {/* ── Gráfico de evolução ────────────────── */}

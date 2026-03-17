@@ -78,3 +78,7 @@
 - [x] Remover coluna/exibição do R$ 0,75 do Everton da tabela de pedidos (só entra no cálculo do Dashboard)
 - [x] No Dashboard: compra pessoal calcula total comprado + R$ 0,75 por item para Everton, sem imposto
 - [x] No Dashboard: venda para cliente calcula total vendido - impostos - R$ 0,75 por item = lucro líquido
+- [x] Mover o Dashboard para o topo da navegação lateral
+- [x] Remover o menu Visão geral da navegação
+- [x] Separar no Dashboard o valor do Everton com o nome dele como card independente
+- [x] Separar no Dashboard o imposto das vendas da distribuidora como card independente
