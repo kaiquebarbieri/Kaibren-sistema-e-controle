@@ -117,3 +117,4 @@
 - [x] Corrigir gráfico do Dashboard para começar a partir de janeiro de 2026
 - [x] Corrigir gráfico do Dashboard para aparecer corretamente no celular
 - [x] Corrigir gráfico do Dashboard que não renderiza no mobile publicado
+- [x] Redesenhar página de cadastro de clientes com design moderno, bonito e intuitivo para cadastro rápido
