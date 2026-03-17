@@ -48,24 +48,24 @@ describe("Marketing Campaign Logic", () => {
       const encoded = encodeURIComponent(message);
       const cleanPhone = phone.replace(/\D/g, "");
       const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
-      return `https://wa.me/${fullPhone}?text=${encoded}`;
+      return `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encoded}`;
     }
 
-    it("should build correct WhatsApp URL with Brazilian phone", () => {
+    it("should build correct WhatsApp Web URL with Brazilian phone", () => {
       const url = buildWhatsAppUrl("(11) 99999-1234", "Olá teste!");
-      expect(url).toContain("https://wa.me/5511999991234");
+      expect(url).toContain("https://web.whatsapp.com/send?phone=5511999991234");
       expect(url).toContain("text=");
     });
 
     it("should not double-prefix 55 if already present", () => {
       const url = buildWhatsAppUrl("5511999991234", "Teste");
-      expect(url).toContain("https://wa.me/5511999991234");
+      expect(url).toContain("phone=5511999991234");
       expect(url).not.toContain("555511");
     });
 
     it("should strip non-digit characters from phone", () => {
       const url = buildWhatsAppUrl("+55 (21) 98765-4321", "Olá!");
-      expect(url).toContain("https://wa.me/5521987654321");
+      expect(url).toContain("phone=5521987654321");
     });
 
     it("should encode message properly", () => {

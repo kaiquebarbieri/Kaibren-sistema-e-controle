@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `marketing_strategies` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`name` varchar(255) NOT NULL,\n\t`triggerType` varchar(128) NOT NULL,\n\t`description` text NOT NULL,\n\t`exampleMessage` text NOT NULL,\n\t`emoji` varchar(16) NOT NULL DEFAULT '',\n\t`sortOrder` int NOT NULL DEFAULT 0,\n\t`isActive` int NOT NULL DEFAULT 1,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `marketing_strategies_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute CREATE TABLE `marketing_strategies` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`name` varchar(255) NOT NULL,\n\t`triggerType` varchar(128) NOT NULL,\n\t`description` text NOT NULL,\n\t`exampleMessage` text NOT NULL,\n\t`emoji` varchar(16) NOT NULL DEFAULT '',\n\t`sortOrder` int NOT NULL DEFAULT 0,\n\t`isActive` int NOT NULL DEFAULT 1,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `marketing_strategies_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 268
+}

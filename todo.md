@@ -99,3 +99,10 @@
 - [x] Criar dashboard de métricas de campanhas com taxa de conversão, ROI e análise de performance
 - [x] Adicionar menu Marketing na navegação do sistema
 - [x] Escrever testes vitest para o módulo de marketing
+- [x] Remover geração de banner por IA do módulo de Marketing
+- [x] Adicionar upload de imagem/banner próprio na criação de campanha
+- [x] Criar banco de estratégias de gatilhos mentais usados por grandes empresas
+- [x] Implementar geração de textos promocionais por IA baseada nos gatilhos mentais e produtos selecionados
+- [x] Permitir edição livre das mensagens geradas antes do envio
+- [x] Integrar disparo direto pelo WhatsApp Web abrindo conversa individual para cada cliente
+- [x] Atualizar testes vitest para o novo fluxo de marketing

@@ -29,6 +29,13 @@
       "when": 1773781346777,
       "tag": "0003_unusual_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1773787565121,
+      "tag": "0004_silly_captain_america",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,7 @@ import {
   listCampaignMessages,
   listCampaigns,
   listCustomers,
+  listMarketingStrategies,
   listOrders,
   listProductUploads,
   listProducts,
@@ -40,7 +41,7 @@ import {
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
-import { generateImage } from "./_core/imageGeneration";
+import { invokeLLM } from "./_core/llm";
 import crypto from "crypto";
 
 const decimalString = z.union([z.string(), z.number()]).transform(value => String(value ?? "0"));
@@ -244,25 +245,89 @@ const marketingRouter = router({
 
         return getCampaignById(id);
       }),
-    generateBanner: protectedProcedure
+    uploadBanner: protectedProcedure
       .input(z.object({
         campaignId: z.number().int().positive(),
-        prompt: z.string().min(1),
+        fileBase64: z.string().min(1),
+        fileName: z.string().min(1),
+        mimeType: z.string().default("image/png"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await getCampaignById(input.campaignId);
+        if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
+
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const suffix = crypto.randomBytes(8).toString("hex");
+        const key = `${ctx.user.id}-banners/${Date.now()}-${suffix}-${input.fileName}`;
+        const { url, key: fileKey } = await storagePut(key, buffer, input.mimeType);
+
+        await updateCampaign(input.campaignId, {
+          bannerUrl: url,
+          bannerFileKey: fileKey,
+        });
+
+        return { bannerUrl: url };
+      }),
+    generateMessage: protectedProcedure
+      .input(z.object({
+        campaignId: z.number().int().positive(),
+        strategyId: z.number().int().positive().optional(),
+        customPrompt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const campaign = await getCampaignById(input.campaignId);
         if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
 
-        const fullPrompt = `Create a professional promotional banner for a wholesale distributor called "CK Distribuidora". ${input.prompt}. The banner should be vibrant, modern, and suitable for WhatsApp sharing. Include space for product images and pricing. Use bold typography. Brazilian Portuguese text. Style: clean, professional, eye-catching promotional material.`;
+        const prods = await getCampaignProducts(input.campaignId);
+        const allProducts = await listProducts(500);
+        const productMap = new Map(allProducts.map(p => [p.id, p]));
 
-        const result = await generateImage({ prompt: fullPrompt });
+        const productList = prods.map(cp => {
+          const product = productMap.get(cp.productId);
+          const name = product?.titulo ?? `Produto #${cp.productId}`;
+          const originalPrice = Number(cp.originalPrice ?? 0);
+          const promoPrice = Number(cp.promoPrice ?? originalPrice);
+          const hasDiscount = promoPrice < originalPrice;
+          return hasDiscount
+            ? `\u2022 ${name} - De R$ ${originalPrice.toFixed(2)} por R$ ${promoPrice.toFixed(2)}`
+            : `\u2022 ${name} - R$ ${promoPrice.toFixed(2)}`;
+        }).join("\n");
 
-        await updateCampaign(input.campaignId, {
-          bannerUrl: result.url,
+        let strategyContext = "";
+        if (input.strategyId) {
+          const strategies = await listMarketingStrategies();
+          const strategy = strategies.find(s => s.id === input.strategyId);
+          if (strategy) {
+            strategyContext = `Use a estrat\u00e9gia de gatilho mental "${strategy.name}": ${strategy.description}. Exemplo de refer\u00eancia: ${strategy.exampleMessage}`;
+          }
+        }
+
+        const systemPrompt = `Voc\u00ea \u00e9 um copywriter profissional especializado em marketing via WhatsApp para distribuidoras atacadistas brasileiras. Gere mensagens persuasivas, curtas e diretas, usando emojis de forma estrat\u00e9gica. A mensagem deve conter {nome} como placeholder para o nome do cliente e {produtos} como placeholder para a lista de produtos. A mensagem deve ser pronta para enviar no WhatsApp.`;
+
+        const userPrompt = `Gere uma mensagem de WhatsApp para a campanha "${campaign.title}".
+${campaign.description ? `Descri\u00e7\u00e3o: ${campaign.description}` : ""}
+${campaign.discountLabel ? `Promo\u00e7\u00e3o: ${campaign.discountLabel}` : ""}
+Tipo: ${campaign.campaignType}
+Produtos em destaque:\n${productList || "(nenhum produto selecionado)"}
+${strategyContext}
+${input.customPrompt ? `Instru\u00e7\u00f5es adicionais: ${input.customPrompt}` : ""}
+
+Gere APENAS a mensagem, sem explica\u00e7\u00f5es. Use {nome} e {produtos} como placeholders.`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
         });
 
-        return { bannerUrl: result.url };
+        const rawContent = response.choices?.[0]?.message?.content ?? "";
+        const generatedMessage = typeof rawContent === "string" ? rawContent : "";
+        return { message: generatedMessage.trim() };
       }),
+    strategies: protectedProcedure.query(async () => {
+      return listMarketingStrategies();
+    }),
     sendToCustomers: protectedProcedure
       .input(z.object({
         campaignId: z.number().int().positive(),

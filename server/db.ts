@@ -15,6 +15,7 @@ import {
   InsertProduct,
   InsertProductUpload,
   InsertUser,
+  marketingStrategies,
   monthlySnapshots,
   orderItems,
   orders,
@@ -396,6 +397,12 @@ export async function getCampaignStats(campaignId: number) {
     .where(eq(campaignMessages.campaignId, campaignId));
 
   return rows[0] ?? { totalSent: 0, totalClicked: 0, totalConverted: 0, totalMessages: 0 };
+}
+
+export async function listMarketingStrategies() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(marketingStrategies).where(eq(marketingStrategies.isActive, 1)).orderBy(marketingStrategies.sortOrder);
 }
 
 export async function getCustomersWithPhone() {

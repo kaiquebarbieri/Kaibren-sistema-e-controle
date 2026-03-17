@@ -226,3 +226,20 @@ export type CampaignProduct = typeof campaignProducts.$inferSelect;
 export type InsertCampaignProduct = typeof campaignProducts.$inferInsert;
 export type CampaignMessage = typeof campaignMessages.$inferSelect;
 export type InsertCampaignMessage = typeof campaignMessages.$inferInsert;
+
+/* ── Marketing Strategies (mental triggers) ── */
+
+export const marketingStrategies = mysqlTable("marketing_strategies", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  triggerType: varchar("triggerType", { length: 128 }).notNull(),
+  description: text("description").notNull(),
+  exampleMessage: text("exampleMessage").notNull(),
+  emoji: varchar("emoji", { length: 16 }).notNull().default(""),
+  sortOrder: int("sortOrder").notNull().default(0),
+  isActive: int("isActive").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MarketingStrategy = typeof marketingStrategies.$inferSelect;
+export type InsertMarketingStrategy = typeof marketingStrategies.$inferInsert;

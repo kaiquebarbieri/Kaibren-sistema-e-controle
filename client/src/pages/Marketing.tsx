@@ -22,10 +22,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
-  BarChart3,
   Check,
   ChevronLeft,
   Copy,
+  Edit3,
   ExternalLink,
   ImagePlus,
   Loader2,
@@ -33,15 +33,19 @@ import {
   MessageCircle,
   MousePointerClick,
   Package,
+  Pencil,
   Plus,
   Send,
   ShoppingCart,
   Sparkles,
   Target,
   TrendingUp,
+  Upload,
   Users,
+  Wand2,
+  X,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type ViewMode = "list" | "create" | "detail" | "send";
@@ -68,6 +72,11 @@ const statusLabels: Record<string, string> = {
   active: "Ativa",
   completed: "Concluída",
   cancelled: "Cancelada",
+  pending: "Pendente",
+  sent: "Enviada",
+  delivered: "Entregue",
+  clicked: "Clicou",
+  converted: "Converteu",
 };
 
 const statusColors: Record<string, string> = {
@@ -76,6 +85,11 @@ const statusColors: Record<string, string> = {
   active: "bg-green-500/10 text-green-600",
   completed: "bg-gray-500/10 text-gray-600",
   cancelled: "bg-red-500/10 text-red-600",
+  pending: "bg-yellow-500/10 text-yellow-600",
+  sent: "bg-blue-500/10 text-blue-600",
+  delivered: "bg-green-500/10 text-green-600",
+  clicked: "bg-purple-500/10 text-purple-600",
+  converted: "bg-emerald-500/10 text-emerald-600",
 };
 
 function formatCurrency(value: string | number | null | undefined) {
@@ -167,7 +181,7 @@ function CampaignList({
             Central de Marketing
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Crie campanhas, gere banners e dispare promoções para seus clientes via WhatsApp.
+            Crie campanhas, suba seus banners e dispare promoções via WhatsApp.
           </p>
         </div>
         <Button onClick={onCreateNew} className="gap-2 w-full sm:w-auto">
@@ -309,7 +323,6 @@ function CreateCampaignDialog({
   const [description, setDescription] = useState("");
   const [campaignType, setCampaignType] = useState("promotional");
   const [discountLabel, setDiscountLabel] = useState("");
-  const [messageTemplate, setMessageTemplate] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
   const [productSearch, setProductSearch] = useState("");
 
@@ -321,12 +334,12 @@ function CreateCampaignDialog({
   const createMutation = trpc.marketing.campaigns.create.useMutation({
     onSuccess: (data) => {
       if (data) {
-        toast.success("Campanha criada com sucesso!");
+        toast.success("Campanha criada! Agora configure a mensagem e o banner.");
         onCreated(data.id);
         resetForm();
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err: { message: string }) => toast.error(err.message),
   });
 
   function resetForm() {
@@ -334,7 +347,6 @@ function CreateCampaignDialog({
     setDescription("");
     setCampaignType("promotional");
     setDiscountLabel("");
-    setMessageTemplate("");
     setSelectedProductIds([]);
     setProductSearch("");
   }
@@ -347,9 +359,8 @@ function CreateCampaignDialog({
     createMutation.mutate({
       title: title.trim(),
       description: description.trim() || null,
-      campaignType: campaignType as any,
+      campaignType: campaignType as "promotional" | "launch" | "seasonal" | "flash_sale" | "loyalty",
       discountLabel: discountLabel.trim() || null,
-      messageTemplate: messageTemplate.trim() || null,
       productIds: selectedProductIds,
     });
   }
@@ -369,7 +380,7 @@ function CreateCampaignDialog({
             Nova Campanha
           </DialogTitle>
           <DialogDescription>
-            Configure sua campanha de marketing para enviar aos clientes.
+            Configure os dados básicos. Depois você monta a mensagem e sobe o banner.
           </DialogDescription>
         </DialogHeader>
 
@@ -416,19 +427,6 @@ function CreateCampaignDialog({
               value={discountLabel}
               onChange={e => setDiscountLabel(e.target.value)}
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Mensagem para WhatsApp</Label>
-            <Textarea
-              placeholder={`Ex: Olá {nome}! 🔥 Promoção especial CK Distribuidora!\n\n{produtos}\n\n📲 Faça seu pedido agora!`}
-              value={messageTemplate}
-              onChange={e => setMessageTemplate(e.target.value)}
-              rows={4}
-            />
-            <p className="text-xs text-muted-foreground">
-              Use {"{nome}"} para o nome do cliente e {"{produtos}"} para a lista de produtos.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -501,24 +499,46 @@ function CampaignDetail({
   onSend: () => void;
 }) {
   const { data, isLoading, refetch } = trpc.marketing.campaigns.detail.useQuery({ id: campaignId });
-  const [bannerPrompt, setBannerPrompt] = useState("");
-  const [showBannerGen, setShowBannerGen] = useState(false);
-
-  const generateBannerMutation = trpc.marketing.campaigns.generateBanner.useMutation({
-    onSuccess: () => {
-      toast.success("Banner gerado com sucesso!");
-      refetch();
-      setShowBannerGen(false);
-      setBannerPrompt("");
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
+  const { data: strategies } = trpc.marketing.campaigns.strategies.useQuery();
   const { data: allProducts } = trpc.products.list.useQuery();
 
+  const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(null);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [editingMessage, setEditingMessage] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const [showStrategyPicker, setShowStrategyPicker] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadBannerMutation = trpc.marketing.campaigns.uploadBanner.useMutation({
+    onSuccess: () => {
+      toast.success("Banner enviado com sucesso!");
+      refetch();
+    },
+    onError: (err: { message: string }) => toast.error(err.message),
+  });
+
+  const generateMessageMutation = trpc.marketing.campaigns.generateMessage.useMutation({
+    onSuccess: (result) => {
+      setMessageText(result.message);
+      setEditingMessage(true);
+      toast.success("Mensagem gerada! Edite como quiser antes de salvar.");
+    },
+    onError: (err: { message: string }) => toast.error(err.message),
+  });
+
+  const updateMutation = trpc.marketing.campaigns.update.useMutation({
+    onSuccess: () => {
+      toast.success("Mensagem salva!");
+      setEditingMessage(false);
+      refetch();
+    },
+    onError: (err: { message: string }) => toast.error(err.message),
+  });
+
   const productMap = useMemo(() => {
-    if (!allProducts) return new Map();
-    return new Map(allProducts.map(p => [p.id, p]));
+    if (!allProducts) return new Map<number, any>();
+    return new Map(allProducts.map(p => [p.id, p] as [number, any]));
   }, [allProducts]);
 
   if (isLoading) {
@@ -535,7 +555,53 @@ function CampaignDetail({
   const conversionRate = stats.totalSent > 0 ? stats.totalConverted / stats.totalSent : 0;
   const clickRate = stats.totalSent > 0 ? stats.totalClicked / stats.totalSent : 0;
 
-  function buildWhatsAppMessage(customerName: string, phone: string) {
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione apenas arquivos de imagem (PNG, JPG, etc.)");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      uploadBannerMutation.mutate({
+        campaignId,
+        fileBase64: base64,
+        fileName: file.name,
+        mimeType: file.type,
+      });
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    e.target.value = "";
+  }
+
+  function handleGenerateMessage(strategyId?: number) {
+    generateMessageMutation.mutate({
+      campaignId,
+      strategyId: strategyId ?? selectedStrategyId ?? undefined,
+      customPrompt: customPrompt.trim() || undefined,
+    });
+    setShowStrategyPicker(false);
+  }
+
+  function handleSaveMessage() {
+    updateMutation.mutate({
+      id: campaignId,
+      messageTemplate: messageText.trim(),
+    });
+  }
+
+  function buildWhatsAppUrl(customerName: string, phone: string) {
     let msg = campaign.messageTemplate || `Olá ${customerName}! 🔥 Promoção CK Distribuidora!\n\n`;
 
     msg = msg.replace("{nome}", customerName);
@@ -550,14 +616,10 @@ function CampaignDetail({
       msg = msg.replace("{produtos}", productList);
     }
 
-    if (campaign.bannerUrl) {
-      msg += `\n\n📸 Veja o banner: ${campaign.bannerUrl}`;
-    }
-
     const encoded = encodeURIComponent(msg);
     const cleanPhone = phone.replace(/\D/g, "");
     const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
-    return `https://wa.me/${fullPhone}?text=${encoded}`;
+    return `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encoded}`;
   }
 
   return (
@@ -622,7 +684,7 @@ function CampaignDetail({
         </Card>
       </div>
 
-      {/* Banner Section */}
+      {/* Banner Upload Section */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -631,6 +693,14 @@ function CampaignDetail({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+
           {campaign.bannerUrl ? (
             <div className="space-y-3">
               <div className="overflow-hidden rounded-lg border">
@@ -658,72 +728,176 @@ function CampaignDetail({
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={() => setShowBannerGen(true)}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadBannerMutation.isPending}
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Gerar novo banner
+                  {uploadBannerMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  Trocar banner
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
-              <ImagePlus className="h-10 w-10 text-muted-foreground/30" />
-              <p className="mt-2 text-sm font-medium text-foreground">Nenhum banner ainda</p>
-              <p className="mt-1 text-xs text-muted-foreground">Gere um banner profissional com IA</p>
-              <Button
-                className="mt-3 gap-2"
-                size="sm"
-                onClick={() => setShowBannerGen(true)}
-              >
-                <Sparkles className="h-4 w-4" />
-                Gerar Banner com IA
-              </Button>
+            <div
+              className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-accent/30"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadBannerMutation.isPending ? (
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              ) : (
+                <Upload className="h-10 w-10 text-muted-foreground/40" />
+              )}
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {uploadBannerMutation.isPending ? "Enviando..." : "Clique para enviar seu banner"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">PNG, JPG ou WebP (máx. 5MB)</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Message Section with AI Generation */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageCircle className="h-4 w-4 text-green-600" />
+              Mensagem WhatsApp
+            </CardTitle>
+            <div className="flex gap-2">
+              {!editingMessage && campaign.messageTemplate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 h-8"
+                  onClick={() => {
+                    setMessageText(campaign.messageTemplate ?? "");
+                    setEditingMessage(true);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Strategy Picker */}
+          {!editingMessage && (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="outline"
+                  className="gap-2 flex-1"
+                  onClick={() => setShowStrategyPicker(!showStrategyPicker)}
+                >
+                  <Wand2 className="h-4 w-4 text-primary" />
+                  Gerar mensagem com IA
+                </Button>
+              </div>
+
+              {showStrategyPicker && strategies && (
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-3 sm:p-4">
+                  <div>
+                    <Label className="text-sm font-semibold">Escolha um gatilho mental</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Estratégias usadas por grandes empresas para converter mais vendas
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {strategies.map(strategy => (
+                      <button
+                        key={strategy.id}
+                        onClick={() => {
+                          setSelectedStrategyId(strategy.id);
+                          handleGenerateMessage(strategy.id);
+                        }}
+                        disabled={generateMessageMutation.isPending}
+                        className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:border-primary/50 hover:bg-accent/50 ${
+                          generateMessageMutation.isPending && selectedStrategyId === strategy.id
+                            ? "border-primary bg-primary/5"
+                            : ""
+                        }`}
+                      >
+                        <span className="text-xl shrink-0">{strategy.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-foreground">{strategy.name}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{strategy.description}</p>
+                        </div>
+                        {generateMessageMutation.isPending && selectedStrategyId === strategy.id && (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0 mt-0.5" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label className="text-xs">Instruções extras (opcional)</Label>
+                    <Input
+                      placeholder="Ex: Mencionar que é só para esta semana, falar do frete grátis..."
+                      value={customPrompt}
+                      onChange={e => setCustomPrompt(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {showBannerGen && (
-            <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-              <Label className="text-sm">Descreva o banner que deseja</Label>
+          {/* Message Display / Editor */}
+          {editingMessage ? (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-sm flex items-center gap-2">
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Edite a mensagem como quiser
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Use {"{nome}"} para o nome do cliente e {"{produtos}"} para a lista de produtos.
+                </p>
+              </div>
               <Textarea
-                placeholder="Ex: Banner com fundo vermelho, produtos de limpeza em destaque, texto '20% OFF em toda linha', estilo moderno"
-                value={bannerPrompt}
-                onChange={e => setBannerPrompt(e.target.value)}
-                rows={3}
+                value={messageText}
+                onChange={e => setMessageText(e.target.value)}
+                rows={8}
+                className="font-mono text-sm"
               />
               <div className="flex gap-2">
                 <Button
-                  size="sm"
-                  onClick={() => {
-                    if (!bannerPrompt.trim()) {
-                      toast.error("Descreva o banner que deseja gerar");
-                      return;
-                    }
-                    generateBannerMutation.mutate({
-                      campaignId,
-                      prompt: bannerPrompt.trim(),
-                    });
-                  }}
-                  disabled={generateBannerMutation.isPending}
+                  onClick={handleSaveMessage}
+                  disabled={updateMutation.isPending}
                   className="gap-2"
                 >
-                  {generateBannerMutation.isPending ? (
+                  {updateMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Sparkles className="h-4 w-4" />
+                    <Check className="h-4 w-4" />
                   )}
-                  {generateBannerMutation.isPending ? "Gerando..." : "Gerar"}
+                  Salvar mensagem
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setShowBannerGen(false);
-                    setBannerPrompt("");
-                  }}
+                  onClick={() => setEditingMessage(false)}
                 >
                   Cancelar
                 </Button>
               </div>
+            </div>
+          ) : campaign.messageTemplate ? (
+            <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-3 sm:p-4">
+              <p className="whitespace-pre-wrap text-sm text-foreground">{campaign.messageTemplate}</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed py-6 text-center">
+              <MessageCircle className="mx-auto h-8 w-8 text-muted-foreground/30" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                Nenhuma mensagem configurada. Use a IA para gerar uma mensagem profissional.
+              </p>
             </div>
           )}
         </CardContent>
@@ -770,25 +944,6 @@ function CampaignDetail({
         </Card>
       )}
 
-      {/* WhatsApp Message Template */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MessageCircle className="h-4 w-4 text-green-600" />
-            Mensagem WhatsApp
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {campaign.messageTemplate ? (
-            <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-3 sm:p-4">
-              <p className="whitespace-pre-wrap text-sm text-foreground">{campaign.messageTemplate}</p>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhuma mensagem configurada. Será usada uma mensagem padrão.</p>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Send Button */}
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
         <Button onClick={onSend} className="gap-2 w-full sm:w-auto" size="lg">
@@ -797,7 +952,7 @@ function CampaignDetail({
         </Button>
       </div>
 
-      {/* Messages Sent */}
+      {/* Messages Sent - with WhatsApp Web links */}
       {messages.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -823,9 +978,10 @@ function CampaignDetail({
                       size="icon"
                       className="h-8 w-8 shrink-0"
                       onClick={() => {
-                        const url = buildWhatsAppMessage(msg.customerName, msg.customerPhone!);
+                        const url = buildWhatsAppUrl(msg.customerName, msg.customerPhone!);
                         window.open(url, "_blank");
                       }}
+                      title="Abrir no WhatsApp Web"
                     >
                       <MessageCircle className="h-4 w-4 text-green-600" />
                     </Button>
@@ -851,29 +1007,34 @@ function SendCampaign({
   onBack: () => void;
   onSent: () => void;
 }) {
-  const { data: customersWithPhone, isLoading: loadingCustomers } = trpc.marketing.campaigns.customersWithPhone.useQuery();
-  const { data: allCustomers } = trpc.customers.list.useQuery();
+  const { data: campaign } = trpc.marketing.campaigns.detail.useQuery({ id: campaignId });
+  const { data: allCustomers, isLoading: loadingCustomers } = trpc.customers.list.useQuery();
+  const { data: allProducts } = trpc.products.list.useQuery();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const [search, setSearch] = useState("");
+  const [sendingIndex, setSendingIndex] = useState(-1);
+  const [sentIds, setSentIds] = useState<Set<number>>(new Set());
 
   const sendMutation = trpc.marketing.campaigns.sendToCustomers.useMutation({
-    onSuccess: (data) => {
-      toast.success(`Campanha preparada para ${data.sent} cliente(s)! Abra o WhatsApp para enviar.`);
-      onSent();
+    onSuccess: () => {
+      // Don't show toast here, we show per-customer
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err: { message: string }) => toast.error(err.message),
   });
 
-  const allAvailable = allCustomers ?? [];
-  const withPhone = customersWithPhone ?? [];
+  const productMap = useMemo(() => {
+    if (!allProducts) return new Map<number, any>();
+    return new Map(allProducts.map(p => [p.id, p] as [number, any]));
+  }, [allProducts]);
 
   const filteredCustomers = useMemo(() => {
+    const available = allCustomers ?? [];
     const searchLower = search.toLowerCase();
-    return allAvailable.filter(c =>
+    return available.filter(c =>
       !search || c.name.toLowerCase().includes(searchLower) || c.phone?.includes(search)
     );
-  }, [allAvailable, search]);
+  }, [allCustomers, search]);
 
   const handleSelectAll = useCallback(() => {
     if (selectAll) {
@@ -890,13 +1051,82 @@ function SendCampaign({
     );
   }
 
-  function handleSend() {
+  function buildWhatsAppUrl(customerName: string, phone: string) {
+    const campaignData = campaign?.campaign;
+    const campaignProds = campaign?.products ?? [];
+
+    let msg = campaignData?.messageTemplate || `Olá ${customerName}! 🔥 Promoção CK Distribuidora!\n\n`;
+
+    msg = msg.replace("{nome}", customerName);
+
+    if (campaignProds.length > 0) {
+      const productList = campaignProds.map(cp => {
+        const product = productMap.get(cp.productId);
+        const name = product?.titulo ?? `Produto #${cp.productId}`;
+        const price = formatCurrency(cp.promoPrice ?? cp.originalPrice);
+        return `• ${name} - ${price}`;
+      }).join("\n");
+      msg = msg.replace("{produtos}", productList);
+    }
+
+    const encoded = encodeURIComponent(msg);
+    const cleanPhone = phone.replace(/\D/g, "");
+    const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    return `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encoded}`;
+  }
+
+  async function handleSendAll() {
     if (selectedIds.length === 0) {
       toast.error("Selecione pelo menos um cliente");
       return;
     }
-    sendMutation.mutate({ campaignId, customerIds: selectedIds });
+
+    // First register in the database
+    await sendMutation.mutateAsync({ campaignId, customerIds: selectedIds });
+
+    // Then open WhatsApp Web for each customer with phone
+    const customersToSend = filteredCustomers.filter(
+      c => selectedIds.includes(c.id) && c.phone
+    );
+
+    if (customersToSend.length === 0) {
+      toast.error("Nenhum cliente selecionado tem telefone cadastrado");
+      return;
+    }
+
+    toast.success(`Campanha registrada! Abrindo WhatsApp Web para ${customersToSend.length} cliente(s)...`);
+
+    // Open first customer immediately
+    if (customersToSend[0]) {
+      const url = buildWhatsAppUrl(customersToSend[0].name, customersToSend[0].phone!);
+      window.open(url, "_blank");
+      setSentIds(prev => { const s = new Set(prev); s.add(customersToSend[0].id); return s; });
+      setSendingIndex(0);
+    }
   }
+
+  function handleSendNext(index: number) {
+    const customersToSend = filteredCustomers.filter(
+      c => selectedIds.includes(c.id) && c.phone
+    );
+
+    if (index >= customersToSend.length) {
+      toast.success("Todos os clientes foram enviados!");
+      onSent();
+      return;
+    }
+
+    const customer = customersToSend[index];
+    const url = buildWhatsAppUrl(customer.name, customer.phone!);
+    window.open(url, "_blank");
+    setSentIds(prev => { const s = new Set(prev); s.add(customer.id); return s; });
+    setSendingIndex(index);
+  }
+
+  const customersToSend = filteredCustomers.filter(
+    c => selectedIds.includes(c.id) && c.phone
+  );
+  const isSending = sendingIndex >= 0;
 
   return (
     <>
@@ -909,10 +1139,50 @@ function SendCampaign({
             Disparar Campanha
           </h1>
           <p className="text-sm text-muted-foreground">
-            Selecione os clientes que receberão a campanha via WhatsApp.
+            Selecione os clientes e envie direto pelo WhatsApp Web.
           </p>
         </div>
       </div>
+
+      {/* Sending Progress */}
+      {isSending && (
+        <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
+                <Send className="h-5 w-5 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-foreground">
+                  Enviando... {sendingIndex + 1} de {customersToSend.length}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Envie a mensagem no WhatsApp Web e clique em "Próximo cliente"
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button
+                onClick={() => handleSendNext(sendingIndex + 1)}
+                className="gap-2"
+                disabled={sendingIndex + 1 >= customersToSend.length}
+              >
+                <Send className="h-4 w-4" />
+                Próximo cliente ({sendingIndex + 2}/{customersToSend.length})
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  toast.success(`${sendingIndex + 1} mensagem(ns) enviada(s)!`);
+                  onSent();
+                }}
+              >
+                Finalizar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
@@ -949,13 +1219,14 @@ function SendCampaign({
               {filteredCustomers.map(customer => {
                 const isSelected = selectedIds.includes(customer.id);
                 const hasPhone = !!customer.phone;
+                const wasSent = sentIds.has(customer.id);
                 return (
                   <button
                     key={customer.id}
                     onClick={() => toggleCustomer(customer.id)}
                     className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/50 border-b last:border-b-0 ${
                       isSelected ? "bg-primary/5" : ""
-                    }`}
+                    } ${wasSent ? "bg-green-50 dark:bg-green-950/10" : ""}`}
                   >
                     <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
                       isSelected ? "border-primary bg-primary text-primary-foreground" : "border-input"
@@ -969,7 +1240,9 @@ function SendCampaign({
                         {customer.city ? ` • ${customer.city}` : ""}
                       </p>
                     </div>
-                    {hasPhone ? (
+                    {wasSent ? (
+                      <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 shrink-0">Enviado</Badge>
+                    ) : hasPhone ? (
                       <MessageCircle className="h-4 w-4 shrink-0 text-green-500" />
                     ) : (
                       <Badge variant="outline" className="text-[10px] shrink-0">Sem WhatsApp</Badge>
@@ -982,11 +1255,11 @@ function SendCampaign({
 
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center pt-2">
             <p className="text-xs text-muted-foreground">
-              {withPhone.length} cliente(s) com telefone cadastrado
+              {filteredCustomers.filter(c => c.phone).length} cliente(s) com telefone cadastrado
             </p>
             <Button
-              onClick={handleSend}
-              disabled={sendMutation.isPending || selectedIds.length === 0}
+              onClick={handleSendAll}
+              disabled={sendMutation.isPending || selectedIds.length === 0 || isSending}
               className="gap-2 w-full sm:w-auto"
               size="lg"
             >
