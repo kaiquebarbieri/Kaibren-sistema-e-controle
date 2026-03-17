@@ -52,3 +52,16 @@
 - [x] Ajustar o menu Produtos para exibir corretamente os valores em telas pequenas
 - [ ] Restaurar a listagem completa de SKUs no menu Produtos após o ajuste responsivo
 - [x] Remover o menu Importação da navegação principal do sistema
+- [ ] Corrigir definitivamente a ausência dos SKUs no menu Produtos, restaurando a listagem real do catálogo
+- [ ] Reimportar os SKUs a partir da planilha TabelaCKPreçoquepagonamondial.xlsx enviada pelo usuário
+- [ ] Separar o sistema em duas tabelas de preço, uma de custo pago à Mondial e outra de revenda
+- [ ] Adicionar filtro para escolher qual tabela de preços visualizar ou usar
+- [ ] Importar a planilha de revenda CatálogoProdutosC.K.Atacados(5).xlsx e cruzar por SKU com a tabela de custo
+- [x] Exibir por padrão a tabela de custo pago à Mondial e alternar para a tabela de revenda via filtro
+- [ ] Restaurar a tabela de produtos no menu Produtos para voltar a exibir SKUs, títulos e preços em vez de estado em branco
+- [x] Adicionar barra de rolagem horizontal visível na tabela do menu Produtos para navegar lateralmente
+- [x] Corrigir a barra de rolagem horizontal da tabela Produtos para que fique realmente visível e utilizável
+- [x] Criar um menu separado de cadastro de clientes dedicado exclusivamente ao gerenciamento de clientes
+- [x] Adicionar item Clientes na navegação lateral com rota própria
+- [x] Criar página dedicada para cadastro, busca e seleção de clientes
+- [x] Reaproveitar a lógica atual de criação e busca de clientes da Home no novo menu separado

@@ -1,0 +1,37 @@
+{
+  "query": "SELECT id, fileName, originalFileKey, originalFileUrl, importedRows, sourceSheetName, createdAt FROM product_uploads ORDER BY createdAt DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT id, fileName, originalFileKey, originalFileUrl, importedRows, sourceSheetName, createdAt FROM product_uploads ORDER BY createdAt DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "3",
+      "fileName": "cadastro-manual-3636-55.xlsx",
+      "originalFileKey": "1-uploads/1773691790165-cadastro-manual-3636-55.xlsx",
+      "originalFileUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-uploads/1773691790165-cadastro-manual-3636-55.xlsx",
+      "importedRows": "1",
+      "sourceSheetName": "Cadastro manual",
+      "createdAt": "2026-03-16 20:09:50"
+    },
+    {
+      "id": "2",
+      "fileName": "TabelaCKDistribuidora_V7.xlsx",
+      "originalFileKey": "admin-imports/1773683357417-TabelaCKDistribuidora_V7.xlsx",
+      "originalFileUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/admin-imports/1773683357417-TabelaCKDistribuidora_V7.xlsx",
+      "importedRows": "149",
+      "sourceSheetName": "Tabela",
+      "createdAt": "2026-03-16 17:49:17"
+    },
+    {
+      "id": "1",
+      "fileName": "TabelaCKDistribuidora_V7.xlsx",
+      "originalFileKey": "admin-imports/1773683340488-TabelaCKDistribuidora_V7.xlsx",
+      "originalFileUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/admin-imports/1773683340488-TabelaCKDistribuidora_V7.xlsx",
+      "importedRows": "10916",
+      "sourceSheetName": "Tabela",
+      "createdAt": "2026-03-16 17:49:00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfileName\toriginalFileKey\toriginalFileUrl\timportedRows\tsourceSheetName\tcreatedAt\n3\tcadastro-manual-3636-55.xlsx\t1-uploads/1773691790165-cadastro-manual-3636-55.xlsx\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-uploads/1773691790165-cadastro-manual-3636-55.xlsx\t1\tCadastro manual\t2026-03-16 20:09:50\n2\tTabelaCKDistribuidora_V7.xlsx\tadmin-imports/1773683357417-TabelaCKDistribuidora_V7.xlsx\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/admin-imports/1773683357417-TabelaCKDistribuidora_V7.xlsx\t149\tTabela\t2026-03-16 17:49:17\n1\tTabelaCKDistribuidora_V7.xlsx\tadmin-imports/1773683340488-TabelaCKDistribuidora_V7.xlsx\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/admin-imports/1773683340488-TabelaCKDistribuidora_V7.xlsx\t10916\tTabela\t2026-03-16 17:49:00\n",
+  "stderr": "",
+  "execution_time_ms": 52
+}

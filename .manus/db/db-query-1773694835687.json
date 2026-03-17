@@ -1,0 +1,20 @@
+{
+  "query": "SELECT id, fileName, originalFileKey, originalFileUrl, importedRows, sourceSheetName, uploadedByUserId, createdAt FROM product_uploads ORDER BY createdAt DESC LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT id, fileName, originalFileKey, originalFileUrl, importedRows, sourceSheetName, uploadedByUserId, createdAt FROM product_uploads ORDER BY createdAt DESC LIMIT 1;",
+  "rows": [
+    {
+      "id": "3",
+      "fileName": "cadastro-manual-3636-55.xlsx",
+      "originalFileKey": "1-uploads/1773691790165-cadastro-manual-3636-55.xlsx",
+      "originalFileUrl": "https://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-uploads/1773691790165-cadastro-manual-3636-55.xlsx",
+      "importedRows": "1",
+      "sourceSheetName": "Cadastro manual",
+      "uploadedByUserId": "1",
+      "createdAt": "2026-03-16 20:09:50"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfileName\toriginalFileKey\toriginalFileUrl\timportedRows\tsourceSheetName\tuploadedByUserId\tcreatedAt\n3\tcadastro-manual-3636-55.xlsx\t1-uploads/1773691790165-cadastro-manual-3636-55.xlsx\thttps://d2xsxph8kpxj0f.cloudfront.net/95597689/XxwarzmhDMwJNs5J3puu6o/1-uploads/1773691790165-cadastro-manual-3636-55.xlsx\t1\tCadastro manual\t1\t2026-03-16 20:09:50\n",
+  "stderr": "",
+  "execution_time_ms": 49
+}

@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 describe("ui.navigation contract", () => {
-  it("mantém o mapeamento esperado das seções do menu lateral sem a aba de importação", () => {
+  it("mantém o mapeamento esperado das seções do menu lateral com a nova aba Clientes e sem a aba de importação", () => {
     const sections = [
       "visao-geral",
+      "clientes",
       "produtos",
       "simulacao",
       "pedidos",
       "dashboard-mensal",
     ];
 
-    expect(sections).toHaveLength(5);
+    expect(sections).toHaveLength(6);
+    expect(sections).toContain("clientes");
     expect(sections).toContain("produtos");
     expect(sections).toContain("simulacao");
     expect(sections).not.toContain("importacao");

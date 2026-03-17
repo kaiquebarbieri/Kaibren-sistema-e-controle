@@ -765,9 +765,9 @@ export default function Home() {
                   {importMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                   Importar planilha Excel
                 </Button>
-                <Button className="bg-emerald-500 text-white hover:bg-emerald-400" onClick={() => navigateToSection("clientes")}>
+                <Button className="bg-emerald-500 text-white hover:bg-emerald-400" onClick={() => window.location.assign("/clientes")}>
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Cadastrar cliente
+                  Abrir menu de clientes
                 </Button>
               </div>
               <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-4 md:grid-cols-2 xl:grid-cols-4">
@@ -977,7 +977,7 @@ export default function Home() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">
-                Para cadastrar novos itens, ajustar o valor pago à Mondial ou mudar o valor de revenda, use o menu <strong className="text-foreground">Produtos</strong> na lateral. A tela inicial agora fica focada em importação, clientes, simulação, pedidos e dashboard mensal.
+                Para cadastrar clientes, use o menu <strong className="text-foreground">Clientes</strong> na lateral. Para cadastrar novos itens, ajustar o valor pago à Mondial ou mudar o valor de revenda, use o menu <strong className="text-foreground">Produtos</strong>. A tela inicial agora fica focada em visão geral, simulação, pedidos e dashboard mensal.
               </div>
             </CardContent>
           </Card>

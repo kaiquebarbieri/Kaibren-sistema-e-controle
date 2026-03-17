@@ -118,8 +118,11 @@ export async function replaceProducts(items: InsertProduct[]) {
     return { inserted: 0 };
   }
 
-  await db.delete(products);
-  await db.insert(products).values(items);
+  await db.transaction(async tx => {
+    await tx.delete(products);
+    await tx.insert(products).values(items);
+  });
+
   return { inserted: items.length };
 }
 
@@ -128,6 +131,12 @@ export async function getLatestProductUpload() {
   if (!db) throw new Error("Database not available");
   const rows = await db.select().from(productUploads).orderBy(desc(productUploads.createdAt)).limit(1);
   return rows[0] ?? null;
+}
+
+export async function listProductUploads(limit = 20) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(productUploads).orderBy(desc(productUploads.createdAt)).limit(limit);
 }
 
 export async function searchProducts(query?: string, limit = 25) {

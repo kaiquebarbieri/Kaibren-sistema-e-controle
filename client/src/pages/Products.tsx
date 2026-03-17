@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { PackageSearch, Plus, Save } from "lucide-react";
+import { PackageSearch, Plus, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
 type ProductRow = {
@@ -67,6 +67,7 @@ export default function Products() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft);
   const [editingValues, setEditingValues] = useState<Record<number, ProductEditValues>>({});
+  const [priceView, setPriceView] = useState<"cost" | "resale">("cost");
 
   const utils = trpc.useUtils();
   const productsQuery = trpc.products.list.useQuery({ limit: 500 });
@@ -95,6 +96,15 @@ export default function Products() {
     onError: error => toast.error(error.message),
   });
 
+  const restoreLatestUploadMutation = trpc.products.restoreLatestUpload.useMutation({
+    onSuccess: async data => {
+      toast.success(`${data.replaced.inserted} SKUs restaurados do arquivo ${data.fileName}.`);
+      await utils.products.list.invalidate();
+      await utils.products.search.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+
   const visibleProducts = useMemo(() => {
     const items = (productsQuery.data ?? []) as ProductRow[];
     const normalized = query.trim().toLowerCase();
@@ -109,12 +119,31 @@ export default function Products() {
 
   const hasQueryError = productsQuery.isError;
   const queryErrorMessage = productsQuery.error?.message ?? "Não foi possível carregar os produtos agora.";
+  const selectedTableLabel = priceView === "cost" ? "Tabela de custo Mondial" : "Tabela de revenda";
+  const selectedValueLabel = priceView === "cost" ? "Valor Mondial" : "Valor de revenda";
+  const selectedValueDescription =
+    priceView === "cost"
+      ? "Você está vendo a tabela que paga à Mondial."
+      : "Você está vendo a tabela de revenda para o cliente.";
 
   function getEditingValues(product: ProductRow): ProductEditValues {
     return editingValues[product.id] ?? {
       valorProduto: String(product.valorProduto ?? "0"),
       precoFinal: String(product.precoFinal ?? product.precoDesejado ?? "0"),
     };
+  }
+
+  function getPrimaryValue(product: ProductRow, editing: ProductEditValues) {
+    return priceView === "cost" ? editing.valorProduto : editing.precoFinal;
+  }
+
+  function setPrimaryValue(productId: number, editing: ProductEditValues, value: string) {
+    setEditingValues(current => ({
+      ...current,
+      [productId]: priceView === "cost"
+        ? { ...editing, valorProduto: normalizeMoneyInput(value) }
+        : { ...editing, precoFinal: normalizeMoneyInput(value) },
+    }));
   }
 
   async function handleCreateProduct() {
@@ -168,7 +197,7 @@ export default function Products() {
               <div className="space-y-3">
                 <h1 className="text-3xl font-semibold tracking-tight">Produtos</h1>
                 <p className="max-w-2xl text-sm leading-6 text-[#F5F2E9]/85">
-                  Aqui fica o menu próprio de produtos. Você pode cadastrar novos SKUs e ajustar separadamente o valor pago à Mondial e o valor de venda para o cliente, sem misturar os dois preços.
+                  A tela mostra por padrão a tabela que você paga à Mondial. Quando quiser consultar a outra base, basta trocar o filtro para a tabela de revenda e os valores exibidos mudam na hora.
                 </p>
               </div>
             </div>
@@ -183,8 +212,9 @@ export default function Products() {
                   <div className="mt-2 text-2xl font-semibold text-white">{visibleProducts.length}</div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
-                  <div className="text-xs uppercase tracking-wide text-[#F5F2E9]/70">Busca atual</div>
-                  <div className="mt-2 text-sm font-medium text-white">{query.trim() ? query : "Todos os produtos"}</div>
+                  <div className="text-xs uppercase tracking-wide text-[#F5F2E9]/70">Tabela exibida</div>
+                  <div className="mt-2 text-sm font-medium text-white">{selectedTableLabel}</div>
+                  <div className="mt-1 text-xs text-[#F5F2E9]/75">{selectedValueDescription}</div>
                 </div>
               </CardContent>
             </Card>
@@ -212,7 +242,7 @@ export default function Products() {
                   <Input value={draft.valorProduto} onChange={event => setDraft(current => ({ ...current, valorProduto: normalizeMoneyInput(event.target.value) }))} placeholder="R$ 0,00" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Valor de venda ao cliente</Label>
+                  <Label>Valor de revenda</Label>
                   <Input value={draft.precoFinal} onChange={event => setDraft(current => ({ ...current, precoFinal: normalizeMoneyInput(event.target.value) }))} placeholder="R$ 0,00" />
                 </div>
               </div>
@@ -226,10 +256,37 @@ export default function Products() {
           <Card className="border-border/60 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl"><PackageSearch className="h-5 w-5" /> Produtos cadastrados</CardTitle>
-              <CardDescription>Edite separadamente o valor pago à Mondial e o valor vendido ao cliente. Em telas pequenas, cada produto aparece em cartão para facilitar a leitura.</CardDescription>
+              <CardDescription>Em telas pequenas, cada produto aparece em cartão para facilitar a leitura. O filtro alterna entre a tabela de custo Mondial e a tabela de revenda.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por SKU ou nome do produto" />
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-end">
+                <div className="space-y-2">
+                  <Label>Buscar produto</Label>
+                  <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por SKU ou nome do produto" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tabela exibida</Label>
+                  <Select value={priceView} onValueChange={value => setPriceView(value as "cost" | "resale")}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolha a tabela" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cost">Tabela de custo Mondial</SelectItem>
+                      <SelectItem value="resale">Tabela de revenda</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="lg:self-end"
+                  onClick={() => restoreLatestUploadMutation.mutate()}
+                  disabled={restoreLatestUploadMutation.isPending}
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  {restoreLatestUploadMutation.isPending ? "Restaurando catálogo..." : "Restaurar último upload"}
+                </Button>
+              </div>
 
               {hasQueryError ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900">
@@ -238,8 +295,9 @@ export default function Products() {
                   <p className="mt-2 text-amber-800/90">Atualize a página. Se continuar vazio, entre novamente no sistema para restaurar a sessão e recarregar o catálogo.</p>
                 </div>
               ) : visibleProducts.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border/60 py-10 text-center text-sm text-muted-foreground">
-                  Nenhum produto encontrado para essa busca.
+                <div className="rounded-2xl border border-dashed border-border/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                  <p>Nenhum produto encontrado para essa busca.</p>
+                  <p className="mt-2">Se seus SKUs sumiram, use o botão <strong>Restaurar último upload</strong> para recuperar o catálogo salvo.</p>
                 </div>
               ) : (
                 <>
@@ -261,38 +319,22 @@ export default function Products() {
 
                           <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             <div className="space-y-2">
-                              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Valor Mondial</Label>
+                              <Label className="text-xs uppercase tracking-wide text-muted-foreground">{priceView === "cost" ? "Valor Mondial" : "Valor de revenda"}</Label>
                               <div className="flex items-center rounded-md border border-input bg-background px-3">
                                 <span className="mr-2 text-sm text-muted-foreground">R$</span>
                                 <Input
                                   className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                  value={editing.valorProduto}
-                                  onChange={event =>
-                                    setEditingValues(current => ({
-                                      ...current,
-                                      [product.id]: { ...editing, valorProduto: normalizeMoneyInput(event.target.value) },
-                                    }))
-                                  }
+                                  value={getPrimaryValue(product, editing)}
+                                  onChange={event => setPrimaryValue(product.id, editing, event.target.value)}
                                   placeholder="0,00"
                                 />
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Valor de venda ao cliente</Label>
-                              <div className="flex items-center rounded-md border border-input bg-background px-3">
-                                <span className="mr-2 text-sm text-muted-foreground">R$</span>
-                                <Input
-                                  className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                  value={editing.precoFinal}
-                                  onChange={event =>
-                                    setEditingValues(current => ({
-                                      ...current,
-                                      [product.id]: { ...editing, precoFinal: normalizeMoneyInput(event.target.value) },
-                                    }))
-                                  }
-                                  placeholder="0,00"
-                                />
+                              <Label className="text-xs uppercase tracking-wide text-muted-foreground">{priceView === "cost" ? "Valor de revenda" : "Valor Mondial"}</Label>
+                              <div className="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-medium text-foreground">
+                                {priceView === "cost" ? formatCurrency(editing.precoFinal) : formatCurrency(editing.valorProduto)}
                               </div>
                             </div>
                           </div>
@@ -312,76 +354,72 @@ export default function Products() {
                     })}
                   </div>
 
-                  <div className="hidden overflow-x-auto rounded-2xl border border-border/60 lg:block">
-                    <ScrollArea className="h-[620px] w-full">
-                      <Table className="min-w-[1180px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>SKU</TableHead>
-                            <TableHead className="min-w-[420px]">Título do produto</TableHead>
-                            <TableHead className="min-w-[190px]">Valor Mondial</TableHead>
-                            <TableHead className="min-w-[220px]">Valor de venda ao cliente</TableHead>
-                            <TableHead>Lucro Atual</TableHead>
-                            <TableHead>Margem Atual</TableHead>
-                            <TableHead className="text-right">Salvar</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {visibleProducts.map(product => {
-                            const editing = getEditingValues(product);
-                            return (
-                              <TableRow key={product.id}>
-                                <TableCell className="font-medium whitespace-nowrap">{product.sku}</TableCell>
-                                <TableCell className="min-w-[420px] max-w-[420px] whitespace-normal break-words leading-5">{product.titulo}</TableCell>
-                                <TableCell>
-                                  <div className="flex min-w-[190px] items-center rounded-md border border-input bg-background px-3">
-                                    <span className="mr-2 text-sm text-muted-foreground">R$</span>
-                                    <Input
-                                      className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                      value={editing.valorProduto}
-                                      onChange={event =>
-                                        setEditingValues(current => ({
-                                          ...current,
-                                          [product.id]: { ...editing, valorProduto: normalizeMoneyInput(event.target.value) },
-                                        }))
-                                      }
-                                      placeholder="0,00"
-                                    />
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="min-w-[220px] space-y-1">
-                                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Venda ao cliente</div>
-                                    <div className="flex items-center rounded-md border border-input bg-background px-3">
-                                      <span className="mr-2 text-sm text-muted-foreground">R$</span>
-                                      <Input
-                                        className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                        value={editing.precoFinal}
-                                        onChange={event =>
-                                          setEditingValues(current => ({
-                                            ...current,
-                                            [product.id]: { ...editing, precoFinal: normalizeMoneyInput(event.target.value) },
-                                          }))
-                                        }
-                                        placeholder="0,00"
-                                      />
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell>{formatCurrency(product.lucro)}</TableCell>
-                                <TableCell>{formatPercent(product.margemFinal)}</TableCell>
-                                <TableCell className="text-right whitespace-nowrap">
-                                  <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending}>
-                                    <Save className="mr-2 h-4 w-4" />
-                                    Salvar
-                                  </Button>
-                                </TableCell>
+                  <div className="hidden rounded-2xl border border-border/60 lg:block">
+                    <div className="border-b border-border/60 bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+                      Arraste a barra horizontal inferior para o lado e veja todas as colunas da tabela.
+                    </div>
+                    <div className="max-w-full overflow-x-scroll overflow-y-hidden border-t border-border/40 pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+                      <div className="min-w-[1180px]">
+                        <div className="max-h-[620px] overflow-y-auto">
+                          <Table className="min-w-[1180px]">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>SKU</TableHead>
+                                <TableHead className="min-w-[420px]">Título do produto</TableHead>
+                                <TableHead className="min-w-[220px]">{selectedValueLabel}</TableHead>
+                                <TableHead className="min-w-[220px]">{priceView === "cost" ? "Valor de revenda" : "Valor Mondial"}</TableHead>
+                                <TableHead>Lucro Atual</TableHead>
+                                <TableHead>Margem Atual</TableHead>
+                                <TableHead className="text-right">Salvar</TableHead>
                               </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
+                            </TableHeader>
+                            <TableBody>
+                              {visibleProducts.map(product => {
+                                const editing = getEditingValues(product);
+                                return (
+                                  <TableRow key={product.id}>
+                                    <TableCell className="font-medium whitespace-nowrap">{product.sku}</TableCell>
+                                    <TableCell className="min-w-[420px] max-w-[420px] whitespace-normal break-words leading-5">{product.titulo}</TableCell>
+                                    <TableCell>
+                                      <div className="min-w-[220px] space-y-1">
+                                        <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{selectedValueLabel}</div>
+                                        <div className="flex items-center rounded-md border border-input bg-background px-3">
+                                          <span className="mr-2 text-sm text-muted-foreground">R$</span>
+                                          <Input
+                                            className="border-0 px-0 shadow-none focus-visible:ring-0"
+                                            value={getPrimaryValue(product, editing)}
+                                            onChange={event => setPrimaryValue(product.id, editing, event.target.value)}
+                                            placeholder="0,00"
+                                          />
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="min-w-[220px] space-y-1">
+                                        <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                          {priceView === "cost" ? "Valor de revenda" : "Valor Mondial"}
+                                        </div>
+                                        <div className="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-medium text-foreground">
+                                          {priceView === "cost" ? formatCurrency(editing.precoFinal) : formatCurrency(editing.valorProduto)}
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>{formatCurrency(product.lucro)}</TableCell>
+                                    <TableCell>{formatPercent(product.margemFinal)}</TableCell>
+                                    <TableCell className="text-right whitespace-nowrap">
+                                      <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending}>
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Salvar
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </>
               )}

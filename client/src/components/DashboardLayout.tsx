@@ -29,6 +29,7 @@ import {
   LogOut,
   PackageSearch,
   PanelLeft,
+  UserPlus,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -37,6 +38,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Visão geral", section: "visao-geral", href: "/" },
+  { icon: UserPlus, label: "Clientes", section: "clientes", href: "/clientes" },
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
   { icon: Calculator, label: "Simulação", section: "simulacao", href: "/#simulacao" },
   { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/#pedidos" },
@@ -209,7 +211,7 @@ function DashboardLayoutContent({
                     <SidebarMenuButton
                       isActive={isActive}
                       onClick={() => {
-                        if (item.href === "/produtos") {
+                        if (item.href === "/produtos" || item.href === "/clientes") {
                           setLocation(item.href);
                           return;
                         }

@@ -1,0 +1,15 @@
+{
+  "query": "SELECT COUNT(*) AS total_produtos, MIN(sku) AS primeiro_sku, MAX(sku) AS ultimo_sku FROM products;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT COUNT(*) AS total_produtos, MIN(sku) AS primeiro_sku, MAX(sku) AS ultimo_sku FROM products;",
+  "rows": [
+    {
+      "total_produtos": "147",
+      "primeiro_sku": "0003-06",
+      "ultimo_sku": "1842-17"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_produtos\tprimeiro_sku\tultimo_sku\n147\t0003-06\t1842-17\n",
+  "stderr": "",
+  "execution_time_ms": 139
+}

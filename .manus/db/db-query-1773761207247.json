@@ -1,0 +1,14 @@
+{
+  "query": "SELECT COUNT(*) AS total_produtos, COUNT(DISTINCT sku) AS total_skus FROM products;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT COUNT(*) AS total_produtos, COUNT(DISTINCT sku) AS total_skus FROM products;",
+  "rows": [
+    {
+      "total_produtos": "0",
+      "total_skus": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_produtos\ttotal_skus\n0\t0\n",
+  "stderr": "",
+  "execution_time_ms": 79
+}

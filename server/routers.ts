@@ -16,6 +16,7 @@ import {
   insertOrderItems,
   listCustomers,
   listOrders,
+  listProductUploads,
   listProducts,
   replaceProducts,
   searchCustomers,
@@ -24,7 +25,8 @@ import {
   updateProductPricingById,
   upsertMonthlySnapshot,
 } from "./db";
-import { storagePut } from "./storage";
+import { storageGet, storagePut } from "./storage";
+import * as XLSX from "xlsx";
 
 const decimalString = z.union([z.string(), z.number()]).transform(value => String(value ?? "0"));
 
@@ -183,6 +185,69 @@ export const appRouter = router({
       }),
     latestUpload: protectedProcedure.query(async () => {
       return getLatestProductUpload();
+    }),
+    restoreLatestUpload: protectedProcedure.mutation(async () => {
+      const uploads = await listProductUploads();
+      const uploadToRestore = uploads.find((upload: Awaited<ReturnType<typeof listProductUploads>>[number]) => upload.importedRows > 0);
+
+      if (!uploadToRestore) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma planilha anterior com produtos foi encontrada para restaurar os SKUs." });
+      }
+
+      const download = await storageGet(uploadToRestore.originalFileKey);
+      const response = await fetch(download.url);
+      if (!response.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível baixar a planilha usada na restauração do catálogo." });
+      }
+
+      const fileBuffer = await response.arrayBuffer();
+      const workbook = XLSX.read(fileBuffer, { type: "array" });
+      const sheetName = workbook.SheetNames.includes(uploadToRestore.sourceSheetName)
+        ? uploadToRestore.sourceSheetName
+        : workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      if (!worksheet) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A planilha salva não contém uma aba válida para restauração." });
+      }
+
+      const parsedRows = XLSX.utils.sheet_to_json<Record<string, string | number | null>>(worksheet, {
+        defval: "",
+        raw: false,
+      });
+
+      const parsedProducts = parsedRows.map(row => importedProductSchema.parse(row));
+      if (parsedProducts.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A planilha selecionada para restauração está vazia." });
+      }
+
+      const mapped = parsedProducts.map(item => ({
+        uploadId: uploadToRestore.id,
+        sku: item.SKU,
+        titulo: item.Título,
+        tabelaNovaCk: item["Tabela Nova CK"],
+        imposto: item.Imposto,
+        comissao: item.Comissão,
+        valorProduto: item["Valor Produto"],
+        precoDesejado: item["Preço Desejado"],
+        margemDesejada: item["Margem Desejada"],
+        precoFinal: item["Preço Final"],
+        margemFinal: item["Margem Final"],
+        lucro: item.Lucro,
+      }));
+
+      const replaced = await replaceProducts(mapped);
+
+      await notifyOwner({
+        title: "Catálogo restaurado",
+        content: `Foram restaurados ${replaced.inserted} produtos a partir do upload ${uploadToRestore.fileName}.`,
+      });
+
+      return {
+        uploadId: uploadToRestore.id,
+        fileName: uploadToRestore.fileName,
+        replaced,
+      };
     }),
     importSpreadsheet: protectedProcedure
       .input(z.object({
