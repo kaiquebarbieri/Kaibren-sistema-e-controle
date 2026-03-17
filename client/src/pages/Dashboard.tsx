@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 
 /* ── Helpers ───────────────────────────────────────── */
@@ -38,9 +38,8 @@ export default function Dashboard() {
   const { user, loading } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
-  const chartRef = useRef<HTMLCanvasElement | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartInstanceRef = useRef<Chart | null>(null);
-  const [chartHeight] = useState(() => window.innerWidth < 768 ? 260 : 340);
 
   const dashboardQuery = trpc.dashboard.monthly.useQuery({
     periodMonth: Number(selectedMonth),
@@ -72,14 +71,22 @@ export default function Dashboard() {
 
   /* ── Chart ─────────────────────────────────────── */
 
-  useEffect(() => {
-    if (!chartRef.current || !evolution || evolution.length === 0) return;
+  const buildChart = useCallback(() => {
+    if (!chartContainerRef.current || !evolution || evolution.length === 0) return;
 
+    // Destroy previous chart
     if (chartInstanceRef.current) {
       chartInstanceRef.current.destroy();
+      chartInstanceRef.current = null;
     }
 
-    const ctx = chartRef.current.getContext("2d");
+    // Remove any existing canvas and create a fresh one
+    const container = chartContainerRef.current;
+    container.innerHTML = "";
+    const canvas = document.createElement("canvas");
+    container.appendChild(canvas);
+
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const isMobileView = window.innerWidth < 768;
@@ -87,7 +94,10 @@ export default function Dashboard() {
     chartInstanceRef.current = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: evolution.map(m => isMobileView ? m.label.slice(0, 3) : m.label),
+        labels: evolution.map(m => {
+          const parts = m.label.split("/");
+          return isMobileView ? parts[0] : m.label;
+        }),
         datasets: [
           {
             label: "Vendas",
@@ -128,8 +138,8 @@ export default function Dashboard() {
             labels: {
               usePointStyle: true,
               pointStyle: "circle",
-              padding: isMobileView ? 10 : 16,
-              font: { size: isMobileView ? 11 : 13, weight: "bold" as const },
+              padding: isMobileView ? 8 : 16,
+              font: { size: isMobileView ? 10 : 13, weight: "bold" as const },
             },
           },
           tooltip: {
@@ -169,14 +179,26 @@ export default function Dashboard() {
         },
       },
     });
+  }, [evolution]);
 
+  useEffect(() => {
+    buildChart();
     return () => {
       if (chartInstanceRef.current) {
         chartInstanceRef.current.destroy();
         chartInstanceRef.current = null;
       }
     };
-  }, [evolution]);
+  }, [buildChart]);
+
+  // Rebuild chart on window resize for mobile/desktop switch
+  useEffect(() => {
+    const handleResize = () => {
+      buildChart();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [buildChart]);
 
   /* ── Render ────────────────────────────────────── */
 
@@ -338,13 +360,15 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="px-2 sm:px-6">
             {evolutionQuery.isLoading ? (
-              <div className="flex h-[240px] sm:h-[340px] items-center justify-center">
+              <div className="flex items-center justify-center" style={{ height: 280 }}>
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div style={{ position: "relative", width: "100%", height: `${chartHeight}px` }}>
-                <canvas ref={chartRef} />
-              </div>
+              <div
+                ref={chartContainerRef}
+                style={{ position: "relative", width: "100%", minHeight: 240, height: "auto", aspectRatio: "auto" }}
+                className="h-[260px] sm:h-[340px]"
+              />
             )}
           </CardContent>
         </Card>
