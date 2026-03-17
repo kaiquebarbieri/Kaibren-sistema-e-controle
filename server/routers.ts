@@ -95,33 +95,45 @@ function formatMargin(value: number) {
 }
 
 function computeOrderTotals(items: z.infer<typeof orderItemInputSchema>[], orderType: "customer" | "personal") {
+  const EVERTON_POR_ITEM = 0.75;
+
   const totals = items.reduce(
     (acc, item) => {
       const quantidade = toNumber(item.quantidade);
-      const totalClienteBruto = toNumber(item.precoFinal || item.precoDesejado) * quantidade;
-      const totalMondial = toNumber(item.valorProduto) * quantidade;
-      const totalComissaoEvertonMondial = toNumber(item.comissao) * quantidade;
-      const totalLucroBruto = toNumber(item.lucroUnitario) * quantidade;
-      const totalCliente = orderType === "personal" ? 0 : totalClienteBruto;
-      const totalLucro = orderType === "personal" ? 0 : totalLucroBruto;
+      const valorMondialUnit = toNumber(item.valorProduto);
+      const valorRevendaUnit = toNumber(item.precoFinal || item.precoDesejado);
+      const impostoUnit = toNumber(item.imposto);
+      const totalMondial = valorMondialUnit * quantidade;
+      const totalEverton = EVERTON_POR_ITEM * quantidade;
 
-      acc.totalCliente += totalCliente;
       acc.totalMondial += totalMondial;
-      acc.totalComissaoEvertonMondial += totalComissaoEvertonMondial;
-      acc.totalLucro += totalLucro;
+      acc.totalComissaoEvertonMondial += totalEverton;
       acc.totalItens += quantidade;
+
+      if (orderType === "customer") {
+        // Venda para cliente: lucro = venda - custo Mondial - impostos - 0,75/item
+        const totalVenda = valorRevendaUnit * quantidade;
+        const totalImposto = impostoUnit * quantidade;
+        const lucro = totalVenda - totalMondial - totalImposto - totalEverton;
+        acc.totalCliente += totalVenda;
+        acc.totalImposto += totalImposto;
+        acc.totalLucro += lucro;
+      }
+      // Compra pessoal: sem imposto, sem lucro, sem valor cliente
+
       return acc;
     },
     {
       totalCliente: 0,
       totalMondial: 0,
       totalComissaoEvertonMondial: 0,
+      totalImposto: 0,
       totalLucro: 0,
       totalItens: 0,
     }
   );
 
-  const margemPedido = totals.totalMondial === 0 ? 0 : totals.totalLucro / totals.totalMondial;
+  const margemPedido = totals.totalCliente === 0 ? 0 : totals.totalLucro / totals.totalCliente;
 
   return {
     ...totals,
@@ -365,6 +377,7 @@ export const appRouter = router({
             totalCliente: formatMoney(totals.totalCliente),
             totalMondial: formatMoney(totals.totalMondial),
             totalComissaoEvertonMondial: formatMoney(totals.totalComissaoEvertonMondial),
+            totalImposto: formatMoney(totals.totalImposto),
             totalLucro: formatMoney(totals.totalLucro),
             margemPedido: formatMargin(totals.margemPedido),
             totalItens: totals.totalItens,

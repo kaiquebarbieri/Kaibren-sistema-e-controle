@@ -67,12 +67,15 @@ describe("orders.simulate", () => {
       ],
     });
 
+    // Lucro = totalCliente(79.5) - totalMondial(52.75) - impostos(0.1*2 + 0.1*3 = 0.5) - everton(0.75*5 = 3.75) = 22.5
+    // Margem = lucro(22.5) / totalCliente(79.5) = 0.283019
     expect(result.totals).toEqual({
       totalCliente: "79.5000",
       totalMondial: "52.7500",
       totalComissaoEvertonMondial: "3.7500",
-      totalLucro: "26.7500",
-      margemPedido: "0.507109",
+      totalImposto: "0.5000",
+      totalLucro: "22.5000",
+      margemPedido: "0.283019",
       totalItens: 5,
     });
 

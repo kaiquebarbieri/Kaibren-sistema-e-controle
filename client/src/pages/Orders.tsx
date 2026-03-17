@@ -79,11 +79,6 @@ type CustomerForm = {
   notes: string;
 };
 
-type PricingSettings = {
-  impostoPercentual: string;
-  valorEverton: string;
-};
-
 /* ── Helpers ───────────────────────────────────────── */
 
 function formatCurrency(value: string | number | null | undefined) {
@@ -114,55 +109,62 @@ function createEmptyCustomerForm(): CustomerForm {
   return { name: "", reference: "", document: "", phone: "", email: "", city: "", state: "", notes: "" };
 }
 
-function createDefaultPricingSettings(): PricingSettings {
-  return { impostoPercentual: "0", valorEverton: "0.75" };
-}
-
-function applyPricingSettings(product: ProductRow, settings: PricingSettings): ProductRow {
-  const precoRevenda = Number(product.precoFinal || product.precoDesejado || 0);
-  const impostoPercentual = Number(settings.impostoPercentual || 0);
-  const valorEverton = Number(settings.valorEverton || 0);
-  const valorImposto = precoRevenda * (impostoPercentual / 100);
-  const valorMondialAjustado = Math.max(precoRevenda - valorImposto - valorEverton, 0);
-  const lucroAjustado = precoRevenda - valorMondialAjustado - valorEverton - valorImposto;
-  const margemAjustada = valorMondialAjustado > 0 ? lucroAjustado / valorMondialAjustado : 0;
-
-  return {
-    ...product,
-    imposto: valorImposto.toString(),
-    comissao: valorEverton.toString(),
-    valorProduto: valorMondialAjustado.toString(),
-    lucro: lucroAjustado.toString(),
-    margemFinal: margemAjustada.toString(),
-  };
-}
+/**
+ * Regra de negócio:
+ * - Compra pessoal: exibe valor pago à Mondial (valorProduto). Dashboard calcula total + 0,75 por item para Everton. SEM imposto.
+ * - Venda para cliente: exibe valor de revenda (precoFinal). Dashboard calcula total vendido - impostos - 0,75 por item = lucro líquido.
+ * - O 0,75 do Everton NÃO aparece como coluna na tabela do pedido, só entra no cálculo do Dashboard.
+ */
 
 function buildSimulation(cart: CartItem[], orderType: "customer" | "personal") {
+  const EVERTON_POR_ITEM = 0.75;
+
   const totals = cart.reduce(
     (acc, item) => {
       const quantidade = Number(item.quantidade);
-      const totalMondial = Number(item.valorProduto) * quantidade;
-      const totalComissao = Number(item.comissao) * quantidade;
-      const totalClienteBruto = Number(item.precoFinal || item.precoDesejado) * quantidade;
-      const totalLucroBruto = Number(item.lucroUnitario) * quantidade;
+      const valorMondialUnit = Number(item.valorProduto);
+      const valorRevendaUnit = Number(item.precoFinal || item.precoDesejado);
+      const impostoUnit = Number(item.imposto);
 
-      acc.totalMondial += totalMondial;
-      acc.totalComissao += totalComissao;
-      acc.totalCliente += orderType === "customer" ? totalClienteBruto : 0;
-      acc.totalLucro += orderType === "customer" ? totalLucroBruto : 0;
+      if (orderType === "customer") {
+        // Venda para cliente: valor exibido = revenda
+        const totalVenda = valorRevendaUnit * quantidade;
+        const totalMondial = valorMondialUnit * quantidade;
+        const totalImposto = impostoUnit * quantidade;
+        const totalEverton = EVERTON_POR_ITEM * quantidade;
+        const lucro = totalVenda - totalMondial - totalImposto - totalEverton;
+
+        acc.totalCliente += totalVenda;
+        acc.totalMondial += totalMondial;
+        acc.totalImposto += totalImposto;
+        acc.totalEverton += totalEverton;
+        acc.totalLucro += lucro;
+      } else {
+        // Compra pessoal: valor exibido = Mondial
+        const totalMondial = valorMondialUnit * quantidade;
+        const totalEverton = EVERTON_POR_ITEM * quantidade;
+
+        acc.totalMondial += totalMondial;
+        acc.totalEverton += totalEverton;
+        // Sem imposto, sem lucro, sem valor cliente
+      }
+
       acc.totalItens += quantidade;
       return acc;
     },
-    { totalCliente: 0, totalMondial: 0, totalLucro: 0, totalComissao: 0, totalItens: 0 }
+    { totalCliente: 0, totalMondial: 0, totalLucro: 0, totalImposto: 0, totalEverton: 0, totalItens: 0 }
   );
+
+  const margemPedido = totals.totalMondial === 0 ? 0 : totals.totalLucro / totals.totalMondial;
 
   return {
     totals: {
       totalCliente: totals.totalCliente.toFixed(4),
       totalMondial: totals.totalMondial.toFixed(4),
-      totalComissaoEvertonMondial: totals.totalComissao.toFixed(4),
+      totalComissaoEvertonMondial: totals.totalEverton.toFixed(4),
+      totalImposto: totals.totalImposto.toFixed(4),
       totalLucro: totals.totalLucro.toFixed(4),
-      margemPedido: totals.totalMondial > 0 ? (totals.totalLucro / totals.totalMondial).toFixed(6) : "0.000000",
+      margemPedido: margemPedido.toFixed(6),
       totalItens: totals.totalItens,
     },
     customerList:
@@ -181,7 +183,6 @@ function buildSimulation(cart: CartItem[], orderType: "customer" | "personal") {
       quantidade: item.quantidade,
       valorCompraUnitario: Number(item.valorProduto).toFixed(4),
       totalMondial: (Number(item.valorProduto) * Number(item.quantidade)).toFixed(4),
-      evertonMondial: (Number(item.comissao) * Number(item.quantidade)).toFixed(4),
     })),
   };
 }
@@ -244,7 +245,6 @@ function exportOrderWorkbook(params: {
           "Nome do Produto": item.titulo,
           Quantidade: item.quantidade,
           "Valor Unitário Mondial": Number(item.valorProduto),
-          "Everton Mondial": Number(item.comissao) * Number(item.quantidade),
           "Valor Total Mondial": Number(item.valorProduto) * Number(item.quantidade),
         }));
 
@@ -257,7 +257,6 @@ function exportOrderWorkbook(params: {
         ]
       : [
           { Indicador: "Total Mondial", Valor: Number(simulation.totals.totalMondial) },
-          { Indicador: "Everton Mondial", Valor: Number(simulation.totals.totalComissaoEvertonMondial) },
           { Indicador: "Total de Itens", Valor: Number(simulation.totals.totalItens) },
         ];
 
@@ -289,7 +288,6 @@ export default function Orders() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("new");
   const [customerForm, setCustomerForm] = useState<CustomerForm>(() => createEmptyCustomerForm());
-  const [pricingSettings] = useState<PricingSettings>(() => createDefaultPricingSettings());
   const [orderType, setOrderType] = useState<"customer" | "personal">("customer");
   const [notes, setNotes] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
@@ -339,25 +337,22 @@ export default function Orders() {
     onError: error => toast.error(error.message),
   });
 
-  const adjustedProducts = useMemo(() => {
-    return ((allProductsQuery.data ?? []) as ProductRow[]).map(product => applyPricingSettings(product, pricingSettings));
-  }, [allProductsQuery.data, pricingSettings]);
+  /* Produtos ajustados: usa os valores originais do banco sem recalcular */
+  const allProducts = useMemo(() => {
+    return (allProductsQuery.data ?? []) as ProductRow[];
+  }, [allProductsQuery.data]);
 
   const quickSkuMatches = useMemo(() => {
     const normalized = skuQuickEntry.trim().toLowerCase();
     if (!normalized) return [] as ProductRow[];
-    return adjustedProducts.filter(product => product.sku.toLowerCase().includes(normalized) || product.titulo.toLowerCase().includes(normalized)).slice(0, 8);
-  }, [adjustedProducts, skuQuickEntry]);
+    return allProducts.filter(product => product.sku.toLowerCase().includes(normalized) || product.titulo.toLowerCase().includes(normalized)).slice(0, 8);
+  }, [allProducts, skuQuickEntry]);
 
   const selectedQuickProduct = useMemo(() => {
     const normalized = skuQuickEntry.trim().toLowerCase();
     if (!normalized) return null;
-    return adjustedProducts.find(product => product.sku.toLowerCase() === normalized) ?? null;
-  }, [adjustedProducts, skuQuickEntry]);
-
-  const selectedCustomer = useMemo(() => {
-    return (customersQuery.data ?? []).find(customer => String(customer.id) === selectedCustomerId) ?? null;
-  }, [customersQuery.data, selectedCustomerId]);
+    return allProducts.find(product => product.sku.toLowerCase() === normalized) ?? null;
+  }, [allProducts, skuQuickEntry]);
 
   const localSimulation = useMemo(() => buildSimulation(cart, orderType), [cart, orderType]);
 
@@ -395,7 +390,7 @@ export default function Orders() {
 
   function addBySku() {
     const normalized = skuQuickEntry.trim().toLowerCase();
-    const exactProduct = adjustedProducts.find(product => product.sku.toLowerCase() === normalized);
+    const exactProduct = allProducts.find(product => product.sku.toLowerCase() === normalized);
     const product = exactProduct ?? quickSkuMatches[0] ?? null;
     if (!product) {
       toast.error("Nenhum produto encontrado para esse SKU.");
@@ -654,45 +649,50 @@ export default function Orders() {
                 )}
               </div>
 
+              {/* Tabela do carrinho — SEM coluna Everton */}
               <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                <Table style={{ minWidth: 700 }}>
+                <Table style={{ minWidth: 600 }}>
                   <TableHeader>
                     <TableRow>
                       <TableHead>SKU</TableHead>
                       <TableHead>Título</TableHead>
                       <TableHead>Qtd</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Mondial</TableHead>
-                      <TableHead>Everton</TableHead>
-                      <TableHead>Lucro</TableHead>
+                      <TableHead>{orderType === "customer" ? "Valor revenda" : "Valor Mondial"}</TableHead>
+                      <TableHead>Total</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {cart.map(item => (
-                      <TableRow key={item.sku}>
-                        <TableCell className="font-medium">{item.sku}</TableCell>
-                        <TableCell className="max-w-[260px] truncate">{item.titulo}</TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={item.quantidade}
-                            onChange={e => updateQuantity(item.sku, Number(e.target.value))}
-                            className="h-9 w-20"
-                          />
-                        </TableCell>
-                        <TableCell>{formatCurrency(orderType === "customer" ? Number(item.precoFinal || item.precoDesejado) * item.quantidade : 0)}</TableCell>
-                        <TableCell>{formatCurrency(Number(item.valorProduto) * item.quantidade)}</TableCell>
-                        <TableCell>{formatCurrency(Number(item.comissao) * item.quantidade)}</TableCell>
-                        <TableCell>{formatCurrency(orderType === "customer" ? Number(item.lucroUnitario) * item.quantidade : 0)}</TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)}>
-                            Remover
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {cart.map(item => {
+                      const quantidade = Number(item.quantidade);
+                      const valorUnit = orderType === "customer"
+                        ? Number(item.precoFinal || item.precoDesejado)
+                        : Number(item.valorProduto);
+                      const total = valorUnit * quantidade;
+
+                      return (
+                        <TableRow key={item.sku}>
+                          <TableCell className="font-medium">{item.sku}</TableCell>
+                          <TableCell className="max-w-[260px] truncate">{item.titulo}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={item.quantidade}
+                              onChange={e => updateQuantity(item.sku, Number(e.target.value))}
+                              className="h-9 w-20"
+                            />
+                          </TableCell>
+                          <TableCell>{formatCurrency(valorUnit)}</TableCell>
+                          <TableCell>{formatCurrency(total)}</TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)}>
+                              Remover
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -783,12 +783,21 @@ export default function Orders() {
 
               <Separator />
 
+              {/* Resumo do pedido — diferente conforme tipo */}
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between"><span>Total de itens</span><strong>{localSimulation.totals.totalItens}</strong></div>
                 <div className="flex items-center justify-between"><span>Total Mondial</span><strong>{formatCurrency(localSimulation.totals.totalMondial)}</strong></div>
-                <div className="flex items-center justify-between"><span>Total cliente</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
-                <div className="flex items-center justify-between"><span>Lucro previsto</span><strong>{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
-                <div className="flex items-center justify-between"><span>Everton Mondial</span><strong>{formatCurrency(localSimulation.totals.totalComissaoEvertonMondial)}</strong></div>
+                {orderType === "customer" ? (
+                  <>
+                    <div className="flex items-center justify-between"><span>Total venda (cliente)</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Lucro líquido previsto</span><strong className="text-emerald-600">{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between"><span>Valor Everton (R$ 0,75/item)</span><strong>{formatCurrency(localSimulation.totals.totalComissaoEvertonMondial)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Total a pagar</span><strong className="text-orange-600">{formatCurrency(Number(localSimulation.totals.totalMondial) + Number(localSimulation.totals.totalComissaoEvertonMondial))}</strong></div>
+                  </>
+                )}
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -818,21 +827,31 @@ export default function Orders() {
         <Card className="border-border/60 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl"><CreditCard className="h-5 w-5" /> Listas geradas automaticamente</CardTitle>
-            <CardDescription>Resumo, lista do cliente e lista da Mondial para o pedido em montagem.</CardDescription>
+            <CardDescription>Resumo e lista da Mondial para o pedido em montagem.</CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="resumo">Resumo</TabsTrigger>
-                <TabsTrigger value="cliente">Cliente</TabsTrigger>
+                <TabsTrigger value="cliente" disabled={orderType === "personal"}>Cliente</TabsTrigger>
                 <TabsTrigger value="mondial">Mondial</TabsTrigger>
               </TabsList>
               <TabsContent value="resumo" className="space-y-3 text-sm">
-                <div className="flex items-center justify-between"><span>Total cliente</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
-                <div className="flex items-center justify-between"><span>Total Mondial</span><strong>{formatCurrency(localSimulation.totals.totalMondial)}</strong></div>
-                <div className="flex items-center justify-between"><span>Lucro salvo</span><strong>{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
-                <div className="flex items-center justify-between"><span>Margem prevista</span><strong>{formatPercent(localSimulation.totals.margemPedido)}</strong></div>
-                <div className="flex items-center justify-between"><span>Everton Mondial</span><strong>{formatCurrency(localSimulation.totals.totalComissaoEvertonMondial)}</strong></div>
+                {orderType === "customer" ? (
+                  <>
+                    <div className="flex items-center justify-between"><span>Total venda (cliente)</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Total Mondial</span><strong>{formatCurrency(localSimulation.totals.totalMondial)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Impostos</span><strong>{formatCurrency(localSimulation.totals.totalImposto)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Lucro líquido</span><strong className="text-emerald-600">{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Margem prevista</span><strong>{formatPercent(localSimulation.totals.margemPedido)}</strong></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between"><span>Total Mondial</span><strong>{formatCurrency(localSimulation.totals.totalMondial)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Everton (R$ 0,75/item)</span><strong>{formatCurrency(localSimulation.totals.totalComissaoEvertonMondial)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Total a pagar</span><strong className="text-orange-600">{formatCurrency(Number(localSimulation.totals.totalMondial) + Number(localSimulation.totals.totalComissaoEvertonMondial))}</strong></div>
+                  </>
+                )}
               </TabsContent>
               <TabsContent value="cliente" className="space-y-3">
                 {orderType === "personal" ? (
@@ -875,7 +894,6 @@ export default function Orders() {
                         <TableHead>Título</TableHead>
                         <TableHead>Qtd</TableHead>
                         <TableHead>Valor produto</TableHead>
-                        <TableHead>Everton</TableHead>
                         <TableHead>Total</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -886,7 +904,6 @@ export default function Orders() {
                           <TableCell className="max-w-[180px] truncate">{item.titulo}</TableCell>
                           <TableCell>{item.quantidade}</TableCell>
                           <TableCell>{formatCurrency(item.valorCompraUnitario)}</TableCell>
-                          <TableCell>{formatCurrency(item.evertonMondial)}</TableCell>
                           <TableCell>{formatCurrency(item.totalMondial)}</TableCell>
                         </TableRow>
                       ))}
@@ -906,15 +923,14 @@ export default function Orders() {
           </CardHeader>
           <CardContent>
             <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              <Table style={{ minWidth: 700 }}>
+              <Table style={{ minWidth: 600 }}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Total cliente</TableHead>
+                    <TableHead>{orderType === "customer" ? "Total venda" : "Total Mondial"}</TableHead>
                     <TableHead>Total Mondial</TableHead>
-                    <TableHead>Lucro</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -924,9 +940,8 @@ export default function Orders() {
                       <TableCell>#{order.id}</TableCell>
                       <TableCell>{order.orderType === "personal" ? "Pessoal" : "Cliente"}</TableCell>
                       <TableCell className="font-medium">{order.customerName}</TableCell>
-                      <TableCell>{formatCurrency(order.totalCliente)}</TableCell>
+                      <TableCell>{order.orderType === "personal" ? formatCurrency(order.totalMondial) : formatCurrency(order.totalCliente)}</TableCell>
                       <TableCell>{formatCurrency(order.totalMondial)}</TableCell>
-                      <TableCell>{formatCurrency(order.totalLucro)}</TableCell>
                       <TableCell>{order.status}</TableCell>
                     </TableRow>
                   ))}

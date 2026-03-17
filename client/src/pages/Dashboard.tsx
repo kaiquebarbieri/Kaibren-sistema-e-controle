@@ -15,8 +15,9 @@ import {
   Loader2,
   ShoppingBag,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 
 /* ── Helpers ───────────────────────────────────────── */
@@ -50,14 +51,23 @@ export default function Dashboard() {
   const monthly = dashboardQuery.data;
   const evolution = evolutionQuery.data;
 
+  /* ── Métricas calculadas ─────────────────────────── */
+
+  // Vendas para clientes
   const vendasDoMes = Number(monthly?.totalVendasClientes ?? 0);
   const lucroLiquido = Number(monthly?.totalLucro ?? 0);
-  const comprasDoMes = Number(monthly?.totalComprasPessoais ?? 0);
-  const totalMondial = Number(monthly?.totalMondial ?? 0);
-  const comissaoEverton = Number(monthly?.totalComissaoEvertonMondial ?? 0);
   const margemMedia = Number(monthly?.margemMedia ?? 0);
   const pedidosCliente = Number(monthly?.totalPedidosCliente ?? 0);
+
+  // Compras pessoais
+  const comprasDoMesMondial = Number(monthly?.totalComprasPessoais ?? 0);
   const pedidosPessoais = Number(monthly?.totalPedidosPessoais ?? 0);
+
+  // Everton: R$ 0,75 por item em TODAS as compras (pessoais e vendas)
+  const comissaoEverton = Number(monthly?.totalComissaoEvertonMondial ?? 0);
+
+  // Total Mondial geral (vendas + compras pessoais)
+  const totalMondialGeral = Number(monthly?.totalMondial ?? 0);
 
   /* ── Chart ─────────────────────────────────────── */
 
@@ -85,7 +95,7 @@ export default function Dashboard() {
             borderRadius: 6,
           },
           {
-            label: "Lucro",
+            label: "Lucro líquido",
             data: evolution.map(m => Number(m.lucro)),
             backgroundColor: "rgba(59, 130, 246, 0.7)",
             borderColor: "rgb(59, 130, 246)",
@@ -93,7 +103,7 @@ export default function Dashboard() {
             borderRadius: 6,
           },
           {
-            label: "Compras",
+            label: "Compras pessoais",
             data: evolution.map(m => Number(m.compras)),
             backgroundColor: "rgba(249, 115, 22, 0.7)",
             borderColor: "rgb(249, 115, 22)",
@@ -216,7 +226,7 @@ export default function Dashboard() {
               </div>
               <h1 className="text-3xl font-semibold tracking-tight">Resultados e evolução mensal</h1>
               <p className="max-w-xl text-sm leading-6 text-slate-300">
-                Acompanhe suas vendas, lucro líquido, compras do mês e a evolução mês a mês em um único painel limpo e organizado.
+                Acompanhe suas vendas, lucro líquido, compras do mês e a evolução mês a mês.
               </p>
               <div className="flex flex-wrap gap-3 pt-2">
                 <div className="flex items-center gap-2">
@@ -242,40 +252,49 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+
+            {/* ── Cards principais no header ──────── */}
             <div className="grid gap-3 sm:grid-cols-2">
+              {/* Vendas do mês */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
                   <DollarSign className="h-4 w-4 text-emerald-400" /> Vendas do mês
                 </div>
                 <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(vendasDoMes)}</div>
-                <div className="mt-1 text-xs text-slate-400">{pedidosCliente} pedido(s) de cliente</div>
+                <div className="mt-1 text-xs text-slate-400">{pedidosCliente} pedido(s) para clientes</div>
               </div>
+
+              {/* Lucro líquido: vendas - custo Mondial - impostos - 0,75/item */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
                   <TrendingUp className="h-4 w-4 text-blue-400" /> Lucro líquido
                 </div>
                 <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(lucroLiquido)}</div>
-                <div className="mt-1 text-xs text-slate-400">Margem média: {formatPercent(margemMedia)}</div>
+                <div className="mt-1 text-xs text-slate-400">Após impostos e R$ 0,75/item</div>
               </div>
+
+              {/* Compras pessoais: total pago à Mondial */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
-                  <ShoppingBag className="h-4 w-4 text-orange-400" /> Compras do mês
+                  <ShoppingBag className="h-4 w-4 text-orange-400" /> Compras pessoais
                 </div>
-                <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(comprasDoMes)}</div>
-                <div className="mt-1 text-xs text-slate-400">{pedidosPessoais} compra(s) pessoal(is)</div>
+                <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(comprasDoMesMondial)}</div>
+                <div className="mt-1 text-xs text-slate-400">{pedidosPessoais} compra(s) no mês</div>
               </div>
+
+              {/* Everton: R$ 0,75 por item em todas as compras */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-300">
-                  <DollarSign className="h-4 w-4 text-yellow-400" /> Total Mondial
+                  <Wallet className="h-4 w-4 text-yellow-400" /> Pagar ao Everton
                 </div>
-                <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(totalMondial)}</div>
-                <div className="mt-1 text-xs text-slate-400">Comissão Everton: {formatCurrency(comissaoEverton)}</div>
+                <div className="mt-2 text-2xl font-bold text-white">{formatCurrency(comissaoEverton)}</div>
+                <div className="mt-1 text-xs text-slate-400">R$ 0,75 por item comprado</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── Cards secundários ──────────────────── */}
+        {/* ── Cards de detalhamento ──────────────── */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-2">
@@ -291,7 +310,7 @@ export default function Dashboard() {
               <CardDescription className="flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5 text-blue-500" /> Lucro líquido
               </CardDescription>
-              <CardTitle className="text-base">Após impostos e 0,75</CardTitle>
+              <CardTitle className="text-base">Vendas - custo - impostos - 0,75</CardTitle>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">{formatCurrency(lucroLiquido)}</CardContent>
           </Card>
@@ -300,9 +319,9 @@ export default function Dashboard() {
               <CardDescription className="flex items-center gap-1.5">
                 <ArrowDownRight className="h-3.5 w-3.5 text-orange-500" /> Compras pessoais
               </CardDescription>
-              <CardTitle className="text-base">Valor pago à Mondial</CardTitle>
+              <CardTitle className="text-base">Total pago à Mondial</CardTitle>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold">{formatCurrency(comprasDoMes)}</CardContent>
+            <CardContent className="text-2xl font-semibold">{formatCurrency(comprasDoMesMondial)}</CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-2">
@@ -319,7 +338,7 @@ export default function Dashboard() {
             <CardTitle className="flex items-center gap-2 text-xl">
               <BarChart3 className="h-5 w-5" /> Evolução mês a mês
             </CardTitle>
-            <CardDescription>Vendas, lucro e compras dos últimos 12 meses em gráfico comparativo.</CardDescription>
+            <CardDescription>Vendas, lucro líquido e compras pessoais dos últimos 12 meses.</CardDescription>
           </CardHeader>
           <CardContent>
             {evolutionQuery.isLoading ? (

@@ -73,3 +73,8 @@
 - [x] Fazer o novo menu de pedidos/compras puxar automaticamente os SKUs já salvos no menu Produtos
 - [x] Implementar visivelmente no site um menu dedicado de pedidos/compras integrado ao dashboard
 - [x] Limpar o dashboard para exibir apenas resultados de venda, gráfico e performance mês a mês
+- [x] Corrigir pedido de compra pessoal para exibir valor pago à Mondial (custo) em vez do valor de revenda
+- [x] Corrigir pedido de venda para cliente para exibir valor de revenda
+- [x] Remover coluna/exibição do R$ 0,75 do Everton da tabela de pedidos (só entra no cálculo do Dashboard)
+- [x] No Dashboard: compra pessoal calcula total comprado + R$ 0,75 por item para Everton, sem imposto
+- [x] No Dashboard: venda para cliente calcula total vendido - impostos - R$ 0,75 por item = lucro líquido
