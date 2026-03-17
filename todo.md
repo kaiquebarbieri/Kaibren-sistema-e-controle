@@ -82,3 +82,11 @@
 - [x] Remover o menu Visão geral da navegação
 - [x] Separar no Dashboard o valor do Everton com o nome dele como card independente
 - [x] Separar no Dashboard o imposto das vendas da distribuidora como card independente
+- [x] Corrigir erro na página reportado pelo usuário após alterações no Dashboard e navegação
+- [x] Otimizar navegação mobile com barra inferior fixa estilo app para celular
+- [x] Otimizar Dashboard para celular com cards empilhados e gráfico responsivo
+- [x] Otimizar página de Produtos para celular com cards ao invés de tabela
+- [x] Otimizar página de Clientes para celular com layout responsivo
+- [x] Otimizar página de Pedidos para celular com formulários e listas adaptados
+- [x] Garantir botões e campos de formulário com tamanho adequado para toque no celular
+- [x] Testar responsividade geral do sistema em viewport mobile

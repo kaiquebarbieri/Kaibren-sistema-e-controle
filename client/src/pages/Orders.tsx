@@ -17,8 +17,12 @@ import {
   CreditCard,
   Download,
   Loader2,
+  Minus,
+  Plus,
   Search,
   ShoppingCart,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -127,7 +131,6 @@ function buildSimulation(cart: CartItem[], orderType: "customer" | "personal") {
       const impostoUnit = Number(item.imposto);
 
       if (orderType === "customer") {
-        // Venda para cliente: valor exibido = revenda
         const totalVenda = valorRevendaUnit * quantidade;
         const totalMondial = valorMondialUnit * quantidade;
         const totalImposto = impostoUnit * quantidade;
@@ -140,13 +143,11 @@ function buildSimulation(cart: CartItem[], orderType: "customer" | "personal") {
         acc.totalEverton += totalEverton;
         acc.totalLucro += lucro;
       } else {
-        // Compra pessoal: valor exibido = Mondial
         const totalMondial = valorMondialUnit * quantidade;
         const totalEverton = EVERTON_POR_ITEM * quantidade;
 
         acc.totalMondial += totalMondial;
         acc.totalEverton += totalEverton;
-        // Sem imposto, sem lucro, sem valor cliente
       }
 
       acc.totalItens += quantidade;
@@ -337,7 +338,6 @@ export default function Orders() {
     onError: error => toast.error(error.message),
   });
 
-  /* Produtos ajustados: usa os valores originais do banco sem recalcular */
   const allProducts = useMemo(() => {
     return (allProductsQuery.data ?? []) as ProductRow[];
   }, [allProductsQuery.data]);
@@ -362,7 +362,7 @@ export default function Orders() {
     setCart(current => {
       const existing = current.find(item => item.sku === product.sku);
       if (existing) {
-        toast.success(`Quantidade de ${product.sku} atualizada no pedido.`);
+        toast.success(`Quantidade de ${product.sku} atualizada.`);
         return current.map(item =>
           item.sku === product.sku ? { ...item, quantidade: item.quantidade + 1 } : item
         );
@@ -529,7 +529,7 @@ export default function Orders() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md border-0 shadow-xl">
           <CardHeader>
             <CardTitle>Sistema CK Distribuidora</CardTitle>
@@ -547,31 +547,33 @@ export default function Orders() {
 
   return (
     <DashboardLayout activeSection="pedidos">
-      <div className="flex flex-col gap-6 bg-background">
+      <div className="flex flex-col gap-4 sm:gap-6 bg-background">
         {/* ── Header ─────────────────────────────── */}
-        <div className="overflow-hidden rounded-[28px] border border-border/60 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 px-6 py-6 text-white shadow-sm lg:px-8 lg:py-8">
-          <div className="space-y-3">
-            <Badge variant="secondary" className="w-fit rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white">
-              <ShoppingCart className="mr-1.5 h-3.5 w-3.5" /> Pedidos e Compras
+        <div className="overflow-hidden rounded-2xl sm:rounded-[28px] border border-border/60 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 px-4 py-4 sm:px-6 sm:py-6 text-white shadow-sm lg:px-8 lg:py-8">
+          <div className="space-y-2 sm:space-y-3">
+            <Badge variant="secondary" className="w-fit rounded-full bg-white/10 px-2.5 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-xs font-medium text-white">
+              <ShoppingCart className="mr-1 h-3 w-3 sm:mr-1.5 sm:h-3.5 sm:w-3.5" /> Pedidos e Compras
             </Badge>
-            <h1 className="text-3xl font-semibold tracking-tight">Montar pedido de venda ou compra pessoal</h1>
-            <p className="max-w-2xl text-sm leading-6 text-emerald-100">
-              Adicione produtos pelo SKU, escolha o tipo de pedido, vincule o cliente e finalize. Os totais são calculados automaticamente e refletidos no Dashboard.
+            <h1 className="text-xl sm:text-3xl font-semibold tracking-tight">Montar pedido</h1>
+            <p className="text-xs sm:text-sm leading-5 sm:leading-6 text-emerald-100">
+              Adicione produtos pelo SKU, escolha o tipo de pedido e finalize.
             </p>
           </div>
         </div>
 
         {/* ── Busca de SKU + Tipo de pedido ──────── */}
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card className="border-border/60 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl"><ShoppingCart className="h-5 w-5" /> Adicionar produtos ao pedido</CardTitle>
-              <CardDescription>Os SKUs são puxados automaticamente do menu Produtos. Digite o código ou nome para buscar.</CardDescription>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" /> Adicionar produtos
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Digite o SKU ou nome para buscar.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
+              <div className="rounded-xl sm:rounded-2xl border border-dashed border-border bg-muted/30 p-3 sm:p-4">
                 <div className="space-y-2">
-                  <Label>Buscar produto por SKU ou nome</Label>
+                  <Label className="text-xs sm:text-sm">Buscar produto</Label>
                   <form
                     className="flex gap-2"
                     onSubmit={event => {
@@ -583,86 +585,76 @@ export default function Orders() {
                       ref={skuQuickEntryRef}
                       value={skuQuickEntry}
                       onChange={e => setSkuQuickEntry(e.target.value)}
-                      placeholder="Digite o SKU ou nome do produto"
+                      placeholder="SKU ou nome"
+                      className="h-10 text-sm"
                       autoFocus
                     />
-                    <Button type="submit" variant="outline">
-                      <Search className="mr-2 h-4 w-4" />
-                      Adicionar
+                    <Button type="submit" variant="outline" className="shrink-0 h-10 px-3">
+                      <Search className="h-4 w-4" />
                     </Button>
                   </form>
                   {selectedQuickProduct ? (
-                    <div className="rounded-xl bg-background p-3 text-sm shadow-sm">
-                      <div className="font-medium text-foreground">{selectedQuickProduct.sku} — {selectedQuickProduct.titulo}</div>
-                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    <div className="rounded-lg bg-background p-2.5 sm:p-3 text-sm shadow-sm">
+                      <div className="text-xs sm:text-sm font-medium text-foreground">{selectedQuickProduct.sku} — {selectedQuickProduct.titulo}</div>
+                      <div className="mt-2 grid gap-2 grid-cols-2">
                         <div className="rounded-lg border border-border/60 p-2">
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Valor pago à Mondial</div>
-                          <div className="font-semibold text-foreground">{formatCurrency(selectedQuickProduct.valorProduto)}</div>
+                          <div className="text-[10px] sm:text-xs uppercase tracking-wide text-muted-foreground">Mondial</div>
+                          <div className="text-sm font-semibold text-foreground">{formatCurrency(selectedQuickProduct.valorProduto)}</div>
                         </div>
                         <div className="rounded-lg border border-border/60 p-2">
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Valor de revenda</div>
-                          <div className="font-semibold text-foreground">{formatCurrency(selectedQuickProduct.precoFinal || selectedQuickProduct.precoDesejado)}</div>
+                          <div className="text-[10px] sm:text-xs uppercase tracking-wide text-muted-foreground">Revenda</div>
+                          <div className="text-sm font-semibold text-foreground">{formatCurrency(selectedQuickProduct.precoFinal || selectedQuickProduct.precoDesejado)}</div>
                         </div>
                       </div>
                     </div>
                   ) : skuQuickEntry.trim() ? (
-                    <div className="space-y-2 rounded-xl bg-background p-3 text-sm shadow-sm">
-                      <div className="font-medium text-foreground">Sugestões encontradas</div>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2 rounded-lg bg-background p-2.5 sm:p-3 text-sm shadow-sm">
+                      <div className="text-xs font-medium text-foreground">Sugestões</div>
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
                         {quickSkuMatches.length > 0 ? quickSkuMatches.map(item => (
                           <Button
                             key={item.sku}
                             type="button"
                             size="sm"
                             variant="outline"
+                            className="h-8 text-xs px-2"
                             onClick={() => {
                               addToCart(item);
                               setSkuQuickEntry("");
                               setTimeout(() => skuQuickEntryRef.current?.focus(), 0);
                             }}
                           >
-                            {item.sku} — {item.titulo.slice(0, 30)}
+                            {item.sku}
                           </Button>
-                        )) : <span className="text-muted-foreground">Nenhum SKU encontrado</span>}
+                        )) : <span className="text-xs text-muted-foreground">Nenhum SKU encontrado</span>}
                       </div>
                     </div>
                   ) : null}
                 </div>
               </div>
 
-              {/* Itens no carrinho */}
-              <div className="mb-2 rounded-2xl border border-dashed border-border/60 bg-muted/30 p-4 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Itens no pedido atual</span>
-                  <strong>{cart.length} produto(s)</strong>
+              {/* Cart items badge summary */}
+              <div className="rounded-xl border border-dashed border-border/60 bg-muted/30 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm text-muted-foreground">Itens no pedido</span>
+                  <strong className="text-xs sm:text-sm">{cart.length} produto(s)</strong>
                 </div>
-                {cart.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                {cart.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {cart.map(item => (
-                      <Badge key={`badge-${item.sku}`} variant="secondary" className="rounded-full px-3 py-1">
-                        {item.sku} · qtd {item.quantidade}
+                      <Badge key={`badge-${item.sku}`} variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] sm:text-xs">
+                        {item.sku} x{item.quantidade}
                       </Badge>
                     ))}
                   </div>
-                ) : (
-                  <p className="mt-2 text-muted-foreground">Digite um SKU acima e pressione Enter para começar a montar o pedido.</p>
                 )}
               </div>
 
-              {/* Tabela do carrinho — SEM coluna Everton */}
-              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                <Table style={{ minWidth: 600 }}>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Qtd</TableHead>
-                      <TableHead>{orderType === "customer" ? "Valor revenda" : "Valor Mondial"}</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              {/* Cart items - mobile cards / desktop table */}
+              {cart.length > 0 && (
+                <>
+                  {/* Mobile cart cards */}
+                  <div className="space-y-2 lg:hidden">
                     {cart.map(item => {
                       const quantidade = Number(item.quantidade);
                       const valorUnit = orderType === "customer"
@@ -671,88 +663,146 @@ export default function Orders() {
                       const total = valorUnit * quantidade;
 
                       return (
-                        <TableRow key={item.sku}>
-                          <TableCell className="font-medium">{item.sku}</TableCell>
-                          <TableCell className="max-w-[260px] truncate">{item.titulo}</TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={item.quantidade}
-                              onChange={e => updateQuantity(item.sku, Number(e.target.value))}
-                              className="h-9 w-20"
-                            />
-                          </TableCell>
-                          <TableCell>{formatCurrency(valorUnit)}</TableCell>
-                          <TableCell>{formatCurrency(total)}</TableCell>
-                          <TableCell className="text-right whitespace-nowrap">
-                            <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)}>
-                              Remover
+                        <div key={item.sku} className="rounded-xl border border-border/60 bg-card p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SKU {item.sku}</div>
+                              <div className="text-xs font-medium text-foreground mt-0.5 line-clamp-2">{item.titulo}</div>
+                            </div>
+                            <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)} className="shrink-0 h-7 w-7 p-0 text-destructive">
+                              <X className="h-3.5 w-3.5" />
                             </Button>
-                          </TableCell>
-                        </TableRow>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.sku, quantidade - 1)}>
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={item.quantidade}
+                                onChange={e => updateQuantity(item.sku, Number(e.target.value))}
+                                className="h-7 w-12 text-center text-xs px-1"
+                              />
+                              <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.sku, quantidade + 1)}>
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[10px] text-muted-foreground">{formatCurrency(valorUnit)} un.</div>
+                              <div className="text-sm font-semibold text-foreground">{formatCurrency(total)}</div>
+                            </div>
+                          </div>
+                        </div>
                       );
                     })}
-                  </TableBody>
-                </Table>
-              </div>
+                  </div>
+
+                  {/* Desktop cart table */}
+                  <div className="hidden lg:block" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <Table style={{ minWidth: 600 }}>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>SKU</TableHead>
+                          <TableHead>Título</TableHead>
+                          <TableHead>Qtd</TableHead>
+                          <TableHead>{orderType === "customer" ? "Valor revenda" : "Valor Mondial"}</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cart.map(item => {
+                          const quantidade = Number(item.quantidade);
+                          const valorUnit = orderType === "customer"
+                            ? Number(item.precoFinal || item.precoDesejado)
+                            : Number(item.valorProduto);
+                          const total = valorUnit * quantidade;
+
+                          return (
+                            <TableRow key={item.sku}>
+                              <TableCell className="font-medium">{item.sku}</TableCell>
+                              <TableCell className="max-w-[260px] truncate">{item.titulo}</TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={item.quantidade}
+                                  onChange={e => updateQuantity(item.sku, Number(e.target.value))}
+                                  className="h-9 w-20"
+                                />
+                              </TableCell>
+                              <TableCell>{formatCurrency(valorUnit)}</TableCell>
+                              <TableCell>{formatCurrency(total)}</TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)}>
+                                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
           {/* ── Configuração do pedido ──────────── */}
           <Card className="border-border/60 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-xl">Configuração do pedido</CardTitle>
-              <CardDescription>Defina tipo, cliente, período e salve ou finalize o pedido.</CardDescription>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-lg sm:text-xl">Configuração</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Tipo, cliente, período e finalização.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Tipo de pedido</Label>
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
+              <div className="space-y-1.5 sm:space-y-2">
+                <Label className="text-xs sm:text-sm">Tipo de pedido</Label>
                 <Select value={orderType} onValueChange={value => setOrderType(value as "customer" | "personal")}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-10 text-sm">
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="customer">Pedido de cliente (venda)</SelectItem>
+                    <SelectItem value="customer">Venda para cliente</SelectItem>
                     <SelectItem value="personal">Compra pessoal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {orderType === "customer" && (
-                <div className="space-y-3">
-                  <Label>Buscar cliente</Label>
+                <div className="space-y-2 sm:space-y-3">
+                  <Label className="text-xs sm:text-sm">Buscar cliente</Label>
                   <div className="flex gap-2">
-                    <Input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Nome do cliente" />
-                    <Button variant="outline" size="sm" onClick={startNewCustomer}>Novo</Button>
+                    <Input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Nome do cliente" className="h-10 text-sm" />
+                    <Button variant="outline" size="sm" onClick={startNewCustomer} className="shrink-0 h-10 text-xs px-3">Novo</Button>
                   </div>
                   {(customersQuery.data ?? []).length > 0 && (
-                    <ScrollArea className="h-[140px] rounded-xl border border-border/60">
-                      <Table>
-                        <TableBody>
-                          {(customersQuery.data ?? []).map(customer => (
-                            <TableRow key={customer.id}>
-                              <TableCell className="font-medium">{customer.name}</TableCell>
-                              <TableCell className="text-right">
-                                <Button size="sm" variant="outline" onClick={() => applyCustomer(customer as CustomerRow)}>
-                                  Selecionar
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                    <ScrollArea className="h-[120px] rounded-lg border border-border/60">
+                      <div className="space-y-1 p-1">
+                        {(customersQuery.data ?? []).map(customer => (
+                          <button
+                            key={customer.id}
+                            onClick={() => applyCustomer(customer as CustomerRow)}
+                            className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm hover:bg-accent/50 active:bg-accent transition-colors"
+                          >
+                            <span className="font-medium text-foreground truncate">{customer.name}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0 ml-2">Selecionar</span>
+                          </button>
+                        ))}
+                      </div>
                     </ScrollArea>
                   )}
                   {selectedCustomerId === "new" && (
-                    <div className="space-y-3 rounded-xl border border-dashed border-border p-3">
-                      <div className="grid gap-2 md:grid-cols-2">
-                        <Input value={customerForm.name} onChange={e => setCustomerForm(c => ({ ...c, name: e.target.value }))} placeholder="Nome" />
-                        <Input value={customerForm.phone} onChange={e => setCustomerForm(c => ({ ...c, phone: e.target.value }))} placeholder="Telefone" />
+                    <div className="space-y-2 rounded-lg border border-dashed border-border p-2.5 sm:p-3">
+                      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+                        <Input value={customerForm.name} onChange={e => setCustomerForm(c => ({ ...c, name: e.target.value }))} placeholder="Nome" className="h-10 text-sm" />
+                        <Input value={customerForm.phone} onChange={e => setCustomerForm(c => ({ ...c, phone: e.target.value }))} placeholder="Telefone" className="h-10 text-sm" />
                       </div>
-                      <Input value={customerForm.reference} onChange={e => setCustomerForm(c => ({ ...c, reference: e.target.value }))} placeholder="Referência" />
-                      <Button size="sm" onClick={saveCustomer} disabled={createCustomerMutation.isPending}>
-                        {createCustomerMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      <Input value={customerForm.reference} onChange={e => setCustomerForm(c => ({ ...c, reference: e.target.value }))} placeholder="Referência" className="h-10 text-sm" />
+                      <Button size="sm" onClick={saveCustomer} disabled={createCustomerMutation.isPending} className="w-full h-9 text-xs">
+                        {createCustomerMutation.isPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
                         Salvar cliente
                       </Button>
                     </div>
@@ -760,63 +810,63 @@ export default function Orders() {
                 </div>
               )}
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Mês</Label>
-                  <Input value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} placeholder="Mês" />
+              <div className="grid gap-2 sm:gap-4 grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Mês</Label>
+                  <Input value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} placeholder="Mês" className="h-10 text-sm" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Ano</Label>
-                  <Input value={selectedYear} onChange={e => setSelectedYear(e.target.value)} placeholder="Ano" />
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Ano</Label>
+                  <Input value={selectedYear} onChange={e => setSelectedYear(e.target.value)} placeholder="Ano" className="h-10 text-sm" />
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-muted/50 p-4 text-sm">
-                <div className="flex items-center justify-between"><span>Cliente vinculado</span><strong>{orderType === "personal" ? "Compra pessoal" : customerForm.name || "Não selecionado"}</strong></div>
-                <div className="mt-2 flex items-center justify-between"><span>Referência</span><strong>{orderType === "personal" ? "Uso próprio" : customerForm.reference || "-"}</strong></div>
+              <div className="rounded-xl bg-muted/50 p-3 text-xs sm:text-sm space-y-1.5">
+                <div className="flex items-center justify-between"><span>Cliente</span><strong className="text-right truncate ml-2">{orderType === "personal" ? "Compra pessoal" : customerForm.name || "Não selecionado"}</strong></div>
+                <div className="flex items-center justify-between"><span>Referência</span><strong className="text-right truncate ml-2">{orderType === "personal" ? "Uso próprio" : customerForm.reference || "-"}</strong></div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Observações</Label>
-                <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observações do pedido" rows={3} />
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Observações</Label>
+                <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observações do pedido" rows={2} className="text-sm" />
               </div>
 
               <Separator />
 
-              {/* Resumo do pedido — diferente conforme tipo */}
-              <div className="space-y-3 text-sm">
+              {/* Resumo do pedido */}
+              <div className="space-y-2 text-xs sm:text-sm">
                 <div className="flex items-center justify-between"><span>Total de itens</span><strong>{localSimulation.totals.totalItens}</strong></div>
                 <div className="flex items-center justify-between"><span>Total Mondial</span><strong>{formatCurrency(localSimulation.totals.totalMondial)}</strong></div>
                 {orderType === "customer" ? (
                   <>
-                    <div className="flex items-center justify-between"><span>Total venda (cliente)</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
-                    <div className="flex items-center justify-between"><span>Lucro líquido previsto</span><strong className="text-emerald-600">{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Total venda</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Lucro previsto</span><strong className="text-emerald-600">{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
                   </>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between"><span>Valor Everton (R$ 0,75/item)</span><strong>{formatCurrency(localSimulation.totals.totalComissaoEvertonMondial)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Everton (R$ 0,75/item)</span><strong>{formatCurrency(localSimulation.totals.totalComissaoEvertonMondial)}</strong></div>
                     <div className="flex items-center justify-between"><span>Total a pagar</span><strong className="text-orange-600">{formatCurrency(Number(localSimulation.totals.totalMondial) + Number(localSimulation.totals.totalComissaoEvertonMondial))}</strong></div>
                   </>
                 )}
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <Button variant="outline" onClick={() => saveOrder("created")} disabled={createOrderMutation.isPending}>
-                  Salvar pedido
+              <div className="grid gap-2 grid-cols-2">
+                <Button variant="outline" onClick={() => saveOrder("created")} disabled={createOrderMutation.isPending} className="h-10 text-xs sm:text-sm">
+                  Salvar
                 </Button>
-                <Button onClick={() => saveOrder("finalized")} disabled={createOrderMutation.isPending}>
+                <Button onClick={() => saveOrder("finalized")} disabled={createOrderMutation.isPending} className="h-10 text-xs sm:text-sm">
                   {createOrderMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Finalizar pedido
+                  Finalizar
                 </Button>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Button variant="outline" onClick={exportCustomerSheet} disabled={orderType === "personal" || cart.length === 0}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Planilha Cliente
+              <div className="grid gap-2 grid-cols-2">
+                <Button variant="outline" onClick={exportCustomerSheet} disabled={orderType === "personal" || cart.length === 0} className="h-9 text-xs">
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Cliente
                 </Button>
-                <Button variant="outline" onClick={exportMondialSheet} disabled={cart.length === 0}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Planilha Mondial
+                <Button variant="outline" onClick={exportMondialSheet} disabled={cart.length === 0} className="h-9 text-xs">
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Mondial
                 </Button>
               </div>
             </CardContent>
@@ -825,25 +875,27 @@ export default function Orders() {
 
         {/* ── Listas geradas ─────────────────────── */}
         <Card className="border-border/60 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl"><CreditCard className="h-5 w-5" /> Listas geradas automaticamente</CardTitle>
-            <CardDescription>Resumo e lista da Mondial para o pedido em montagem.</CardDescription>
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
+              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" /> Listas geradas
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Resumo e lista da Mondial para o pedido.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="resumo">Resumo</TabsTrigger>
-                <TabsTrigger value="cliente" disabled={orderType === "personal"}>Cliente</TabsTrigger>
-                <TabsTrigger value="mondial">Mondial</TabsTrigger>
+          <CardContent className="px-4 sm:px-6">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3 sm:space-y-4">
+              <TabsList className="grid w-full grid-cols-3 h-9">
+                <TabsTrigger value="resumo" className="text-xs sm:text-sm">Resumo</TabsTrigger>
+                <TabsTrigger value="cliente" disabled={orderType === "personal"} className="text-xs sm:text-sm">Cliente</TabsTrigger>
+                <TabsTrigger value="mondial" className="text-xs sm:text-sm">Mondial</TabsTrigger>
               </TabsList>
-              <TabsContent value="resumo" className="space-y-3 text-sm">
+              <TabsContent value="resumo" className="space-y-2 text-xs sm:text-sm">
                 {orderType === "customer" ? (
                   <>
-                    <div className="flex items-center justify-between"><span>Total venda (cliente)</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Total venda</span><strong>{formatCurrency(localSimulation.totals.totalCliente)}</strong></div>
                     <div className="flex items-center justify-between"><span>Total Mondial</span><strong>{formatCurrency(localSimulation.totals.totalMondial)}</strong></div>
                     <div className="flex items-center justify-between"><span>Impostos</span><strong>{formatCurrency(localSimulation.totals.totalImposto)}</strong></div>
                     <div className="flex items-center justify-between"><span>Lucro líquido</span><strong className="text-emerald-600">{formatCurrency(localSimulation.totals.totalLucro)}</strong></div>
-                    <div className="flex items-center justify-between"><span>Margem prevista</span><strong>{formatPercent(localSimulation.totals.margemPedido)}</strong></div>
+                    <div className="flex items-center justify-between"><span>Margem</span><strong>{formatPercent(localSimulation.totals.margemPedido)}</strong></div>
                   </>
                 ) : (
                   <>
@@ -853,63 +905,67 @@ export default function Orders() {
                   </>
                 )}
               </TabsContent>
-              <TabsContent value="cliente" className="space-y-3">
+              <TabsContent value="cliente" className="space-y-2">
                 {orderType === "personal" ? (
-                  <div className="rounded-2xl bg-muted/60 p-4 text-sm text-muted-foreground">
+                  <div className="rounded-xl bg-muted/60 p-3 text-xs sm:text-sm text-muted-foreground">
                     Compras pessoais não geram lista de cliente.
                   </div>
                 ) : (
-                  <ScrollArea className="h-[220px] rounded-2xl border border-border/60">
-                    <Table>
+                  <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <ScrollArea className="h-[200px] sm:h-[220px]">
+                      <Table style={{ minWidth: 400 }}>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">SKU</TableHead>
+                            <TableHead className="text-xs">Título</TableHead>
+                            <TableHead className="text-xs">Qtd</TableHead>
+                            <TableHead className="text-xs">Preço</TableHead>
+                            <TableHead className="text-xs">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {localSimulation.customerList.map(item => (
+                            <TableRow key={`${item.sku}-cliente`}>
+                              <TableCell className="text-xs">{item.sku}</TableCell>
+                              <TableCell className="text-xs max-w-[120px] sm:max-w-[180px] truncate">{item.titulo}</TableCell>
+                              <TableCell className="text-xs">{item.quantidade}</TableCell>
+                              <TableCell className="text-xs">{formatCurrency(item.precoVendaUnitario)}</TableCell>
+                              <TableCell className="text-xs">{formatCurrency(item.totalCliente)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="mondial" className="space-y-2">
+                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                  <ScrollArea className="h-[200px] sm:h-[220px]">
+                    <Table style={{ minWidth: 400 }}>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>SKU</TableHead>
-                          <TableHead>Título</TableHead>
-                          <TableHead>Qtd</TableHead>
-                          <TableHead>Preço venda</TableHead>
-                          <TableHead>Total</TableHead>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Título</TableHead>
+                          <TableHead className="text-xs">Qtd</TableHead>
+                          <TableHead className="text-xs">Valor</TableHead>
+                          <TableHead className="text-xs">Total</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {localSimulation.customerList.map(item => (
-                          <TableRow key={`${item.sku}-cliente`}>
-                            <TableCell>{item.sku}</TableCell>
-                            <TableCell className="max-w-[180px] truncate">{item.titulo}</TableCell>
-                            <TableCell>{item.quantidade}</TableCell>
-                            <TableCell>{formatCurrency(item.precoVendaUnitario)}</TableCell>
-                            <TableCell>{formatCurrency(item.totalCliente)}</TableCell>
+                        {localSimulation.mondialList.map(item => (
+                          <TableRow key={`${item.sku}-mondial`}>
+                            <TableCell className="text-xs">{item.sku}</TableCell>
+                            <TableCell className="text-xs max-w-[120px] sm:max-w-[180px] truncate">{item.titulo}</TableCell>
+                            <TableCell className="text-xs">{item.quantidade}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.valorCompraUnitario)}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.totalMondial)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </ScrollArea>
-                )}
-              </TabsContent>
-              <TabsContent value="mondial" className="space-y-3">
-                <ScrollArea className="h-[220px] rounded-2xl border border-border/60">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Título</TableHead>
-                        <TableHead>Qtd</TableHead>
-                        <TableHead>Valor produto</TableHead>
-                        <TableHead>Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {localSimulation.mondialList.map(item => (
-                        <TableRow key={`${item.sku}-mondial`}>
-                          <TableCell>{item.sku}</TableCell>
-                          <TableCell className="max-w-[180px] truncate">{item.titulo}</TableCell>
-                          <TableCell>{item.quantidade}</TableCell>
-                          <TableCell>{formatCurrency(item.valorCompraUnitario)}</TableCell>
-                          <TableCell>{formatCurrency(item.totalMondial)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -917,19 +973,47 @@ export default function Orders() {
 
         {/* ── Histórico de pedidos ───────────────── */}
         <Card className="border-border/60 shadow-sm">
-          <CardHeader>
-            <CardTitle>Histórico de pedidos e compras</CardTitle>
-            <CardDescription>Cada pedido salvo registra se foi compra pessoal ou venda para cliente.</CardDescription>
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle className="text-base sm:text-xl">Histórico de pedidos</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Pedidos salvos e finalizados.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <CardContent className="px-4 sm:px-6">
+            {/* Mobile: card list */}
+            <div className="space-y-2 lg:hidden">
+              {(ordersQuery.data ?? []).map(order => (
+                <div key={order.id} className="rounded-xl border border-border/60 bg-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={order.orderType === "personal" ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
+                        {order.orderType === "personal" ? "Pessoal" : "Cliente"}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">#{order.id}</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{order.status}</Badge>
+                  </div>
+                  <div className="mt-1.5 text-sm font-medium text-foreground">{order.customerName}</div>
+                  <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{order.orderType === "personal" ? "Mondial" : "Venda"}: {order.orderType === "personal" ? formatCurrency(order.totalMondial) : formatCurrency(order.totalCliente)}</span>
+                    <span>Mondial: {formatCurrency(order.totalMondial)}</span>
+                  </div>
+                </div>
+              ))}
+              {(ordersQuery.data ?? []).length === 0 && (
+                <div className="rounded-xl border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
+                  Nenhum pedido registrado ainda.
+                </div>
+              )}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden lg:block" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
               <Table style={{ minWidth: 600 }}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>{orderType === "customer" ? "Total venda" : "Total Mondial"}</TableHead>
+                    <TableHead>Total venda / Mondial</TableHead>
                     <TableHead>Total Mondial</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>

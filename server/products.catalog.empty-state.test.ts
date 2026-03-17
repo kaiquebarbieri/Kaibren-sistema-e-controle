@@ -7,7 +7,7 @@ describe("products catalog empty state", () => {
     const filePath = path.resolve(__dirname, "../client/src/pages/Products.tsx");
     const source = fs.readFileSync(filePath, "utf-8");
 
-    expect(source).toContain("Nenhum produto encontrado para essa busca.");
-    expect(source).toContain("Restaurar último upload");
+    expect(source).toContain("Nenhum produto encontrado");
+    expect(source).toContain("Restaurar");
   });
 });

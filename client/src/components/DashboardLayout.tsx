@@ -73,10 +73,10 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex w-full max-w-md flex-col items-center gap-8 p-8">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="flex w-full max-w-md flex-col items-center gap-8 p-6 sm:p-8">
           <div className="flex flex-col items-center gap-4 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
               Entrar no Sistema CK Distribuidora
             </h1>
             <p className="text-sm leading-6 text-muted-foreground">
@@ -174,6 +174,79 @@ function DashboardLayoutContent({
     };
   }, [isResizing, setSidebarWidth]);
 
+  /* ── Mobile layout: bottom nav bar ── */
+  if (isMobile) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        {/* Mobile top header */}
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
+          <div className="flex items-center gap-3">
+            <activeMenuItem.icon className="h-5 w-5 text-primary" />
+            <span className="text-base font-semibold tracking-tight text-foreground">{activeMenuItem.label}</span>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 rounded-full p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <Avatar className="h-8 w-8 border">
+                  <AvatarFallback className="text-xs font-medium">
+                    {user?.name?.charAt(0).toUpperCase() || "C"}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <div className="px-3 py-2 text-sm">
+                <p className="font-medium text-foreground">{user?.name || "Usuário"}</p>
+                <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
+              </div>
+              <DropdownMenuItem
+                onClick={logout}
+                className="cursor-pointer text-destructive focus:text-destructive"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Sair</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+
+        {/* Main content with bottom padding for nav bar */}
+        <main className="flex-1 overflow-y-auto px-3 py-4 pb-20">
+          {children}
+        </main>
+
+        {/* Bottom navigation bar - fixed */}
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur safe-area-bottom">
+          <div className="flex h-16 items-center justify-around px-2">
+            {menuItems.map(item => {
+              const isActive = item.section === activeSection;
+              return (
+                <button
+                  key={item.section}
+                  onClick={() => {
+                    setLocation(item.href);
+                    onNavigate?.(item.section);
+                  }}
+                  className={`flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-1.5 transition-colors min-w-[64px] ${
+                    isActive
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <item.icon className={`h-5 w-5 ${isActive ? "text-primary" : ""}`} />
+                  <span className={`text-[11px] font-medium leading-none ${isActive ? "text-primary" : ""}`}>
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      </div>
+    );
+  }
+
+  /* ── Desktop layout: sidebar ── */
   return (
     <>
       <div className="relative" ref={sidebarRef}>
@@ -264,18 +337,6 @@ function DashboardLayoutContent({
       </div>
 
       <SidebarInset>
-        {isMobile && (
-          <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-foreground tracking-tight">{activeMenuItem.label}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
         <main className="flex-1 p-4 lg:p-6">{children}</main>
       </SidebarInset>
     </>
