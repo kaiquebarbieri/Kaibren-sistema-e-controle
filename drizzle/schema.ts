@@ -153,3 +153,76 @@ export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
 export type MonthlySnapshot = typeof monthlySnapshots.$inferSelect;
 export type InsertMonthlySnapshot = typeof monthlySnapshots.$inferInsert;
+
+/* ── Marketing Campaigns ── */
+
+export const campaigns = mysqlTable("campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  /** promotional | launch | seasonal | flash_sale | loyalty */
+  campaignType: mysqlEnum("campaignType", ["promotional", "launch", "seasonal", "flash_sale", "loyalty"]).default("promotional").notNull(),
+  /** draft | scheduled | active | completed | cancelled */
+  status: mysqlEnum("status", ["draft", "scheduled", "active", "completed", "cancelled"]).default("draft").notNull(),
+  /** Discount text e.g. "20% OFF", "Compre 2 leve 3" */
+  discountLabel: varchar("discountLabel", { length: 255 }),
+  /** Discount percentage if applicable */
+  discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
+  /** Banner/creative image URL (stored in S3) */
+  bannerUrl: text("bannerUrl"),
+  bannerFileKey: varchar("bannerFileKey", { length: 512 }),
+  /** WhatsApp message template */
+  messageTemplate: text("messageTemplate"),
+  /** Scheduled send date (UTC timestamp ms) */
+  scheduledAt: bigint("scheduledAt", { mode: "number", unsigned: true }),
+  /** When the campaign was actually sent */
+  sentAt: bigint("sentAt", { mode: "number", unsigned: true }),
+  /** Stats */
+  totalSent: int("totalSent").notNull().default(0),
+  totalDelivered: int("totalDelivered").notNull().default(0),
+  totalClicked: int("totalClicked").notNull().default(0),
+  totalConverted: int("totalConverted").notNull().default(0),
+  totalRevenue: decimal("totalRevenue", { precision: 14, scale: 4 }).notNull().default("0.0000"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Products featured in a campaign */
+export const campaignProducts = mysqlTable("campaign_products", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaignId").notNull(),
+  productId: int("productId").notNull(),
+  /** Optional promotional price override */
+  promoPrice: decimal("promoPrice", { precision: 14, scale: 4 }),
+  /** Original price at time of campaign creation */
+  originalPrice: decimal("originalPrice", { precision: 14, scale: 4 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** Individual messages sent to customers */
+export const campaignMessages = mysqlTable("campaign_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaignId").notNull(),
+  customerId: int("customerId").notNull(),
+  customerName: varchar("customerName", { length: 255 }).notNull(),
+  customerPhone: varchar("customerPhone", { length: 64 }),
+  /** sent | delivered | clicked | converted */
+  status: mysqlEnum("status", ["pending", "sent", "delivered", "clicked", "converted"]).default("pending").notNull(),
+  /** Unique tracking code for this message */
+  trackingCode: varchar("trackingCode", { length: 64 }).notNull().unique(),
+  /** When the customer clicked the link */
+  clickedAt: bigint("clickedAt", { mode: "number", unsigned: true }),
+  /** Order ID if converted */
+  convertedOrderId: int("convertedOrderId"),
+  convertedAt: bigint("convertedAt", { mode: "number", unsigned: true }),
+  sentAt: bigint("sentAt", { mode: "number", unsigned: true }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = typeof campaigns.$inferInsert;
+export type CampaignProduct = typeof campaignProducts.$inferSelect;
+export type InsertCampaignProduct = typeof campaignProducts.$inferInsert;
+export type CampaignMessage = typeof campaignMessages.$inferSelect;
+export type InsertCampaignMessage = typeof campaignMessages.$inferInsert;

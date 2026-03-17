@@ -22,6 +22,13 @@
       "when": 1773684512245,
       "tag": "0002_giant_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1773781346777,
+      "tag": "0003_unusual_silver_samurai",
+      "breakpoints": true
     }
   ]
 }

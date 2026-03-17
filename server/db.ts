@@ -1,7 +1,13 @@
 import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  campaignMessages,
+  campaignProducts,
+  campaigns,
   customers,
+  InsertCampaign,
+  InsertCampaignMessage,
+  InsertCampaignProduct,
   InsertCustomer,
   InsertMonthlySnapshot,
   InsertOrder,
@@ -298,6 +304,104 @@ export async function upsertMonthlySnapshot(input: InsertMonthlySnapshot) {
 
   const result = await db.insert(monthlySnapshots).values(input).$returningId();
   return result[0]?.id ?? 0;
+}
+
+/* ── Marketing Campaign helpers ── */
+
+export async function createCampaign(input: InsertCampaign) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(campaigns).values(input).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function updateCampaign(id: number, data: Partial<InsertCampaign>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(campaigns).set(data).where(eq(campaigns.id, id));
+  const rows = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCampaignById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listCampaigns(limit = 50) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(campaigns).orderBy(desc(campaigns.createdAt)).limit(limit);
+}
+
+export async function addCampaignProducts(items: InsertCampaignProduct[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) return;
+  await db.insert(campaignProducts).values(items);
+}
+
+export async function getCampaignProducts(campaignId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(campaignProducts).where(eq(campaignProducts.campaignId, campaignId));
+}
+
+export async function removeCampaignProducts(campaignId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(campaignProducts).where(eq(campaignProducts.campaignId, campaignId));
+}
+
+export async function createCampaignMessages(items: InsertCampaignMessage[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) return;
+  await db.insert(campaignMessages).values(items);
+}
+
+export async function listCampaignMessages(campaignId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(campaignMessages).where(eq(campaignMessages.campaignId, campaignId)).orderBy(campaignMessages.customerName);
+}
+
+export async function updateCampaignMessageStatus(trackingCode: string, status: "sent" | "delivered" | "clicked" | "converted", extra?: { clickedAt?: number; convertedOrderId?: number; convertedAt?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(campaignMessages).set({ status, ...extra }).where(eq(campaignMessages.trackingCode, trackingCode));
+}
+
+export async function getCampaignMessageByTrackingCode(trackingCode: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(campaignMessages).where(eq(campaignMessages.trackingCode, trackingCode)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCampaignStats(campaignId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select({
+      totalSent: sql<number>`count(case when ${campaignMessages.status} != 'pending' then 1 end)`,
+      totalClicked: sql<number>`count(case when ${campaignMessages.status} in ('clicked', 'converted') then 1 end)`,
+      totalConverted: sql<number>`count(case when ${campaignMessages.status} = 'converted' then 1 end)`,
+      totalMessages: sql<number>`count(*)`,
+    })
+    .from(campaignMessages)
+    .where(eq(campaignMessages.campaignId, campaignId));
+
+  return rows[0] ?? { totalSent: 0, totalClicked: 0, totalConverted: 0, totalMessages: 0 };
+}
+
+export async function getCustomersWithPhone() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(customers).where(and(eq(customers.isActive, 1), sql`${customers.phone} IS NOT NULL AND ${customers.phone} != ''`)).orderBy(customers.name);
 }
 
 export async function getMonthlySummary(periodYear?: number, periodMonth?: number) {

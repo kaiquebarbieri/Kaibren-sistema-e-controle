@@ -4,6 +4,7 @@ import Customers from "@/pages/Customers";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "@/pages/NotFound";
 import Orders from "@/pages/Orders";
+import Marketing from "@/pages/Marketing";
 import Products from "@/pages/Products";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -18,6 +19,7 @@ function Router() {
       <Route path={"/clientes"} component={Customers} />
       <Route path={"/produtos"} component={Products} />
       <Route path={"/pedidos"} component={Orders} />
+      <Route path={"/marketing"} component={Marketing} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

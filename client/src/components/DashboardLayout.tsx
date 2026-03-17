@@ -25,6 +25,7 @@ import {
   BarChart3,
   ClipboardList,
   LogOut,
+  Megaphone,
   PackageSearch,
   PanelLeft,
   UserPlus,
@@ -39,6 +40,7 @@ const menuItems = [
   { icon: UserPlus, label: "Clientes", section: "clientes", href: "/clientes" },
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
   { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/pedidos" },
+  { icon: Megaphone, label: "Marketing", section: "marketing", href: "/marketing" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

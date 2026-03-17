@@ -90,3 +90,12 @@
 - [x] Otimizar página de Pedidos para celular com formulários e listas adaptados
 - [x] Garantir botões e campos de formulário com tamanho adequado para toque no celular
 - [x] Testar responsividade geral do sistema em viewport mobile
+
+- [x] Criar tabelas no banco para campanhas de marketing, mensagens enviadas e rastreamento de conversões
+- [x] Implementar CRUD de campanhas com título, descrição, produtos em promoção, desconto e imagem/banner
+- [x] Criar geração de banners promocionais por IA integrada ao sistema
+- [x] Implementar disparo em massa de campanhas via links WhatsApp para toda a base de clientes
+- [x] Criar sistema de rastreamento de conversões vinculando campanhas a pedidos realizados
+- [x] Criar dashboard de métricas de campanhas com taxa de conversão, ROI e análise de performance
+- [x] Adicionar menu Marketing na navegação do sistema
+- [x] Escrever testes vitest para o módulo de marketing

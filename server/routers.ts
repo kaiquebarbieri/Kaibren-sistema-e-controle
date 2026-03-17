@@ -6,27 +6,42 @@ import { notifyOwner } from "./_core/notification";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { systemRouter } from "./_core/systemRouter";
 import {
+  addCampaignProducts,
+  createCampaign,
+  createCampaignMessages,
   createCustomer,
   createOrder,
   createProductUpload,
+  getCampaignById,
+  getCampaignMessageByTrackingCode,
+  getCampaignProducts,
+  getCampaignStats,
   getCustomerById,
+  getCustomersWithPhone,
   getLatestProductUpload,
   getMonthlySummary,
   getOrderWithItems,
   insertOrderItems,
+  listCampaignMessages,
+  listCampaigns,
   listCustomers,
   listOrders,
   listProductUploads,
   listProducts,
+  removeCampaignProducts,
   replaceProducts,
   searchCustomers,
   searchProducts,
+  updateCampaign,
+  updateCampaignMessageStatus,
   updateOrderStatus,
   updateProductPricingById,
   upsertMonthlySnapshot,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
+import { generateImage } from "./_core/imageGeneration";
+import crypto from "crypto";
 
 const decimalString = z.union([z.string(), z.number()]).transform(value => String(value ?? "0"));
 
@@ -140,6 +155,204 @@ function computeOrderTotals(items: z.infer<typeof orderItemInputSchema>[], order
     margemPedido,
   };
 }
+
+/* ── Marketing Router ── */
+
+const campaignInputSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional().nullable(),
+  campaignType: z.enum(["promotional", "launch", "seasonal", "flash_sale", "loyalty"]).default("promotional"),
+  discountLabel: z.string().optional().nullable(),
+  discountPercent: z.union([z.string(), z.number()]).optional().nullable().transform(v => v == null ? null : String(v)),
+  messageTemplate: z.string().optional().nullable(),
+  productIds: z.array(z.number().int().positive()).optional().default([]),
+  promoPrices: z.record(z.string(), z.string()).optional().default({}),
+});
+
+const marketingRouter = router({
+  campaigns: router({
+    list: protectedProcedure.query(async () => {
+      return listCampaigns();
+    }),
+    detail: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const campaign = await getCampaignById(input.id);
+        if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
+        const prods = await getCampaignProducts(input.id);
+        const messages = await listCampaignMessages(input.id);
+        const stats = await getCampaignStats(input.id);
+        return { campaign, products: prods, messages, stats };
+      }),
+    create: protectedProcedure
+      .input(campaignInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        const campaignId = await createCampaign({
+          title: input.title,
+          description: input.description ?? null,
+          campaignType: input.campaignType,
+          discountLabel: input.discountLabel ?? null,
+          discountPercent: input.discountPercent ?? null,
+          messageTemplate: input.messageTemplate ?? null,
+          status: "draft",
+          createdByUserId: ctx.user.id,
+        });
+
+        if (input.productIds.length > 0) {
+          const allProducts = await listProducts(500);
+          const productMap = new Map(allProducts.map(p => [p.id, p]));
+          const campaignProds = input.productIds.map(pid => {
+            const product = productMap.get(pid);
+            return {
+              campaignId,
+              productId: pid,
+              originalPrice: product?.precoFinal ?? "0.0000",
+              promoPrice: input.promoPrices[String(pid)] ?? product?.precoFinal ?? "0.0000",
+            };
+          });
+          await addCampaignProducts(campaignProds);
+        }
+
+        await notifyOwner({
+          title: "Campanha criada",
+          content: `Nova campanha "${input.title}" criada com ${input.productIds.length} produto(s).`,
+        });
+
+        return getCampaignById(campaignId);
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }).merge(campaignInputSchema.partial()))
+      .mutation(async ({ input }) => {
+        const { id, productIds, promoPrices, ...data } = input;
+        await updateCampaign(id, data as any);
+
+        if (productIds && productIds.length > 0) {
+          await removeCampaignProducts(id);
+          const allProducts = await listProducts(500);
+          const productMap = new Map(allProducts.map(p => [p.id, p]));
+          const campaignProds = productIds.map(pid => {
+            const product = productMap.get(pid);
+            return {
+              campaignId: id,
+              productId: pid,
+              originalPrice: product?.precoFinal ?? "0.0000",
+              promoPrice: promoPrices?.[String(pid)] ?? product?.precoFinal ?? "0.0000",
+            };
+          });
+          await addCampaignProducts(campaignProds);
+        }
+
+        return getCampaignById(id);
+      }),
+    generateBanner: protectedProcedure
+      .input(z.object({
+        campaignId: z.number().int().positive(),
+        prompt: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const campaign = await getCampaignById(input.campaignId);
+        if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
+
+        const fullPrompt = `Create a professional promotional banner for a wholesale distributor called "CK Distribuidora". ${input.prompt}. The banner should be vibrant, modern, and suitable for WhatsApp sharing. Include space for product images and pricing. Use bold typography. Brazilian Portuguese text. Style: clean, professional, eye-catching promotional material.`;
+
+        const result = await generateImage({ prompt: fullPrompt });
+
+        await updateCampaign(input.campaignId, {
+          bannerUrl: result.url,
+        });
+
+        return { bannerUrl: result.url };
+      }),
+    sendToCustomers: protectedProcedure
+      .input(z.object({
+        campaignId: z.number().int().positive(),
+        customerIds: z.array(z.number().int().positive()).min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const campaign = await getCampaignById(input.campaignId);
+        if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
+
+        const allCustomers = await listCustomers(500);
+        const customerMap = new Map(allCustomers.map(c => [c.id, c]));
+
+        const messages = input.customerIds.map(cid => {
+          const customer = customerMap.get(cid);
+          if (!customer) return null;
+          const trackingCode = crypto.randomBytes(16).toString("hex");
+          return {
+            campaignId: input.campaignId,
+            customerId: cid,
+            customerName: customer.name,
+            customerPhone: customer.phone ?? null,
+            trackingCode,
+            status: "sent" as const,
+            sentAt: Date.now(),
+          };
+        }).filter(Boolean) as any[];
+
+        await createCampaignMessages(messages);
+
+        await updateCampaign(input.campaignId, {
+          status: "active",
+          sentAt: Date.now(),
+          totalSent: messages.length,
+        });
+
+        await notifyOwner({
+          title: "Campanha enviada",
+          content: `Campanha "${campaign.title}" disparada para ${messages.length} cliente(s).`,
+        });
+
+        return { sent: messages.length, messages };
+      }),
+    trackClick: publicProcedure
+      .input(z.object({ trackingCode: z.string() }))
+      .mutation(async ({ input }) => {
+        const msg = await getCampaignMessageByTrackingCode(input.trackingCode);
+        if (!msg) throw new TRPCError({ code: "NOT_FOUND", message: "Código de rastreamento inválido" });
+
+        if (msg.status === "sent" || msg.status === "delivered") {
+          await updateCampaignMessageStatus(input.trackingCode, "clicked", { clickedAt: Date.now() });
+          const stats = await getCampaignStats(msg.campaignId);
+          await updateCampaign(msg.campaignId, {
+            totalClicked: stats.totalClicked,
+          });
+        }
+
+        return { success: true };
+      }),
+    markConversion: protectedProcedure
+      .input(z.object({
+        trackingCode: z.string(),
+        orderId: z.number().int().positive(),
+        revenue: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const msg = await getCampaignMessageByTrackingCode(input.trackingCode);
+        if (!msg) throw new TRPCError({ code: "NOT_FOUND", message: "Código de rastreamento inválido" });
+
+        await updateCampaignMessageStatus(input.trackingCode, "converted", {
+          convertedOrderId: input.orderId,
+          convertedAt: Date.now(),
+        });
+
+        const stats = await getCampaignStats(msg.campaignId);
+        await updateCampaign(msg.campaignId, {
+          totalConverted: stats.totalConverted,
+        });
+
+        return { success: true };
+      }),
+    customersWithPhone: protectedProcedure.query(async () => {
+      return getCustomersWithPhone();
+    }),
+    stats: protectedProcedure
+      .input(z.object({ campaignId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        return getCampaignStats(input.campaignId);
+      }),
+  }),
+});
 
 export const appRouter = router({
   system: systemRouter,
@@ -513,6 +726,7 @@ export const appRouter = router({
       return months;
     }),
   }),
+  marketing: marketingRouter,
 });
 
 export type AppRouter = typeof appRouter;
