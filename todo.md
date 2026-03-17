@@ -106,3 +106,7 @@
 - [x] Permitir edição livre das mensagens geradas antes do envio
 - [x] Integrar disparo direto pelo WhatsApp Web abrindo conversa individual para cada cliente
 - [x] Atualizar testes vitest para o novo fluxo de marketing
+- [x] Corrigir disparo WhatsApp Web para enviar exatamente o texto escrito pelo usuário na mensagem
+- [x] Garantir que o banner/imagem subido apareça corretamente na campanha
+- [x] Simplificar criação de campanha como controle interno (nome, tipo, desconto, produtos)
+- [x] Dentro da campanha: subir banner, escrever/gerar mensagem, escolher clientes e disparar

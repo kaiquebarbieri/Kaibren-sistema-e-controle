@@ -48,7 +48,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-type ViewMode = "list" | "create" | "detail" | "send";
+type ViewMode = "list" | "detail";
 
 const campaignTypeLabels: Record<string, string> = {
   promotional: "Promoção",
@@ -126,15 +126,6 @@ export default function Marketing() {
               setViewMode("list");
               setSelectedCampaignId(null);
             }}
-            onSend={() => setViewMode("send")}
-          />
-        )}
-
-        {viewMode === "send" && selectedCampaignId && (
-          <SendCampaign
-            campaignId={selectedCampaignId}
-            onBack={() => setViewMode("detail")}
-            onSent={() => setViewMode("detail")}
           />
         )}
 
@@ -279,10 +270,10 @@ function CampaignList({
                         <p className="mt-1 text-xs text-muted-foreground line-clamp-1">{campaign.description}</p>
                       )}
                       {campaign.discountLabel && (
-                        <p className="mt-1 text-xs font-medium text-orange-600">{campaign.discountLabel}</p>
+                        <p className="mt-0.5 text-xs font-medium text-green-600">{campaign.discountLabel}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                       <div className="flex items-center gap-1">
                         <Send className="h-3 w-3" />
                         <span>{campaign.totalSent}</span>
@@ -380,13 +371,13 @@ function CreateCampaignDialog({
             Nova Campanha
           </DialogTitle>
           <DialogDescription>
-            Configure os dados básicos. Depois você monta a mensagem e sobe o banner.
+            Configure os dados básicos da campanha para seu controle. Depois você monta a mensagem e sobe o banner.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Título da campanha *</Label>
+            <Label>Nome da campanha *</Label>
             <Input
               placeholder="Ex: Promoção de Março - 20% OFF"
               value={title}
@@ -411,7 +402,7 @@ function CreateCampaignDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Descrição</Label>
+            <Label>Descrição (para seu controle)</Label>
             <Textarea
               placeholder="Descreva a campanha..."
               value={description}
@@ -421,7 +412,7 @@ function CreateCampaignDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Texto da promoção</Label>
+            <Label>Promoção / Desconto</Label>
             <Input
               placeholder="Ex: 20% OFF em toda linha, Compre 2 leve 3"
               value={discountLabel}
@@ -487,26 +478,33 @@ function CreateCampaignDialog({
   );
 }
 
-/* ── Campaign Detail ── */
+/* ── Campaign Detail (Banner + Message + Send - all in one) ── */
 
 function CampaignDetail({
   campaignId,
   onBack,
-  onSend,
 }: {
   campaignId: number;
   onBack: () => void;
-  onSend: () => void;
 }) {
   const { data, isLoading, refetch } = trpc.marketing.campaigns.detail.useQuery({ id: campaignId });
   const { data: strategies } = trpc.marketing.campaigns.strategies.useQuery();
   const { data: allProducts } = trpc.products.list.useQuery();
+  const { data: allCustomers, isLoading: loadingCustomers } = trpc.customers.list.useQuery();
 
   const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
   const [editingMessage, setEditingMessage] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [showStrategyPicker, setShowStrategyPicker] = useState(false);
+
+  // Send state
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectAll, setSelectAll] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [sendingIndex, setSendingIndex] = useState(-1);
+  const [sentIds, setSentIds] = useState<Set<number>>(new Set());
+  const [showSendSection, setShowSendSection] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -536,10 +534,22 @@ function CampaignDetail({
     onError: (err: { message: string }) => toast.error(err.message),
   });
 
+  const sendMutation = trpc.marketing.campaigns.sendToCustomers.useMutation({
+    onError: (err: { message: string }) => toast.error(err.message),
+  });
+
   const productMap = useMemo(() => {
     if (!allProducts) return new Map<number, any>();
     return new Map(allProducts.map(p => [p.id, p] as [number, any]));
   }, [allProducts]);
+
+  const filteredCustomers = useMemo(() => {
+    const available = allCustomers ?? [];
+    const searchLower = customerSearch.toLowerCase();
+    return available.filter(c =>
+      !customerSearch || c.name.toLowerCase().includes(searchLower) || c.phone?.includes(customerSearch)
+    );
+  }, [allCustomers, customerSearch]);
 
   if (isLoading) {
     return (
@@ -554,6 +564,9 @@ function CampaignDetail({
   const { campaign, products: campaignProds, messages, stats } = data;
   const conversionRate = stats.totalSent > 0 ? stats.totalConverted / stats.totalSent : 0;
   const clickRate = stats.totalSent > 0 ? stats.totalClicked / stats.totalSent : 0;
+
+  // Get the final message text to send - use saved template from campaign
+  const currentMessage = campaign.messageTemplate || "";
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -580,8 +593,6 @@ function CampaignDetail({
       });
     };
     reader.readAsDataURL(file);
-
-    // Reset input
     e.target.value = "";
   }
 
@@ -601,26 +612,111 @@ function CampaignDetail({
     });
   }
 
+  // Build WhatsApp Web URL with the EXACT message text saved in the campaign
   function buildWhatsAppUrl(customerName: string, phone: string) {
-    let msg = campaign.messageTemplate || `Olá ${customerName}! 🔥 Promoção CK Distribuidora!\n\n`;
+    // Start with the saved message template
+    let msg = currentMessage;
 
-    msg = msg.replace("{nome}", customerName);
+    // If no message saved, use a simple default
+    if (!msg.trim()) {
+      msg = `Olá ${customerName}! Confira nossa promoção!`;
+    }
 
-    if (campaignProds.length > 0) {
+    // Replace {nome} with the actual customer name
+    msg = msg.replace(/\{nome\}/g, customerName);
+
+    // Replace {produtos} with the product list if available
+    if (campaignProds.length > 0 && msg.includes("{produtos}")) {
       const productList = campaignProds.map(cp => {
         const product = productMap.get(cp.productId);
         const name = product?.titulo ?? `Produto #${cp.productId}`;
         const price = formatCurrency(cp.promoPrice ?? cp.originalPrice);
         return `• ${name} - ${price}`;
       }).join("\n");
-      msg = msg.replace("{produtos}", productList);
+      msg = msg.replace(/\{produtos\}/g, productList);
     }
 
+    // Build the WhatsApp Web URL
     const encoded = encodeURIComponent(msg);
     const cleanPhone = phone.replace(/\D/g, "");
     const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
     return `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encoded}`;
   }
+
+  function handleSelectAll() {
+    if (selectAll) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredCustomers.map(c => c.id));
+    }
+    setSelectAll(!selectAll);
+  }
+
+  function toggleCustomer(id: number) {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
+  }
+
+  async function handleStartSending() {
+    if (selectedIds.length === 0) {
+      toast.error("Selecione pelo menos um cliente");
+      return;
+    }
+
+    if (!currentMessage.trim()) {
+      toast.error("Escreva ou gere uma mensagem antes de disparar");
+      return;
+    }
+
+    const customersWithPhone = filteredCustomers.filter(
+      c => selectedIds.includes(c.id) && c.phone
+    );
+
+    if (customersWithPhone.length === 0) {
+      toast.error("Nenhum cliente selecionado tem telefone cadastrado");
+      return;
+    }
+
+    // Register in the database
+    await sendMutation.mutateAsync({ campaignId, customerIds: selectedIds });
+
+    toast.success(`Campanha registrada! Abrindo WhatsApp Web para ${customersWithPhone.length} cliente(s)...`);
+
+    // Open first customer immediately
+    if (customersWithPhone[0]) {
+      const url = buildWhatsAppUrl(customersWithPhone[0].name, customersWithPhone[0].phone!);
+      window.open(url, "_blank");
+      setSentIds(prev => { const s = new Set(prev); s.add(customersWithPhone[0].id); return s; });
+      setSendingIndex(0);
+    }
+  }
+
+  function handleSendNext() {
+    const customersWithPhone = filteredCustomers.filter(
+      c => selectedIds.includes(c.id) && c.phone
+    );
+
+    const nextIndex = sendingIndex + 1;
+
+    if (nextIndex >= customersWithPhone.length) {
+      toast.success("Todos os clientes foram enviados!");
+      setSendingIndex(-1);
+      refetch();
+      return;
+    }
+
+    const customer = customersWithPhone[nextIndex];
+    const url = buildWhatsAppUrl(customer.name, customer.phone!);
+    window.open(url, "_blank");
+    setSentIds(prev => { const s = new Set(prev); s.add(customer.id); return s; });
+    setSendingIndex(nextIndex);
+  }
+
+  const customersWithPhone = filteredCustomers.filter(
+    c => selectedIds.includes(c.id) && c.phone
+  );
+  const isSending = sendingIndex >= 0;
 
   return (
     <>
@@ -638,6 +734,9 @@ function CampaignDetail({
           </div>
           {campaign.description && (
             <p className="mt-0.5 text-sm text-muted-foreground line-clamp-1">{campaign.description}</p>
+          )}
+          {campaign.discountLabel && (
+            <p className="mt-0.5 text-xs font-medium text-green-600">{campaign.discountLabel}</p>
           )}
         </div>
       </div>
@@ -684,12 +783,15 @@ function CampaignDetail({
         </Card>
       </div>
 
-      {/* Banner Upload Section */}
+      {/* STEP 1: Banner Upload */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <ImagePlus className="h-4 w-4 text-primary" />
-            Banner / Criativo
+            <span className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">1</span>
+              Banner / Criativo
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -759,13 +861,16 @@ function CampaignDetail({
         </CardContent>
       </Card>
 
-      {/* Message Section with AI Generation */}
+      {/* STEP 2: Message */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <MessageCircle className="h-4 w-4 text-green-600" />
-              Mensagem WhatsApp
+              <span className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-[10px] font-bold text-white">2</span>
+                Mensagem WhatsApp
+              </span>
             </CardTitle>
             <div className="flex gap-2">
               {!editingMessage && campaign.messageTemplate && (
@@ -786,7 +891,7 @@ function CampaignDetail({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Strategy Picker */}
+          {/* Strategy Picker for AI generation */}
           {!editingMessage && (
             <div className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -798,6 +903,19 @@ function CampaignDetail({
                   <Wand2 className="h-4 w-4 text-primary" />
                   Gerar mensagem com IA
                 </Button>
+                {!campaign.messageTemplate && (
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      setMessageText("");
+                      setEditingMessage(true);
+                    }}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Escrever manualmente
+                  </Button>
+                )}
               </div>
 
               {showStrategyPicker && strategies && (
@@ -849,7 +967,7 @@ function CampaignDetail({
             </div>
           )}
 
-          {/* Message Display / Editor */}
+          {/* Message Editor */}
           {editingMessage ? (
             <div className="space-y-3">
               <div className="space-y-1">
@@ -858,7 +976,7 @@ function CampaignDetail({
                   Edite a mensagem como quiser
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Use {"{nome}"} para o nome do cliente e {"{produtos}"} para a lista de produtos.
+                  Use {"{nome}"} para o nome do cliente e {"{produtos}"} para a lista de produtos. O texto será enviado exatamente como você escrever.
                 </p>
               </div>
               <Textarea
@@ -866,11 +984,12 @@ function CampaignDetail({
                 onChange={e => setMessageText(e.target.value)}
                 rows={8}
                 className="font-mono text-sm"
+                placeholder="Escreva aqui a mensagem que será enviada no WhatsApp..."
               />
               <div className="flex gap-2">
                 <Button
                   onClick={handleSaveMessage}
-                  disabled={updateMutation.isPending}
+                  disabled={updateMutation.isPending || !messageText.trim()}
                   className="gap-2"
                 >
                   {updateMutation.isPending ? (
@@ -889,14 +1008,20 @@ function CampaignDetail({
               </div>
             </div>
           ) : campaign.messageTemplate ? (
-            <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-3 sm:p-4">
-              <p className="whitespace-pre-wrap text-sm text-foreground">{campaign.messageTemplate}</p>
+            <div className="space-y-2">
+              <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-3 sm:p-4 border border-green-200 dark:border-green-800">
+                <p className="whitespace-pre-wrap text-sm text-foreground">{campaign.messageTemplate}</p>
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Check className="h-3 w-3 text-green-600" />
+                Esta é a mensagem que será enviada no WhatsApp (com o nome do cliente substituído automaticamente)
+              </p>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed py-6 text-center">
               <MessageCircle className="mx-auto h-8 w-8 text-muted-foreground/30" />
               <p className="mt-2 text-sm text-muted-foreground">
-                Nenhuma mensagem configurada. Use a IA para gerar uma mensagem profissional.
+                Nenhuma mensagem configurada. Use a IA para gerar ou escreva manualmente.
               </p>
             </div>
           )}
@@ -944,15 +1069,189 @@ function CampaignDetail({
         </Card>
       )}
 
-      {/* Send Button */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-        <Button onClick={onSend} className="gap-2 w-full sm:w-auto" size="lg">
-          <Send className="h-4 w-4" />
-          Disparar para Clientes
-        </Button>
-      </div>
+      {/* STEP 3: Send to Customers */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Send className="h-4 w-4 text-blue-600" />
+              <span className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">3</span>
+                Disparar para Clientes
+              </span>
+            </CardTitle>
+            {!showSendSection && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSendSection(true)}
+                className="gap-2"
+                disabled={!currentMessage.trim()}
+              >
+                <Users className="h-3.5 w-3.5" />
+                Selecionar clientes
+              </Button>
+            )}
+          </div>
+          {!currentMessage.trim() && (
+            <p className="text-xs text-amber-600 mt-1">
+              Configure a mensagem no passo 2 antes de disparar.
+            </p>
+          )}
+        </CardHeader>
 
-      {/* Messages Sent - with WhatsApp Web links */}
+        {showSendSection && (
+          <CardContent className="space-y-3">
+            {/* Sending Progress */}
+            {isSending && (
+              <div className="rounded-lg border-green-200 bg-green-50 dark:bg-green-950/20 p-4 border">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
+                    <Send className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground">
+                      Enviando... {sendingIndex + 1} de {customersWithPhone.length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Envie a mensagem no WhatsApp Web e clique em "Próximo cliente"
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  {sendingIndex + 1 < customersWithPhone.length ? (
+                    <Button onClick={handleSendNext} className="gap-2">
+                      <Send className="h-4 w-4" />
+                      Próximo cliente ({sendingIndex + 2}/{customersWithPhone.length})
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => {
+                        toast.success(`${sendingIndex + 1} mensagem(ns) enviada(s)!`);
+                        setSendingIndex(-1);
+                        refetch();
+                      }}
+                      className="gap-2"
+                    >
+                      <Check className="h-4 w-4" />
+                      Concluir envio
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      toast.success(`${sendingIndex + 1} mensagem(ns) enviada(s)!`);
+                      setSendingIndex(-1);
+                      refetch();
+                    }}
+                  >
+                    Finalizar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Preview of message that will be sent */}
+            {currentMessage.trim() && !isSending && (
+              <div className="rounded-lg bg-muted/30 p-3 border">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Mensagem que será enviada:</p>
+                <p className="whitespace-pre-wrap text-xs text-foreground line-clamp-3">{currentMessage}</p>
+              </div>
+            )}
+
+            {/* Customer selection */}
+            {!isSending && (
+              <>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-medium text-foreground">
+                    {selectedIds.length} de {filteredCustomers.length} selecionados
+                  </p>
+                  <Button variant="outline" size="sm" onClick={handleSelectAll}>
+                    {selectAll ? "Desmarcar todos" : "Selecionar todos"}
+                  </Button>
+                </div>
+
+                <Input
+                  placeholder="Buscar cliente por nome ou telefone..."
+                  value={customerSearch}
+                  onChange={e => setCustomerSearch(e.target.value)}
+                />
+
+                {loadingCustomers ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredCustomers.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Users className="h-10 w-10 text-muted-foreground/30" />
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Nenhum cliente encontrado. Cadastre clientes primeiro.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto rounded-md border">
+                    {filteredCustomers.map(customer => {
+                      const isSelected = selectedIds.includes(customer.id);
+                      const hasPhone = !!customer.phone;
+                      const wasSent = sentIds.has(customer.id);
+                      return (
+                        <button
+                          key={customer.id}
+                          onClick={() => toggleCustomer(customer.id)}
+                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/50 border-b last:border-b-0 ${
+                            isSelected ? "bg-primary/5" : ""
+                          } ${wasSent ? "bg-green-50 dark:bg-green-950/10" : ""}`}
+                        >
+                          <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                            isSelected ? "border-primary bg-primary text-primary-foreground" : "border-input"
+                          }`}>
+                            {isSelected && <Check className="h-3 w-3" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{customer.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {customer.phone ?? "Sem telefone"}
+                              {customer.city ? ` • ${customer.city}` : ""}
+                            </p>
+                          </div>
+                          {wasSent ? (
+                            <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 shrink-0">Enviado</Badge>
+                          ) : hasPhone ? (
+                            <MessageCircle className="h-4 w-4 shrink-0 text-green-500" />
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] shrink-0">Sem WhatsApp</Badge>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    {filteredCustomers.filter(c => c.phone).length} cliente(s) com telefone cadastrado
+                  </p>
+                  <Button
+                    onClick={handleStartSending}
+                    disabled={sendMutation.isPending || selectedIds.length === 0 || isSending || !currentMessage.trim()}
+                    className="gap-2 w-full sm:w-auto"
+                    size="lg"
+                  >
+                    {sendMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Disparar via WhatsApp Web ({selectedIds.length})
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Messages Sent History */}
       {messages.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -981,7 +1280,7 @@ function CampaignDetail({
                         const url = buildWhatsAppUrl(msg.customerName, msg.customerPhone!);
                         window.open(url, "_blank");
                       }}
-                      title="Abrir no WhatsApp Web"
+                      title="Reenviar no WhatsApp Web"
                     >
                       <MessageCircle className="h-4 w-4 text-green-600" />
                     </Button>
@@ -992,287 +1291,6 @@ function CampaignDetail({
           </CardContent>
         </Card>
       )}
-    </>
-  );
-}
-
-/* ── Send Campaign ── */
-
-function SendCampaign({
-  campaignId,
-  onBack,
-  onSent,
-}: {
-  campaignId: number;
-  onBack: () => void;
-  onSent: () => void;
-}) {
-  const { data: campaign } = trpc.marketing.campaigns.detail.useQuery({ id: campaignId });
-  const { data: allCustomers, isLoading: loadingCustomers } = trpc.customers.list.useQuery();
-  const { data: allProducts } = trpc.products.list.useQuery();
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [selectAll, setSelectAll] = useState(false);
-  const [search, setSearch] = useState("");
-  const [sendingIndex, setSendingIndex] = useState(-1);
-  const [sentIds, setSentIds] = useState<Set<number>>(new Set());
-
-  const sendMutation = trpc.marketing.campaigns.sendToCustomers.useMutation({
-    onSuccess: () => {
-      // Don't show toast here, we show per-customer
-    },
-    onError: (err: { message: string }) => toast.error(err.message),
-  });
-
-  const productMap = useMemo(() => {
-    if (!allProducts) return new Map<number, any>();
-    return new Map(allProducts.map(p => [p.id, p] as [number, any]));
-  }, [allProducts]);
-
-  const filteredCustomers = useMemo(() => {
-    const available = allCustomers ?? [];
-    const searchLower = search.toLowerCase();
-    return available.filter(c =>
-      !search || c.name.toLowerCase().includes(searchLower) || c.phone?.includes(search)
-    );
-  }, [allCustomers, search]);
-
-  const handleSelectAll = useCallback(() => {
-    if (selectAll) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filteredCustomers.map(c => c.id));
-    }
-    setSelectAll(!selectAll);
-  }, [selectAll, filteredCustomers]);
-
-  function toggleCustomer(id: number) {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    );
-  }
-
-  function buildWhatsAppUrl(customerName: string, phone: string) {
-    const campaignData = campaign?.campaign;
-    const campaignProds = campaign?.products ?? [];
-
-    let msg = campaignData?.messageTemplate || `Olá ${customerName}! 🔥 Promoção CK Distribuidora!\n\n`;
-
-    msg = msg.replace("{nome}", customerName);
-
-    if (campaignProds.length > 0) {
-      const productList = campaignProds.map(cp => {
-        const product = productMap.get(cp.productId);
-        const name = product?.titulo ?? `Produto #${cp.productId}`;
-        const price = formatCurrency(cp.promoPrice ?? cp.originalPrice);
-        return `• ${name} - ${price}`;
-      }).join("\n");
-      msg = msg.replace("{produtos}", productList);
-    }
-
-    const encoded = encodeURIComponent(msg);
-    const cleanPhone = phone.replace(/\D/g, "");
-    const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
-    return `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encoded}`;
-  }
-
-  async function handleSendAll() {
-    if (selectedIds.length === 0) {
-      toast.error("Selecione pelo menos um cliente");
-      return;
-    }
-
-    // First register in the database
-    await sendMutation.mutateAsync({ campaignId, customerIds: selectedIds });
-
-    // Then open WhatsApp Web for each customer with phone
-    const customersToSend = filteredCustomers.filter(
-      c => selectedIds.includes(c.id) && c.phone
-    );
-
-    if (customersToSend.length === 0) {
-      toast.error("Nenhum cliente selecionado tem telefone cadastrado");
-      return;
-    }
-
-    toast.success(`Campanha registrada! Abrindo WhatsApp Web para ${customersToSend.length} cliente(s)...`);
-
-    // Open first customer immediately
-    if (customersToSend[0]) {
-      const url = buildWhatsAppUrl(customersToSend[0].name, customersToSend[0].phone!);
-      window.open(url, "_blank");
-      setSentIds(prev => { const s = new Set(prev); s.add(customersToSend[0].id); return s; });
-      setSendingIndex(0);
-    }
-  }
-
-  function handleSendNext(index: number) {
-    const customersToSend = filteredCustomers.filter(
-      c => selectedIds.includes(c.id) && c.phone
-    );
-
-    if (index >= customersToSend.length) {
-      toast.success("Todos os clientes foram enviados!");
-      onSent();
-      return;
-    }
-
-    const customer = customersToSend[index];
-    const url = buildWhatsAppUrl(customer.name, customer.phone!);
-    window.open(url, "_blank");
-    setSentIds(prev => { const s = new Set(prev); s.add(customer.id); return s; });
-    setSendingIndex(index);
-  }
-
-  const customersToSend = filteredCustomers.filter(
-    c => selectedIds.includes(c.id) && c.phone
-  );
-  const isSending = sendingIndex >= 0;
-
-  return (
-    <>
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-            Disparar Campanha
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Selecione os clientes e envie direto pelo WhatsApp Web.
-          </p>
-        </div>
-      </div>
-
-      {/* Sending Progress */}
-      {isSending && (
-        <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-                <Send className="h-5 w-5 text-green-600" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-foreground">
-                  Enviando... {sendingIndex + 1} de {customersToSend.length}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Envie a mensagem no WhatsApp Web e clique em "Próximo cliente"
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Button
-                onClick={() => handleSendNext(sendingIndex + 1)}
-                className="gap-2"
-                disabled={sendingIndex + 1 >= customersToSend.length}
-              >
-                <Send className="h-4 w-4" />
-                Próximo cliente ({sendingIndex + 2}/{customersToSend.length})
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  toast.success(`${sendingIndex + 1} mensagem(ns) enviada(s)!`);
-                  onSent();
-                }}
-              >
-                Finalizar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="h-4 w-4 text-primary" />
-              Clientes ({selectedIds.length} de {filteredCustomers.length} selecionados)
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={handleSelectAll}>
-              {selectAll ? "Desmarcar todos" : "Selecionar todos"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            placeholder="Buscar cliente por nome ou telefone..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-
-          {loadingCustomers ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredCustomers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Users className="h-10 w-10 text-muted-foreground/30" />
-              <p className="mt-2 text-sm text-muted-foreground">
-                Nenhum cliente encontrado. Cadastre clientes primeiro.
-              </p>
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto rounded-md border">
-              {filteredCustomers.map(customer => {
-                const isSelected = selectedIds.includes(customer.id);
-                const hasPhone = !!customer.phone;
-                const wasSent = sentIds.has(customer.id);
-                return (
-                  <button
-                    key={customer.id}
-                    onClick={() => toggleCustomer(customer.id)}
-                    className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/50 border-b last:border-b-0 ${
-                      isSelected ? "bg-primary/5" : ""
-                    } ${wasSent ? "bg-green-50 dark:bg-green-950/10" : ""}`}
-                  >
-                    <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-                      isSelected ? "border-primary bg-primary text-primary-foreground" : "border-input"
-                    }`}>
-                      {isSelected && <Check className="h-3 w-3" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{customer.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {customer.phone ?? "Sem telefone"}
-                        {customer.city ? ` • ${customer.city}` : ""}
-                      </p>
-                    </div>
-                    {wasSent ? (
-                      <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 shrink-0">Enviado</Badge>
-                    ) : hasPhone ? (
-                      <MessageCircle className="h-4 w-4 shrink-0 text-green-500" />
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] shrink-0">Sem WhatsApp</Badge>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center pt-2">
-            <p className="text-xs text-muted-foreground">
-              {filteredCustomers.filter(c => c.phone).length} cliente(s) com telefone cadastrado
-            </p>
-            <Button
-              onClick={handleSendAll}
-              disabled={sendMutation.isPending || selectedIds.length === 0 || isSending}
-              className="gap-2 w-full sm:w-auto"
-              size="lg"
-            >
-              {sendMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Disparar para {selectedIds.length} cliente(s)
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </>
   );
 }

@@ -78,8 +78,8 @@ describe("Marketing Campaign Logic", () => {
   describe("Message template variable replacement", () => {
     function replaceTemplateVars(template: string, customerName: string, productList: string) {
       let msg = template;
-      msg = msg.replace("{nome}", customerName);
-      msg = msg.replace("{produtos}", productList);
+      msg = msg.replace(/\{nome\}/g, customerName);
+      msg = msg.replace(/\{produtos\}/g, productList);
       return msg;
     }
 
