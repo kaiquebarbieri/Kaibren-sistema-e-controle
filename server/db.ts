@@ -1,4 +1,4 @@
-import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   campaignMessages,
@@ -449,4 +449,43 @@ export async function getMonthlySummary(periodYear?: number, periodMonth?: numbe
     totalLucro: "0.0000",
     margemMedia: "0.000000",
   };
+}
+
+export async function getCustomerRanking(periodYear: number, periodMonth: number, limit = 10) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select({
+      customerId: orders.customerId,
+      customerName: orders.customerName,
+      totalPedidos: sql<number>`count(*)`,
+      totalCompras: sql<string>`coalesce(sum(${orders.totalCliente}), 0)`,
+      totalLucro: sql<string>`coalesce(sum(${orders.totalLucro}), 0)`,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.periodYear, periodYear),
+        eq(orders.periodMonth, periodMonth),
+        eq(orders.orderType, "customer"),
+        isNotNull(orders.customerId),
+      )
+    )
+    .groupBy(orders.customerId, orders.customerName)
+    .orderBy(sql`sum(${orders.totalCliente}) desc`)
+    .limit(limit);
+
+  return rows;
+}
+
+export async function countCustomers() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(customers);
+
+  return rows[0]?.count ?? 0;
 }

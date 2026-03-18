@@ -11,12 +11,17 @@ import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
   ChevronRight,
+  Crown,
+  DollarSign,
   Loader2,
   MapPin,
   Mail,
   Phone,
   FileText,
   Search,
+  ShoppingBag,
+  Trophy,
+  TrendingUp,
   UserPlus,
   Users,
   X,
@@ -98,9 +103,20 @@ export default function Customers() {
   const [customerForm, setCustomerForm] = useState<CustomerForm>(() => createEmptyCustomerForm());
   const [view, setView] = useState<View>("list");
 
+  const now = useMemo(() => new Date(), []);
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
   const customersQuery = trpc.customers.search.useQuery({
     query: customerSearch,
     limit: 100,
+  });
+
+  const countQuery = trpc.customers.count.useQuery();
+  const rankingQuery = trpc.customers.ranking.useQuery({
+    periodYear: currentYear,
+    periodMonth: currentMonth,
+    limit: 5,
   });
 
   const createCustomerMutation = trpc.customers.create.useMutation({
@@ -211,6 +227,86 @@ export default function Customers() {
             Novo cliente
           </Button>
         </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <Users className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Total clientes</p>
+                  <p className="text-lg sm:text-xl font-bold text-foreground">{countQuery.data ?? customers.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+                  <ShoppingBag className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Compraram este mês</p>
+                  <p className="text-lg sm:text-xl font-bold text-foreground">{rankingQuery.data?.length ?? 0}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Ranking */}
+        {(rankingQuery.data?.length ?? 0) > 0 && (
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Trophy className="h-4 w-4 text-amber-500" />
+                <h3 className="text-xs sm:text-sm font-semibold text-foreground">Ranking do mês</h3>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 ml-auto">
+                  {new Date().toLocaleString("pt-BR", { month: "long" }).replace(/^./, c => c.toUpperCase())}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {rankingQuery.data?.map((r: any, i: number) => {
+                  const medalColors = [
+                    "bg-amber-500/15 text-amber-600 border-amber-500/20",
+                    "bg-slate-400/15 text-slate-500 border-slate-400/20",
+                    "bg-orange-600/15 text-orange-600 border-orange-600/20",
+                  ];
+                  const medalColor = i < 3 ? medalColors[i] : "bg-muted text-muted-foreground border-border/60";
+                  return (
+                    <div
+                      key={r.customerId}
+                      className="flex items-center gap-3 rounded-xl bg-muted/30 p-2.5 sm:p-3"
+                    >
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${medalColor}`}>
+                        {i === 0 ? <Crown className="h-3.5 w-3.5" /> : i + 1}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">{r.customerName}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">
+                          {r.totalPedidos} pedido{r.totalPedidos > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-bold text-emerald-600">
+                          {Number(r.totalCompras).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 justify-end">
+                          <TrendingUp className="h-3 w-3" />
+                          Lucro: {Number(r.totalLucro).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search */}
         <div className="relative">

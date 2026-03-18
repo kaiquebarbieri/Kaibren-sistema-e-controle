@@ -366,8 +366,7 @@ export default function Dashboard() {
             ) : (
               <div
                 ref={chartContainerRef}
-                style={{ position: "relative", width: "100%", minHeight: 240, height: "auto", aspectRatio: "auto" }}
-                className="h-[260px] sm:h-[340px]"
+                className="relative w-full h-[260px] sm:h-[340px]"
               />
             )}
           </CardContent>

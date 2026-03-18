@@ -118,3 +118,6 @@
 - [x] Corrigir gráfico do Dashboard para aparecer corretamente no celular
 - [x] Corrigir gráfico do Dashboard que não renderiza no mobile publicado
 - [x] Redesenhar página de cadastro de clientes com design moderno, bonito e intuitivo para cadastro rápido
+- [x] Corrigir gráfico do Dashboard que sumiu após alterações na página de Clientes
+- [x] Adicionar contador de clientes cadastrados na página de Clientes
+- [x] Adicionar ranking de clientes que mais compraram no mês na página de Clientes

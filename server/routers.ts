@@ -38,6 +38,8 @@ import {
   updateOrderStatus,
   updateProductPricingById,
   upsertMonthlySnapshot,
+  getCustomerRanking,
+  countCustomers,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
@@ -625,6 +627,14 @@ export const appRouter = router({
 
         return created;
       }),
+    ranking: protectedProcedure
+      .input(z.object({ periodYear: z.number().int(), periodMonth: z.number().int().min(1).max(12), limit: z.number().int().min(1).max(50).default(10) }))
+      .query(async ({ input }) => {
+        return getCustomerRanking(input.periodYear, input.periodMonth, input.limit);
+      }),
+    count: protectedProcedure.query(async () => {
+      return countCustomers();
+    }),
   }),
   orders: router({
     simulate: protectedProcedure
