@@ -11,14 +11,24 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  Building2,
   DollarSign,
   Loader2,
   ShoppingBag,
+  Trophy,
   TrendingUp,
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
+
+const CNPJ_COLORS = [
+  { bg: "rgba(16, 185, 129, 0.7)", border: "rgb(16, 185, 129)" },
+  { bg: "rgba(59, 130, 246, 0.7)", border: "rgb(59, 130, 246)" },
+  { bg: "rgba(249, 115, 22, 0.7)", border: "rgb(249, 115, 22)" },
+  { bg: "rgba(168, 85, 247, 0.7)", border: "rgb(168, 85, 247)" },
+  { bg: "rgba(236, 72, 153, 0.7)", border: "rgb(236, 72, 153)" },
+];
 
 /* ── Helpers ───────────────────────────────────────── */
 
@@ -47,9 +57,19 @@ export default function Dashboard() {
   });
 
   const evolutionQuery = trpc.dashboard.yearlyEvolution.useQuery();
+  const cnpjRankingQuery = trpc.myCnpjs.ranking.useQuery({
+    periodYear: Number(selectedYear),
+    periodMonth: Number(selectedMonth),
+  });
+  const cnpjEvolutionQuery = trpc.myCnpjs.evolution.useQuery({ periodYear: Number(selectedYear) });
 
   const monthly = dashboardQuery.data;
   const evolution = evolutionQuery.data;
+  const cnpjRanking = cnpjRankingQuery.data;
+  const cnpjEvolution = cnpjEvolutionQuery.data;
+
+  const cnpjChartContainerRef = useRef<HTMLDivElement | null>(null);
+  const cnpjChartInstanceRef = useRef<Chart | null>(null);
 
   /* ── Métricas calculadas ─────────────────────────── */
 
@@ -195,10 +215,123 @@ export default function Dashboard() {
   useEffect(() => {
     const handleResize = () => {
       buildChart();
+      buildCnpjChart();
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [buildChart]);
+
+  /* ── CNPJ Evolution Chart ─────────────────────── */
+
+  const buildCnpjChart = useCallback(() => {
+    if (!cnpjChartContainerRef.current || !cnpjEvolution || cnpjEvolution.length === 0) return;
+
+    if (cnpjChartInstanceRef.current) {
+      cnpjChartInstanceRef.current.destroy();
+      cnpjChartInstanceRef.current = null;
+    }
+
+    const container = cnpjChartContainerRef.current;
+    container.innerHTML = "";
+    const canvas = document.createElement("canvas");
+    container.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const isMobileView = window.innerWidth < 768;
+    const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const labels = Array.from({ length: currentMonth }, (_, i) => monthNames[i]);
+
+    // Group data by CNPJ
+    const cnpjMap = new Map<number, { name: string; data: number[] }>();
+    cnpjEvolution.forEach((row: any) => {
+      const id = row.cnpjId as number;
+      if (!cnpjMap.has(id)) {
+        cnpjMap.set(id, {
+          name: (row.nomeFantasia || row.razaoSocial || "CNPJ") as string,
+          data: new Array(currentMonth).fill(0),
+        });
+      }
+      const entry = cnpjMap.get(id)!;
+      const monthIdx = (row.periodMonth as number) - 1;
+      if (monthIdx >= 0 && monthIdx < currentMonth) {
+        entry.data[monthIdx] = Number(row.totalCompras);
+      }
+    });
+
+    const datasets = Array.from(cnpjMap.entries()).map(([_, entry], idx) => ({
+      label: entry.name,
+      data: entry.data,
+      backgroundColor: CNPJ_COLORS[idx % CNPJ_COLORS.length].bg,
+      borderColor: CNPJ_COLORS[idx % CNPJ_COLORS.length].border,
+      borderWidth: 2,
+      borderRadius: 4,
+      tension: 0.3,
+      fill: false,
+    }));
+
+    cnpjChartInstanceRef.current = new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: {
+            position: isMobileView ? "bottom" : "top",
+            labels: {
+              usePointStyle: true,
+              pointStyle: "circle",
+              padding: isMobileView ? 8 : 16,
+              font: { size: isMobileView ? 10 : 13, weight: "bold" as const },
+            },
+          },
+          tooltip: {
+            backgroundColor: "rgba(0,0,0,0.85)",
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: (context: any) => {
+                const value = Number(context.raw ?? 0);
+                return `${context.dataset.label}: ${value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: isMobileView ? 9 : 11 } },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(0,0,0,0.06)" },
+            ticks: {
+              font: { size: isMobileView ? 9 : 11 },
+              callback: (value: any) => {
+                const num = Number(value);
+                if (num >= 1000) return `R$ ${(num / 1000).toFixed(0)}k`;
+                return `R$ ${num}`;
+              },
+            },
+          },
+        },
+      },
+    });
+  }, [cnpjEvolution]);
+
+  useEffect(() => {
+    buildCnpjChart();
+    return () => {
+      if (cnpjChartInstanceRef.current) {
+        cnpjChartInstanceRef.current.destroy();
+        cnpjChartInstanceRef.current = null;
+      }
+    };
+  }, [buildCnpjChart]);
 
   /* ── Render ────────────────────────────────────── */
 
@@ -356,7 +489,7 @@ export default function Dashboard() {
             <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
               <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" /> Evolução mês a mês
             </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Vendas, lucro e compras de 2026.</CardDescription>
+            <CardDescription className="text-xs sm:text-sm">Vendas, lucro e compras de {selectedYear}.</CardDescription>
           </CardHeader>
           <CardContent className="px-2 sm:px-6">
             {evolutionQuery.isLoading ? (
@@ -366,6 +499,87 @@ export default function Dashboard() {
             ) : (
               <div
                 ref={chartContainerRef}
+                className="relative w-full h-[260px] sm:h-[340px]"
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Ranking de CNPJs ────────────────── */}
+        <Card className="border-border/60 shadow-sm">
+          <CardHeader className="px-4 sm:px-6 pb-2 sm:pb-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
+              <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" /> Ranking dos meus CNPJs
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Compras pessoais por CNPJ em {months.find(m => m.value === selectedMonth)?.label}/{selectedYear}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6">
+            {cnpjRankingQuery.isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !cnpjRanking || cnpjRanking.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Building2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">Nenhuma compra pessoal com CNPJ vinculado neste período.</p>
+                <p className="text-xs mt-1">Cadastre seus CNPJs e vincule nas compras pessoais.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(() => {
+                  const totalGeral = cnpjRanking.reduce((sum: number, r: any) => sum + Number(r.totalCompras), 0);
+                  return cnpjRanking.map((r: any, idx: number) => {
+                    const total = Number(r.totalCompras);
+                    const pct = totalGeral > 0 ? (total / totalGeral) * 100 : 0;
+                    const color = CNPJ_COLORS[idx % CNPJ_COLORS.length];
+                    return (
+                      <div key={r.cnpjId} className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-muted/50">
+                        <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full font-bold text-sm sm:text-base text-white" style={{ backgroundColor: color.border }}>
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm sm:text-base truncate">{r.nomeFantasia || r.razaoSocial}</div>
+                          <div className="text-[10px] sm:text-xs text-muted-foreground">{r.cnpj} &middot; {r.totalPedidos} pedido(s)</div>
+                          <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color.border }} />
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-sm sm:text-lg">{formatCurrency(total)}</div>
+                          <div className="text-[10px] sm:text-xs text-muted-foreground">{pct.toFixed(1)}%</div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Gráfico de evolução por CNPJ ────────────────── */}
+        <Card className="border-border/60 shadow-sm">
+          <CardHeader className="px-4 sm:px-6 pb-2 sm:pb-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
+              <Building2 className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" /> Evolução de compras por CNPJ
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Performance de compras pessoais de cada CNPJ em {selectedYear}.</CardDescription>
+          </CardHeader>
+          <CardContent className="px-2 sm:px-6">
+            {cnpjEvolutionQuery.isLoading ? (
+              <div className="flex items-center justify-center" style={{ height: 280 }}>
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !cnpjEvolution || cnpjEvolution.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Building2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">Nenhuma compra pessoal com CNPJ vinculado em {selectedYear}.</p>
+              </div>
+            ) : (
+              <div
+                ref={cnpjChartContainerRef}
                 className="relative w-full h-[260px] sm:h-[340px]"
               />
             )}

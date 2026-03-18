@@ -1,0 +1,13 @@
+{
+  "query": "SHOW TABLES LIKE 'my_cnpjs';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SHOW TABLES LIKE 'my_cnpjs';",
+  "rows": [
+    {
+      "Tables_in_XxwarzmhDMwJNs5J3puu6o (my_cnpjs)": "my_cnpjs"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_XxwarzmhDMwJNs5J3puu6o (my_cnpjs)\nmy_cnpjs\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

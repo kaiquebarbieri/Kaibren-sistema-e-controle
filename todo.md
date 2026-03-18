@@ -129,3 +129,12 @@
 - [x] Recalcular automaticamente os totais do dashboard ao editar um pedido
 - [x] Adicionar botão rápido no histórico para trocar tipo do pedido (Cliente/Pessoal) sem editar o pedido inteiro
 - [x] Tornar o campo de preço editável na hora de adicionar produto ao pedido, sem alterar o SKU cadastrado
+- [x] Criar tabela de CNPJs do usuário no banco de dados
+- [x] Criar CRUD de CNPJs (cadastrar, editar, excluir)
+- [x] Vincular compras pessoais a um CNPJ específico no fluxo de pedidos
+- [x] Mostrar ranking de CNPJs que mais compraram no Dashboard
+- [x] Mostrar gráfico de evolução de compras por CNPJ mês a mês no Dashboard
+- [x] Mostrar ranking de CNPJs na tela de Clientes junto com ranking de clientes
+- [x] Adicionar seção de gerenciamento de CNPJs (cadastro, edição, exclusão) na página de Clientes
+- [x] Adicionar seleção de CNPJ ao criar/editar compra pessoal na página de Pedidos
+- [x] Escrever testes vitest para o módulo de CNPJs

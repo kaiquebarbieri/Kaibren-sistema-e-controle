@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `my_cnpjs` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`razaoSocial` varchar(255) NOT NULL,\n\t`cnpj` varchar(32) NOT NULL,\n\t`nomeFantasia` varchar(255),\n\t`inscricaoEstadual` varchar(64),\n\t`notes` text,\n\t`isActive` int NOT NULL DEFAULT 1,\n\t`createdByUserId` int,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `my_cnpjs_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `my_cnpjs_cnpj_unique` UNIQUE(`cnpj`)\n);\nALTER TABLE `orders` ADD `cnpjId` int;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute CREATE TABLE `my_cnpjs` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`razaoSocial` varchar(255) NOT NULL,\n\t`cnpj` varchar(32) NOT NULL,\n\t`nomeFantasia` varchar(255),\n\t`inscricaoEstadual` varchar(64),\n\t`notes` text,\n\t`isActive` int NOT NULL DEFAULT 1,\n\t`createdByUserId` int,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `my_cnpjs_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `my_cnpjs_cnpj_unique` UNIQUE(`cnpj`)\n);\nALTER TABLE `orders` ADD `cnpjId` int;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 622
+}

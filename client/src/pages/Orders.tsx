@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import {
+  Building2,
   CreditCard,
   Download,
   Edit3,
@@ -293,6 +294,7 @@ export default function Orders() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("new");
   const [customerForm, setCustomerForm] = useState<CustomerForm>(() => createEmptyCustomerForm());
   const [orderType, setOrderType] = useState<"customer" | "personal">("customer");
+  const [selectedCnpjId, setSelectedCnpjId] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
@@ -308,6 +310,7 @@ export default function Orders() {
   const ordersQuery = trpc.orders.list.useQuery();
   const customersQuery = trpc.customers.search.useQuery({ query: customerSearch, limit: 50 });
   const campaignsQuery = trpc.marketing.campaigns.list.useQuery();
+  const cnpjsQuery = trpc.myCnpjs.list.useQuery();
 
   const createCustomerMutation = trpc.customers.create.useMutation({
     onSuccess: async customer => {
@@ -337,6 +340,7 @@ export default function Orders() {
       setNotes("");
       setSkuQuickEntry("");
       setSelectedCampaignId("");
+      setSelectedCnpjId("");
       setEditingOrderId(null);
       if (variables.orderType === "personal") {
         setSelectedCustomerId("new");
@@ -355,6 +359,7 @@ export default function Orders() {
       setNotes("");
       setSkuQuickEntry("");
       setSelectedCampaignId("");
+      setSelectedCnpjId("");
       setEditingOrderId(null);
       setSelectedCustomerId("new");
       setCustomerForm(createEmptyCustomerForm());
@@ -571,6 +576,7 @@ export default function Orders() {
       setSelectedYear(String(detail.order.periodYear));
       setNotes(detail.order.notes ?? "");
       setSelectedCampaignId(detail.order.campaignId ? String(detail.order.campaignId) : "");
+      setSelectedCnpjId((detail.order as any).cnpjId ? String((detail.order as any).cnpjId) : "");
 
       if (detail.order.orderType === "customer") {
         setSelectedCustomerId(detail.order.customerId ? String(detail.order.customerId) : "new");
@@ -620,6 +626,7 @@ export default function Orders() {
     setNotes("");
     setSkuQuickEntry("");
     setSelectedCampaignId("");
+    setSelectedCnpjId("");
     setSelectedCustomerId("new");
     setCustomerForm(createEmptyCustomerForm());
     setCustomerSearch("");
@@ -649,6 +656,7 @@ export default function Orders() {
         orderType,
         notes,
         campaignId: selectedCampaignId && selectedCampaignId !== "none" ? Number(selectedCampaignId) : null,
+        cnpjId: orderType === "personal" && selectedCnpjId && selectedCnpjId !== "none" ? Number(selectedCnpjId) : null,
         items: cart,
       });
     } else {
@@ -663,6 +671,7 @@ export default function Orders() {
         notes,
         status,
         campaignId: selectedCampaignId && selectedCampaignId !== "none" ? Number(selectedCampaignId) : null,
+        cnpjId: orderType === "personal" && selectedCnpjId && selectedCnpjId !== "none" ? Number(selectedCnpjId) : null,
         items: cart,
       });
 
@@ -969,6 +978,31 @@ export default function Orders() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {orderType === "personal" && (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <Label className="text-xs sm:text-sm flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 text-blue-500" />
+                    CNPJ da compra
+                  </Label>
+                  <Select value={selectedCnpjId} onValueChange={setSelectedCnpjId}>
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue placeholder="Selecione o CNPJ (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem CNPJ vinculado</SelectItem>
+                      {(cnpjsQuery.data ?? []).map((cnpj: any) => (
+                        <SelectItem key={cnpj.id} value={String(cnpj.id)}>
+                          {cnpj.nomeFantasia || cnpj.razaoSocial} - {cnpj.cnpj}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(cnpjsQuery.data ?? []).length === 0 && (
+                    <p className="text-[10px] text-muted-foreground">Nenhum CNPJ cadastrado. Cadastre na p\u00e1gina de Clientes.</p>
+                  )}
+                </div>
+              )}
 
               {orderType === "customer" && (
                 <div className="space-y-2 sm:space-y-3">

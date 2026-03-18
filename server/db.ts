@@ -15,8 +15,10 @@ import {
   InsertProduct,
   InsertProductUpload,
   InsertUser,
+  InsertMyCnpj,
   marketingStrategies,
   monthlySnapshots,
+  myCnpjs,
   orderItems,
   orders,
   productUploads,
@@ -522,4 +524,96 @@ export async function deleteOrder(orderId: number) {
   if (!db) throw new Error("Database not available");
   await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
   await db.delete(orders).where(eq(orders.id, orderId));
+}
+
+/* ── Meus CNPJs helpers ── */
+
+export async function createMyCnpj(input: InsertMyCnpj) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(myCnpjs).values(input).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function listMyCnpjs() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(myCnpjs).where(eq(myCnpjs.isActive, 1)).orderBy(myCnpjs.razaoSocial);
+}
+
+export async function getMyCnpjById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(myCnpjs).where(eq(myCnpjs.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateMyCnpj(id: number, data: Partial<InsertMyCnpj>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(myCnpjs).set(data).where(eq(myCnpjs.id, id));
+  return getMyCnpjById(id);
+}
+
+export async function deleteMyCnpj(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(myCnpjs).where(eq(myCnpjs.id, id));
+}
+
+export async function getCnpjRanking(periodYear: number, periodMonth: number, limit = 10) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select({
+      cnpjId: orders.cnpjId,
+      cnpj: myCnpjs.cnpj,
+      razaoSocial: myCnpjs.razaoSocial,
+      nomeFantasia: myCnpjs.nomeFantasia,
+      totalPedidos: sql<number>`count(*)`,
+      totalCompras: sql<string>`coalesce(sum(${orders.totalMondial}), 0)`,
+    })
+    .from(orders)
+    .innerJoin(myCnpjs, eq(orders.cnpjId, myCnpjs.id))
+    .where(
+      and(
+        eq(orders.periodYear, periodYear),
+        eq(orders.periodMonth, periodMonth),
+        eq(orders.orderType, "personal"),
+        isNotNull(orders.cnpjId),
+      )
+    )
+    .groupBy(orders.cnpjId, myCnpjs.cnpj, myCnpjs.razaoSocial, myCnpjs.nomeFantasia)
+    .orderBy(sql`sum(${orders.totalMondial}) desc`)
+    .limit(limit);
+
+  return rows;
+}
+
+export async function getCnpjEvolution(periodYear: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select({
+      cnpjId: orders.cnpjId,
+      razaoSocial: myCnpjs.razaoSocial,
+      nomeFantasia: myCnpjs.nomeFantasia,
+      periodMonth: orders.periodMonth,
+      totalCompras: sql<string>`coalesce(sum(${orders.totalMondial}), 0)`,
+    })
+    .from(orders)
+    .innerJoin(myCnpjs, eq(orders.cnpjId, myCnpjs.id))
+    .where(
+      and(
+        eq(orders.periodYear, periodYear),
+        eq(orders.orderType, "personal"),
+        isNotNull(orders.cnpjId),
+      )
+    )
+    .groupBy(orders.cnpjId, myCnpjs.razaoSocial, myCnpjs.nomeFantasia, orders.periodMonth)
+    .orderBy(orders.periodMonth);
+
+  return rows;
 }

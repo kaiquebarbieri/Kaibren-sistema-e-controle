@@ -100,6 +100,7 @@ export const orders = mysqlTable("orders", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   finalizedAt: timestamp("finalizedAt"),
   campaignId: int("campaignId"),
+  cnpjId: int("cnpjId"),
 });
 
 export const orderItems = mysqlTable("order_items", {
@@ -245,3 +246,21 @@ export const marketingStrategies = mysqlTable("marketing_strategies", {
 
 export type MarketingStrategy = typeof marketingStrategies.$inferSelect;
 export type InsertMarketingStrategy = typeof marketingStrategies.$inferInsert;
+
+/* ── Meus CNPJs (compras pessoais) ── */
+
+export const myCnpjs = mysqlTable("my_cnpjs", {
+  id: int("id").autoincrement().primaryKey(),
+  razaoSocial: varchar("razaoSocial", { length: 255 }).notNull(),
+  cnpj: varchar("cnpj", { length: 32 }).notNull().unique(),
+  nomeFantasia: varchar("nomeFantasia", { length: 255 }),
+  inscricaoEstadual: varchar("inscricaoEstadual", { length: 64 }),
+  notes: text("notes"),
+  isActive: int("isActive").notNull().default(1),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MyCnpj = typeof myCnpjs.$inferSelect;
+export type InsertMyCnpj = typeof myCnpjs.$inferInsert;

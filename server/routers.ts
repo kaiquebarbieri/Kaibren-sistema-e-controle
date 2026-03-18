@@ -45,6 +45,13 @@ import {
   updateOrder,
   deleteOrderItems,
   deleteOrder,
+  createMyCnpj,
+  listMyCnpjs,
+  getMyCnpjById,
+  updateMyCnpj,
+  deleteMyCnpj,
+  getCnpjRanking,
+  getCnpjEvolution,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
@@ -104,6 +111,7 @@ const orderInputSchema = z.object({
   notes: z.string().optional().nullable(),
   status: z.enum(["draft", "created", "finalized"]).default("created"),
   campaignId: z.number().int().positive().optional().nullable(),
+  cnpjId: z.number().int().positive().optional().nullable(),
   items: z.array(orderItemInputSchema).min(1),
 });
 
@@ -720,6 +728,7 @@ export const appRouter = router({
           createdByUserId: ctx.user.id,
           finalizedAt: input.status === "finalized" ? new Date() : null,
           campaignId: input.campaignId ?? null,
+          cnpjId: input.cnpjId ?? null,
         });
 
         await insertOrderItems(
@@ -819,6 +828,7 @@ export const appRouter = router({
         orderType: z.enum(["customer", "personal"]).optional(),
         notes: z.string().nullish(),
         campaignId: z.number().int().positive().nullish(),
+        cnpjId: z.number().int().positive().nullish(),
         items: z.array(orderItemInputSchema).min(1),
       }))
       .mutation(async ({ input }) => {
@@ -838,6 +848,7 @@ export const appRouter = router({
           orderType,
           notes: input.notes !== undefined ? input.notes ?? null : existing.order.notes,
           campaignId: input.campaignId !== undefined ? input.campaignId ?? null : existing.order.campaignId,
+          cnpjId: input.cnpjId !== undefined ? input.cnpjId ?? null : (existing.order as any).cnpjId,
           totalCliente: formatMoney(totals.totalCliente),
           totalMondial: formatMoney(totals.totalMondial),
           totalComissaoEvertonMondial: formatMoney(totals.totalComissaoEvertonMondial),
@@ -1042,6 +1053,72 @@ export const appRouter = router({
     }),
   }),
   marketing: marketingRouter,
+
+  myCnpjs: router({
+    list: protectedProcedure.query(async () => {
+      return listMyCnpjs();
+    }),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        return getMyCnpjById(input.id);
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        razaoSocial: z.string().min(1),
+        cnpj: z.string().min(1),
+        nomeFantasia: z.string().optional().nullable(),
+        inscricaoEstadual: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await createMyCnpj({
+          razaoSocial: input.razaoSocial,
+          cnpj: input.cnpj,
+          nomeFantasia: input.nomeFantasia ?? null,
+          inscricaoEstadual: input.inscricaoEstadual ?? null,
+          notes: input.notes ?? null,
+          createdByUserId: ctx.user.id,
+        });
+        return getMyCnpjById(id);
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        razaoSocial: z.string().min(1).optional(),
+        cnpj: z.string().min(1).optional(),
+        nomeFantasia: z.string().optional().nullable(),
+        inscricaoEstadual: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return updateMyCnpj(id, data);
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteMyCnpj(input.id);
+        return { success: true };
+      }),
+    ranking: protectedProcedure
+      .input(z.object({
+        periodYear: z.number().int().optional(),
+        periodMonth: z.number().int().min(1).max(12).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const now = new Date();
+        const year = input?.periodYear ?? now.getFullYear();
+        const month = input?.periodMonth ?? (now.getMonth() + 1);
+        return getCnpjRanking(year, month);
+      }),
+    evolution: protectedProcedure
+      .input(z.object({ periodYear: z.number().int().optional() }).optional())
+      .query(async ({ input }) => {
+        const year = input?.periodYear ?? new Date().getFullYear();
+        return getCnpjEvolution(year);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

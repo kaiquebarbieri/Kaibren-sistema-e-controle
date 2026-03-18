@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -123,6 +123,10 @@ export default function Customers() {
     periodMonth: currentMonth,
     limit: 5,
   });
+  const cnpjRankingQuery = trpc.myCnpjs.ranking.useQuery({
+    periodYear: currentYear,
+    periodMonth: currentMonth,
+  });
 
   const createCustomerMutation = trpc.customers.create.useMutation({
     onSuccess: async customer => {
@@ -213,6 +217,87 @@ export default function Customers() {
   });
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  /* ── CNPJ Management State ─────────────────────── */
+  const [showCnpjSection, setShowCnpjSection] = useState(false);
+  const [cnpjForm, setCnpjForm] = useState({ razaoSocial: "", cnpj: "", nomeFantasia: "", inscricaoEstadual: "", notes: "" });
+  const [editingCnpjId, setEditingCnpjId] = useState<number | null>(null);
+  const [showCnpjDeleteConfirm, setShowCnpjDeleteConfirm] = useState<number | null>(null);
+
+  const cnpjsQuery = trpc.myCnpjs.list.useQuery();
+
+  const createCnpjMutation = trpc.myCnpjs.create.useMutation({
+    onSuccess: async () => {
+      toast.success("CNPJ cadastrado com sucesso!");
+      setCnpjForm({ razaoSocial: "", cnpj: "", nomeFantasia: "", inscricaoEstadual: "", notes: "" });
+      await cnpjsQuery.refetch();
+      cnpjRankingQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const updateCnpjMutation = trpc.myCnpjs.update.useMutation({
+    onSuccess: async () => {
+      toast.success("CNPJ atualizado com sucesso!");
+      setEditingCnpjId(null);
+      setCnpjForm({ razaoSocial: "", cnpj: "", nomeFantasia: "", inscricaoEstadual: "", notes: "" });
+      await cnpjsQuery.refetch();
+      cnpjRankingQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const deleteCnpjMutation = trpc.myCnpjs.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("CNPJ exclu\u00eddo com sucesso!");
+      setShowCnpjDeleteConfirm(null);
+      await cnpjsQuery.refetch();
+      cnpjRankingQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const saveCnpj = useCallback(async () => {
+    if (!cnpjForm.razaoSocial.trim() || !cnpjForm.cnpj.trim()) {
+      toast.error("Informe a Raz\u00e3o Social e o CNPJ.");
+      return;
+    }
+    if (editingCnpjId) {
+      await updateCnpjMutation.mutateAsync({
+        id: editingCnpjId,
+        razaoSocial: cnpjForm.razaoSocial,
+        cnpj: cnpjForm.cnpj,
+        nomeFantasia: cnpjForm.nomeFantasia || null,
+        inscricaoEstadual: cnpjForm.inscricaoEstadual || null,
+        notes: cnpjForm.notes || null,
+      });
+    } else {
+      await createCnpjMutation.mutateAsync({
+        razaoSocial: cnpjForm.razaoSocial,
+        cnpj: cnpjForm.cnpj,
+        nomeFantasia: cnpjForm.nomeFantasia || null,
+        inscricaoEstadual: cnpjForm.inscricaoEstadual || null,
+        notes: cnpjForm.notes || null,
+      });
+    }
+  }, [cnpjForm, editingCnpjId]);
+
+  function startEditCnpj(cnpj: any) {
+    setEditingCnpjId(cnpj.id);
+    setCnpjForm({
+      razaoSocial: cnpj.razaoSocial,
+      cnpj: cnpj.cnpj,
+      nomeFantasia: cnpj.nomeFantasia ?? "",
+      inscricaoEstadual: cnpj.inscricaoEstadual ?? "",
+      notes: cnpj.notes ?? "",
+    });
+    setShowCnpjSection(true);
+  }
+
+  function cancelEditCnpj() {
+    setEditingCnpjId(null);
+    setCnpjForm({ razaoSocial: "", cnpj: "", nomeFantasia: "", inscricaoEstadual: "", notes: "" });
+  }
 
   async function saveCustomer() {
     if (!customerForm.name.trim()) {
@@ -352,6 +437,160 @@ export default function Customers() {
             </CardContent>
           </Card>
         )}
+
+        {/* Ranking de CNPJs */}
+        {(cnpjRankingQuery.data?.length ?? 0) > 0 && (
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Building2 className="h-4 w-4 text-blue-500" />
+                <h3 className="text-xs sm:text-sm font-semibold text-foreground">Meus CNPJs - Compras do m\u00eas</h3>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 ml-auto">
+                  {new Date().toLocaleString("pt-BR", { month: "long" }).replace(/^./, c => c.toUpperCase())}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {cnpjRankingQuery.data?.map((r: any, i: number) => {
+                  const colors = [
+                    "bg-emerald-500/15 text-emerald-600 border-emerald-500/20",
+                    "bg-blue-500/15 text-blue-600 border-blue-500/20",
+                    "bg-orange-500/15 text-orange-600 border-orange-500/20",
+                    "bg-purple-500/15 text-purple-600 border-purple-500/20",
+                  ];
+                  const color = colors[i % colors.length];
+                  return (
+                    <div key={r.cnpjId} className="flex items-center gap-3 rounded-xl bg-muted/30 p-2.5 sm:p-3">
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${color}`}>
+                        {i + 1}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">{r.nomeFantasia || r.razaoSocial}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">
+                          {r.cnpj} &middot; {r.totalPedidos} pedido{r.totalPedidos > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-bold text-blue-600">
+                          {Number(r.totalCompras).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Meus CNPJs - Gerenciamento */}
+        <Card className="border-border/60 shadow-sm">
+          <CardContent className="p-3 sm:p-4">
+            <button
+              onClick={() => setShowCnpjSection(!showCnpjSection)}
+              className="flex items-center gap-2 w-full text-left"
+            >
+              <Building2 className="h-4 w-4 text-blue-500" />
+              <h3 className="text-xs sm:text-sm font-semibold text-foreground flex-1">Meus CNPJs</h3>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                {(cnpjsQuery.data ?? []).length} cadastrado{(cnpjsQuery.data ?? []).length !== 1 ? "s" : ""}
+              </Badge>
+              <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showCnpjSection ? "rotate-90" : ""}`} />
+            </button>
+
+            {showCnpjSection && (
+              <div className="mt-3 space-y-3">
+                {/* Lista de CNPJs cadastrados */}
+                {(cnpjsQuery.data ?? []).map((cnpj: any) => (
+                  <div key={cnpj.id} className="flex items-center gap-3 rounded-xl bg-muted/30 p-2.5 sm:p-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-blue-500/15 text-blue-600 border-blue-500/20 text-xs font-bold">
+                      <Building2 className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{cnpj.nomeFantasia || cnpj.razaoSocial}</p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">{cnpj.cnpj}</p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditCnpj(cnpj)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      {showCnpjDeleteConfirm === cnpj.id ? (
+                        <div className="flex gap-1">
+                          <Button variant="destructive" size="sm" className="h-7 text-[10px] px-2" onClick={() => deleteCnpjMutation.mutate({ id: cnpj.id })} disabled={deleteCnpjMutation.isPending}>
+                            Sim
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-7 text-[10px] px-2" onClick={() => setShowCnpjDeleteConfirm(null)}>
+                            N\u00e3o
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setShowCnpjDeleteConfirm(cnpj.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Formulário de cadastro/edição */}
+                <div className="rounded-xl border border-dashed border-border p-3 space-y-2">
+                  <p className="text-xs font-semibold text-foreground">{editingCnpjId ? "Editar CNPJ" : "Cadastrar novo CNPJ"}</p>
+                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+                    <Input
+                      value={cnpjForm.razaoSocial}
+                      onChange={e => setCnpjForm(f => ({ ...f, razaoSocial: e.target.value }))}
+                      placeholder="Raz\u00e3o Social *"
+                      className="h-9 text-sm rounded-lg"
+                    />
+                    <Input
+                      value={cnpjForm.cnpj}
+                      onChange={e => setCnpjForm(f => ({ ...f, cnpj: e.target.value }))}
+                      placeholder="CNPJ *"
+                      className="h-9 text-sm rounded-lg"
+                    />
+                    <Input
+                      value={cnpjForm.nomeFantasia}
+                      onChange={e => setCnpjForm(f => ({ ...f, nomeFantasia: e.target.value }))}
+                      placeholder="Nome Fantasia"
+                      className="h-9 text-sm rounded-lg"
+                    />
+                    <Input
+                      value={cnpjForm.inscricaoEstadual}
+                      onChange={e => setCnpjForm(f => ({ ...f, inscricaoEstadual: e.target.value }))}
+                      placeholder="Inscri\u00e7\u00e3o Estadual"
+                      className="h-9 text-sm rounded-lg"
+                    />
+                  </div>
+                  <Input
+                    value={cnpjForm.notes}
+                    onChange={e => setCnpjForm(f => ({ ...f, notes: e.target.value }))}
+                    placeholder="Observa\u00e7\u00f5es (opcional)"
+                    className="h-9 text-sm rounded-lg"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={saveCnpj}
+                      disabled={createCnpjMutation.isPending || updateCnpjMutation.isPending}
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                    >
+                      {(createCnpjMutation.isPending || updateCnpjMutation.isPending) ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Save className="h-3 w-3" />
+                      )}
+                      {editingCnpjId ? "Salvar" : "Cadastrar"}
+                    </Button>
+                    {editingCnpjId && (
+                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={cancelEditCnpj}>
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Search */}
         <div className="relative">
