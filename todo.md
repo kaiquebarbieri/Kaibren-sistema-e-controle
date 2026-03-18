@@ -128,3 +128,4 @@
 - [x] Adicionar botão de editar e excluir pedido no histórico
 - [x] Recalcular automaticamente os totais do dashboard ao editar um pedido
 - [x] Adicionar botão rápido no histórico para trocar tipo do pedido (Cliente/Pessoal) sem editar o pedido inteiro
+- [x] Tornar o campo de preço editável na hora de adicionar produto ao pedido, sem alterar o SKU cadastrado

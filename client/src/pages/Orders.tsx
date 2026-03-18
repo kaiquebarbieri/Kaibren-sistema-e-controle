@@ -451,6 +451,25 @@ export default function Orders() {
     setCart(current => current.map(item => (item.sku === sku ? { ...item, quantidade: Math.max(1, quantidade || 1) } : item)));
   }
 
+  function updatePrice(sku: string, newPrice: string) {
+    setCart(current => current.map(item => {
+      if (item.sku !== sku) return item;
+      const preco = Number(newPrice) || 0;
+      const valorProduto = Number(item.valorProduto) || 0;
+      const imposto = Number(item.imposto) || 0;
+      const comissao = Number(item.comissao) || 0;
+      const lucroUnit = preco - valorProduto - imposto - comissao;
+      const margem = preco > 0 ? (lucroUnit / preco) * 100 : 0;
+      return {
+        ...item,
+        precoFinal: newPrice,
+        precoDesejado: newPrice,
+        lucroUnitario: lucroUnit.toFixed(4),
+        margemFinal: margem.toFixed(6),
+      };
+    }));
+  }
+
   function removeItem(sku: string) {
     setCart(current => current.filter(item => item.sku !== sku));
     toast.success(`Item ${sku} removido do pedido.`);
@@ -838,7 +857,24 @@ export default function Orders() {
                               </Button>
                             </div>
                             <div className="text-right">
-                              <div className="text-[10px] text-muted-foreground">{formatCurrency(valorUnit)} un.</div>
+                              <div className="flex items-center gap-1 justify-end">
+                                <span className="text-[10px] text-muted-foreground">R$</span>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min={0}
+                                  value={orderType === "customer" ? (item.precoFinal || item.precoDesejado) : item.valorProduto}
+                                  onChange={e => {
+                                    if (orderType === "customer") {
+                                      updatePrice(item.sku, e.target.value);
+                                    } else {
+                                      setCart(current => current.map(ci => ci.sku === item.sku ? { ...ci, valorProduto: e.target.value } : ci));
+                                    }
+                                  }}
+                                  className="h-6 w-20 text-right text-xs px-1"
+                                />
+                                <span className="text-[10px] text-muted-foreground">un.</span>
+                              </div>
                               <div className="text-sm font-semibold text-foreground">{formatCurrency(total)}</div>
                             </div>
                           </div>
@@ -881,7 +917,22 @@ export default function Orders() {
                                   className="h-9 w-20"
                                 />
                               </TableCell>
-                              <TableCell>{formatCurrency(valorUnit)}</TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min={0}
+                                  value={orderType === "customer" ? (item.precoFinal || item.precoDesejado) : item.valorProduto}
+                                  onChange={e => {
+                                    if (orderType === "customer") {
+                                      updatePrice(item.sku, e.target.value);
+                                    } else {
+                                      setCart(current => current.map(ci => ci.sku === item.sku ? { ...ci, valorProduto: e.target.value } : ci));
+                                    }
+                                  }}
+                                  className="h-9 w-28"
+                                />
+                              </TableCell>
                               <TableCell>{formatCurrency(total)}</TableCell>
                               <TableCell className="text-right whitespace-nowrap">
                                 <Button size="sm" variant="ghost" onClick={() => removeItem(item.sku)}>
