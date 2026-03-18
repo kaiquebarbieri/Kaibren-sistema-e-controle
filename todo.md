@@ -123,3 +123,7 @@
 - [x] Adicionar ranking de clientes que mais compraram no mês na página de Clientes
 - [x] Adicionar campo de Inscrição Estadual no cadastro de clientes
 - [x] Adicionar botão de excluir cliente com confirmação
+- [x] Tornar todos os pedidos editáveis mesmo após finalizados
+- [x] Permitir alterar produtos, quantidades e informações de pedidos salvos
+- [x] Adicionar botão de editar e excluir pedido no histórico
+- [x] Recalcular automaticamente os totais do dashboard ao editar um pedido

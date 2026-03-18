@@ -16,6 +16,7 @@ import { trpc } from "@/lib/trpc";
 import {
   CreditCard,
   Download,
+  Edit3,
   Loader2,
   Minus,
   Plus,
@@ -23,8 +24,9 @@ import {
   ShoppingCart,
   Trash2,
   X,
+  AlertTriangle,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -296,8 +298,11 @@ export default function Orders() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeTab, setActiveTab] = useState("resumo");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const skuQuickEntryRef = useRef<HTMLInputElement | null>(null);
 
+  const trpcUtils = trpc.useUtils();
   const allProductsQuery = trpc.products.list.useQuery({ limit: 500 });
   const ordersQuery = trpc.orders.list.useQuery();
   const customersQuery = trpc.customers.search.useQuery({ query: customerSearch, limit: 50 });
@@ -331,11 +336,37 @@ export default function Orders() {
       setNotes("");
       setSkuQuickEntry("");
       setSelectedCampaignId("");
+      setEditingOrderId(null);
       if (variables.orderType === "personal") {
         setSelectedCustomerId("new");
         setCustomerForm(createEmptyCustomerForm());
         setCustomerSearch("");
       }
+      await ordersQuery.refetch();
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const updateOrderMutation = trpc.orders.update.useMutation({
+    onSuccess: async () => {
+      toast.success("Pedido atualizado com sucesso.");
+      setCart([]);
+      setNotes("");
+      setSkuQuickEntry("");
+      setSelectedCampaignId("");
+      setEditingOrderId(null);
+      setSelectedCustomerId("new");
+      setCustomerForm(createEmptyCustomerForm());
+      setCustomerSearch("");
+      await ordersQuery.refetch();
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const deleteOrderMutation = trpc.orders.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("Pedido exclu\u00eddo com sucesso.");
+      setShowDeleteConfirm(null);
       await ordersQuery.refetch();
     },
     onError: error => toast.error(error.message),
@@ -490,6 +521,83 @@ export default function Orders() {
     toast.success("Planilha da Mondial gerada com sucesso.");
   }
 
+  const loadOrderForEditing = useCallback(async (orderId: number) => {
+    const orderData = (ordersQuery.data ?? []).find((o: any) => o.id === orderId);
+    if (!orderData) {
+      toast.error("Pedido n\u00e3o encontrado.");
+      return;
+    }
+
+    // Fetch order details with items
+    try {
+      const detail = await trpcUtils.orders.detail.fetch({ orderId });
+      if (!detail?.order) {
+        toast.error("N\u00e3o foi poss\u00edvel carregar os detalhes do pedido.");
+        return;
+      }
+
+      setEditingOrderId(orderId);
+      setOrderType(detail.order.orderType as "customer" | "personal");
+      setSelectedMonth(String(detail.order.periodMonth).padStart(2, "0"));
+      setSelectedYear(String(detail.order.periodYear));
+      setNotes(detail.order.notes ?? "");
+      setSelectedCampaignId(detail.order.campaignId ? String(detail.order.campaignId) : "");
+
+      if (detail.order.orderType === "customer") {
+        setSelectedCustomerId(detail.order.customerId ? String(detail.order.customerId) : "new");
+        setCustomerForm({
+          name: detail.order.customerName ?? "",
+          reference: detail.order.customerReference ?? "",
+          document: "",
+          phone: "",
+          email: "",
+          city: "",
+          state: "",
+          notes: "",
+        });
+        setCustomerSearch(detail.order.customerName ?? "");
+      } else {
+        setSelectedCustomerId("new");
+        setCustomerForm(createEmptyCustomerForm());
+      }
+
+      // Load items into cart
+      const cartItems: CartItem[] = detail.items.map((item: any) => ({
+        productId: item.productId ?? null,
+        sku: item.sku,
+        titulo: item.titulo,
+        quantidade: Number(item.quantidade),
+        tabelaNovaCk: item.tabelaNovaCk ?? "0",
+        imposto: item.imposto ?? "0",
+        comissao: item.comissao ?? "0",
+        valorProduto: item.valorProduto ?? "0",
+        precoDesejado: item.precoDesejado ?? "0",
+        precoFinal: item.precoFinal ?? "0",
+        margemFinal: item.margemFinal ?? "0",
+        lucroUnitario: item.lucroUnitario ?? "0",
+      }));
+      setCart(cartItems);
+
+      toast.success(`Pedido #${orderId} carregado para edi\u00e7\u00e3o.`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      toast.error("Erro ao carregar pedido para edi\u00e7\u00e3o.");
+    }
+  }, [ordersQuery.data]);
+
+  function cancelEditing() {
+    setEditingOrderId(null);
+    setCart([]);
+    setNotes("");
+    setSkuQuickEntry("");
+    setSelectedCampaignId("");
+    setSelectedCustomerId("new");
+    setCustomerForm(createEmptyCustomerForm());
+    setCustomerSearch("");
+    setOrderType("customer");
+    toast.success("Edi\u00e7\u00e3o cancelada.");
+  }
+
   async function saveOrder(status: "created" | "finalized") {
     if (cart.length === 0) {
       toast.error("Adicione itens ao pedido antes de salvar.");
@@ -500,25 +608,40 @@ export default function Orders() {
       return;
     }
     const customerName = orderType === "personal" ? "Compra pessoal" : customerForm.name;
-    const customerReference = orderType === "personal" ? "Uso próprio" : customerForm.reference;
+    const customerReference = orderType === "personal" ? "Uso pr\u00f3prio" : customerForm.reference;
 
-    await createOrderMutation.mutateAsync({
-      customerId: selectedCustomerId !== "new" && orderType === "customer" ? Number(selectedCustomerId) : null,
-      customerName,
-      customerReference: customerReference || null,
-      orderType,
-      periodMonth: Number(selectedMonth),
-      periodYear: Number(selectedYear),
-      notes,
-      status,
-      campaignId: selectedCampaignId && selectedCampaignId !== "none" ? Number(selectedCampaignId) : null,
-      items: cart,
-    });
+    if (editingOrderId) {
+      // Update existing order
+      await updateOrderMutation.mutateAsync({
+        orderId: editingOrderId,
+        customerId: selectedCustomerId !== "new" && orderType === "customer" ? Number(selectedCustomerId) : null,
+        customerName,
+        customerReference: customerReference || null,
+        orderType,
+        notes,
+        campaignId: selectedCampaignId && selectedCampaignId !== "none" ? Number(selectedCampaignId) : null,
+        items: cart,
+      });
+    } else {
+      // Create new order
+      await createOrderMutation.mutateAsync({
+        customerId: selectedCustomerId !== "new" && orderType === "customer" ? Number(selectedCustomerId) : null,
+        customerName,
+        customerReference: customerReference || null,
+        orderType,
+        periodMonth: Number(selectedMonth),
+        periodYear: Number(selectedYear),
+        notes,
+        status,
+        campaignId: selectedCampaignId && selectedCampaignId !== "none" ? Number(selectedCampaignId) : null,
+        items: cart,
+      });
 
-    if (orderType === "customer") {
-      exportCustomerSheet();
+      if (orderType === "customer") {
+        exportCustomerSheet();
+      }
+      exportMondialSheet();
     }
-    exportMondialSheet();
   }
 
   /* ── Render ────────────────────────────────────── */
@@ -552,20 +675,31 @@ export default function Orders() {
   return (
     <DashboardLayout activeSection="pedidos">
       <div className="flex flex-col gap-4 sm:gap-6 bg-background">
-        {/* ── Header ─────────────────────────────── */}
+        {/* Header */}
+        {editingOrderId && (
+          <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <Edit3 className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Editando pedido #{editingOrderId}</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={cancelEditing} className="h-8 text-xs border-amber-500/50 text-amber-600 hover:bg-amber-500/10">
+              <X className="mr-1 h-3 w-3" /> Cancelar
+            </Button>
+          </div>
+        )}
         <div className="overflow-hidden rounded-2xl sm:rounded-[28px] border border-border/60 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 px-4 py-4 sm:px-6 sm:py-6 text-white shadow-sm lg:px-8 lg:py-8">
           <div className="space-y-2 sm:space-y-3">
             <Badge variant="secondary" className="w-fit rounded-full bg-white/10 px-2.5 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-xs font-medium text-white">
               <ShoppingCart className="mr-1 h-3 w-3 sm:mr-1.5 sm:h-3.5 sm:w-3.5" /> Pedidos e Compras
             </Badge>
-            <h1 className="text-xl sm:text-3xl font-semibold tracking-tight">Montar pedido</h1>
+            <h1 className="text-xl sm:text-3xl font-semibold tracking-tight">{editingOrderId ? `Editando pedido #${editingOrderId}` : "Montar pedido"}</h1>
             <p className="text-xs sm:text-sm leading-5 sm:leading-6 text-emerald-100">
-              Adicione produtos pelo SKU, escolha o tipo de pedido e finalize.
+              {editingOrderId ? "Altere os itens, quantidades ou informa\u00e7\u00f5es e salve." : "Adicione produtos pelo SKU, escolha o tipo de pedido e finalize."}
             </p>
           </div>
         </div>
 
-        {/* ── Busca de SKU + Tipo de pedido ──────── */}
+        {/* \u2500\u2500 Busca de SKU + Tipo de pedido \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         <div className="grid gap-4 sm:gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="px-4 sm:px-6">
@@ -872,15 +1006,27 @@ export default function Orders() {
                 )}
               </div>
 
-              <div className="grid gap-2 grid-cols-2">
-                <Button variant="outline" onClick={() => saveOrder("created")} disabled={createOrderMutation.isPending} className="h-10 text-xs sm:text-sm">
-                  Salvar
-                </Button>
-                <Button onClick={() => saveOrder("finalized")} disabled={createOrderMutation.isPending} className="h-10 text-xs sm:text-sm">
-                  {createOrderMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Finalizar
-                </Button>
-              </div>
+              {editingOrderId ? (
+                <div className="grid gap-2 grid-cols-2">
+                  <Button variant="outline" onClick={cancelEditing} className="h-10 text-xs sm:text-sm">
+                    <X className="mr-1.5 h-3.5 w-3.5" /> Cancelar
+                  </Button>
+                  <Button onClick={() => saveOrder("finalized")} disabled={updateOrderMutation.isPending} className="h-10 text-xs sm:text-sm bg-amber-600 hover:bg-amber-700">
+                    {updateOrderMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Edit3 className="mr-1.5 h-3.5 w-3.5" />}
+                    Salvar altera\u00e7\u00f5es
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-2 grid-cols-2">
+                  <Button variant="outline" onClick={() => saveOrder("created")} disabled={createOrderMutation.isPending} className="h-10 text-xs sm:text-sm">
+                    Salvar
+                  </Button>
+                  <Button onClick={() => saveOrder("finalized")} disabled={createOrderMutation.isPending} className="h-10 text-xs sm:text-sm">
+                    {createOrderMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Finalizar
+                  </Button>
+                </div>
+              )}
               <div className="grid gap-2 grid-cols-2">
                 <Button variant="outline" onClick={exportCustomerSheet} disabled={orderType === "personal" || cart.length === 0} className="h-9 text-xs">
                   <Download className="mr-1.5 h-3.5 w-3.5" />
@@ -1018,6 +1164,25 @@ export default function Orders() {
                     <span>{order.orderType === "personal" ? "Mondial" : "Venda"}: {order.orderType === "personal" ? formatCurrency(order.totalMondial) : formatCurrency(order.totalCliente)}</span>
                     <span>Mondial: {formatCurrency(order.totalMondial)}</span>
                   </div>
+                  <div className="mt-2 flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => loadOrderForEditing(order.id)} className="h-7 text-[10px] flex-1">
+                      <Edit3 className="mr-1 h-3 w-3" /> Editar
+                    </Button>
+                    {showDeleteConfirm === order.id ? (
+                      <div className="flex gap-1 flex-1">
+                        <Button size="sm" variant="destructive" onClick={() => deleteOrderMutation.mutate({ orderId: order.id })} disabled={deleteOrderMutation.isPending} className="h-7 text-[10px] flex-1">
+                          Confirmar
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setShowDeleteConfirm(null)} className="h-7 text-[10px]">
+                          N\u00e3o
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(order.id)} className="h-7 text-[10px] text-destructive">
+                        <Trash2 className="mr-1 h-3 w-3" /> Excluir
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
               {(ordersQuery.data ?? []).length === 0 && (
@@ -1038,6 +1203,7 @@ export default function Orders() {
                     <TableHead>Total venda / Mondial</TableHead>
                     <TableHead>Total Mondial</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="text-right">A\u00e7\u00f5es</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1049,6 +1215,25 @@ export default function Orders() {
                       <TableCell>{order.orderType === "personal" ? formatCurrency(order.totalMondial) : formatCurrency(order.totalCliente)}</TableCell>
                       <TableCell>{formatCurrency(order.totalMondial)}</TableCell>
                       <TableCell>{order.status}</TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <Button size="sm" variant="outline" onClick={() => loadOrderForEditing(order.id)} className="h-8 text-xs mr-1">
+                          <Edit3 className="mr-1 h-3.5 w-3.5" /> Editar
+                        </Button>
+                        {showDeleteConfirm === order.id ? (
+                          <>
+                            <Button size="sm" variant="destructive" onClick={() => deleteOrderMutation.mutate({ orderId: order.id })} disabled={deleteOrderMutation.isPending} className="h-8 text-xs mr-1">
+                              Confirmar
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setShowDeleteConfirm(null)} className="h-8 text-xs">
+                              N\u00e3o
+                            </Button>
+                          </>
+                        ) : (
+                          <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(order.id)} className="h-8 text-xs text-destructive">
+                            <Trash2 className="mr-1 h-3.5 w-3.5" /> Excluir
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

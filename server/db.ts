@@ -502,3 +502,24 @@ export async function countCustomers() {
 
   return rows[0]?.count ?? 0;
 }
+
+export async function updateOrder(orderId: number, data: Partial<InsertOrder>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(orders).set(data).where(eq(orders.id, orderId));
+  const rows = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function deleteOrderItems(orderId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+}
+
+export async function deleteOrder(orderId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+  await db.delete(orders).where(eq(orders.id, orderId));
+}

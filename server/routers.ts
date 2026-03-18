@@ -42,6 +42,9 @@ import {
   upsertMonthlySnapshot,
   getCustomerRanking,
   countCustomers,
+  updateOrder,
+  deleteOrderItems,
+  deleteOrder,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
@@ -806,6 +809,125 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Pedido não encontrado." });
         }
         return result;
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        customerName: z.string().min(1).optional(),
+        customerReference: z.string().nullish(),
+        customerId: z.number().int().positive().nullish(),
+        orderType: z.enum(["customer", "personal"]).optional(),
+        notes: z.string().nullish(),
+        campaignId: z.number().int().positive().nullish(),
+        items: z.array(orderItemInputSchema).min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const existing = await getOrderWithItems(input.orderId);
+        if (!existing.order) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pedido não encontrado." });
+        }
+
+        const orderType = input.orderType ?? existing.order.orderType;
+        const totals = computeOrderTotals(input.items, orderType);
+
+        // Update order header
+        await updateOrder(input.orderId, {
+          customerName: input.customerName ?? existing.order.customerName,
+          customerReference: input.customerReference !== undefined ? input.customerReference ?? null : existing.order.customerReference,
+          customerId: input.customerId !== undefined ? input.customerId ?? null : existing.order.customerId,
+          orderType,
+          notes: input.notes !== undefined ? input.notes ?? null : existing.order.notes,
+          campaignId: input.campaignId !== undefined ? input.campaignId ?? null : existing.order.campaignId,
+          totalCliente: formatMoney(totals.totalCliente),
+          totalMondial: formatMoney(totals.totalMondial),
+          totalComissaoEvertonMondial: formatMoney(totals.totalComissaoEvertonMondial),
+          totalLucro: formatMoney(totals.totalLucro),
+          margemPedido: formatMargin(totals.margemPedido),
+          totalItens: totals.totalItens,
+        });
+
+        // Replace order items
+        await deleteOrderItems(input.orderId);
+        await insertOrderItems(
+          input.items.map(item => ({
+            orderId: input.orderId,
+            productId: item.productId ?? null,
+            sku: item.sku,
+            titulo: item.titulo,
+            quantidade: item.quantidade,
+            tabelaNovaCk: item.tabelaNovaCk,
+            imposto: item.imposto,
+            comissao: item.comissao,
+            valorProduto: item.valorProduto,
+            precoDesejado: item.precoDesejado,
+            precoFinal: item.precoFinal,
+            margemFinal: item.margemFinal,
+            lucroUnitario: orderType === "personal" ? "0.0000" : item.lucroUnitario,
+            totalCliente: orderType === "personal" ? "0.0000" : formatMoney(toNumber(item.precoFinal || item.precoDesejado) * toNumber(item.quantidade)),
+            totalMondial: formatMoney(toNumber(item.valorProduto) * toNumber(item.quantidade)),
+            totalComissaoEvertonMondial: formatMoney(toNumber(item.comissao) * toNumber(item.quantidade)),
+            totalLucro: orderType === "personal" ? "0.0000" : formatMoney(toNumber(item.lucroUnitario) * toNumber(item.quantidade)),
+          }))
+        );
+
+        // Recalculate monthly snapshot
+        const periodYear = existing.order.periodYear;
+        const periodMonth = existing.order.periodMonth;
+        const monthly = await getMonthlySummary(periodYear, periodMonth);
+        await upsertMonthlySnapshot({
+          periodYear,
+          periodMonth,
+          totalPedidos: Number(monthly.totalPedidos ?? 0),
+          totalPedidosCliente: Number(monthly.totalPedidosCliente ?? 0),
+          totalPedidosPessoais: Number(monthly.totalPedidosPessoais ?? 0),
+          totalCliente: String(monthly.totalCliente ?? "0.0000"),
+          totalMondial: String(monthly.totalMondial ?? "0.0000"),
+          totalComprasPessoais: String(monthly.totalComprasPessoais ?? "0.0000"),
+          totalVendasClientes: String(monthly.totalVendasClientes ?? "0.0000"),
+          totalComissaoEvertonMondial: String(monthly.totalComissaoEvertonMondial ?? "0.0000"),
+          totalLucro: String(monthly.totalLucro ?? "0.0000"),
+          margemMedia: String(monthly.margemMedia ?? "0.000000"),
+          atualizadoEm: Date.now(),
+        });
+
+        return getOrderWithItems(input.orderId);
+      }),
+    delete: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const existing = await getOrderWithItems(input.orderId);
+        if (!existing.order) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pedido não encontrado." });
+        }
+
+        const { periodYear, periodMonth } = existing.order;
+
+        await deleteOrder(input.orderId);
+
+        // Recalculate monthly snapshot after deletion
+        const monthly = await getMonthlySummary(periodYear, periodMonth);
+        await upsertMonthlySnapshot({
+          periodYear,
+          periodMonth,
+          totalPedidos: Number(monthly.totalPedidos ?? 0),
+          totalPedidosCliente: Number(monthly.totalPedidosCliente ?? 0),
+          totalPedidosPessoais: Number(monthly.totalPedidosPessoais ?? 0),
+          totalCliente: String(monthly.totalCliente ?? "0.0000"),
+          totalMondial: String(monthly.totalMondial ?? "0.0000"),
+          totalComprasPessoais: String(monthly.totalComprasPessoais ?? "0.0000"),
+          totalVendasClientes: String(monthly.totalVendasClientes ?? "0.0000"),
+          totalComissaoEvertonMondial: String(monthly.totalComissaoEvertonMondial ?? "0.0000"),
+          totalLucro: String(monthly.totalLucro ?? "0.0000"),
+          margemMedia: String(monthly.margemMedia ?? "0.000000"),
+          atualizadoEm: Date.now(),
+        });
+
+        await notifyOwner({
+          title: "Pedido exclu\u00eddo",
+          content: `Pedido #${input.orderId} de ${existing.order.customerName} foi exclu\u00eddo.`,
+        });
+
+        return { success: true };
       }),
   }),
   dashboard: router({
