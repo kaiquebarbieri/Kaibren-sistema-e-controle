@@ -43,6 +43,13 @@
       "when": 1773789898834,
       "tag": "0005_illegal_phalanx",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1773837308323,
+      "tag": "0006_optimal_vector",
+      "breakpoints": true
     }
   ]
 }

@@ -227,6 +227,19 @@ export async function getCustomerById(customerId: number) {
   return rows[0] ?? null;
 }
 
+export async function deleteCustomer(customerId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(customers).where(eq(customers.id, customerId));
+}
+
+export async function updateCustomer(customerId: number, data: Partial<InsertCustomer>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(customers).set(data).where(eq(customers.id, customerId));
+  return getCustomerById(customerId);
+}
+
 export async function createOrder(input: InsertOrder) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

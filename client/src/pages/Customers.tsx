@@ -21,6 +21,7 @@ import {
   Search,
   ShoppingBag,
   Trophy,
+  Trash2,
   TrendingUp,
   UserPlus,
   Users,
@@ -30,6 +31,7 @@ import {
   User,
   Building2,
   StickyNote,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,6 +40,7 @@ type CustomerRow = {
   name: string;
   reference: string | null;
   document: string | null;
+  inscricaoEstadual: string | null;
   phone: string | null;
   email: string | null;
   city: string | null;
@@ -49,6 +52,7 @@ type CustomerForm = {
   name: string;
   reference: string;
   document: string;
+  inscricaoEstadual: string;
   phone: string;
   email: string;
   city: string;
@@ -61,6 +65,7 @@ function createEmptyCustomerForm(): CustomerForm {
     name: "",
     reference: "",
     document: "",
+    inscricaoEstadual: "",
     phone: "",
     email: "",
     city: "",
@@ -128,6 +133,7 @@ export default function Customers() {
         name: customer.name,
         reference: customer.reference ?? "",
         document: customer.document ?? "",
+        inscricaoEstadual: (customer as any).inscricaoEstadual ?? "",
         phone: customer.phone ?? "",
         email: customer.email ?? "",
         city: customer.city ?? "",
@@ -153,6 +159,7 @@ export default function Customers() {
       name: customer.name,
       reference: customer.reference ?? "",
       document: customer.document ?? "",
+      inscricaoEstadual: customer.inscricaoEstadual ?? "",
       phone: customer.phone ?? "",
       email: customer.email ?? "",
       city: customer.city ?? "",
@@ -169,6 +176,7 @@ export default function Customers() {
         name: customer.name,
         reference: customer.reference ?? "",
         document: customer.document ?? "",
+        inscricaoEstadual: customer.inscricaoEstadual ?? "",
         phone: customer.phone ?? "",
         email: customer.email ?? "",
         city: customer.city ?? "",
@@ -182,22 +190,59 @@ export default function Customers() {
     setView("form");
   }
 
+  const updateCustomerMutation = trpc.customers.update.useMutation({
+    onSuccess: async (customer) => {
+      if (!customer) return;
+      toast.success(`Cliente ${customer.name} atualizado com sucesso!`);
+      setView("list");
+      await customersQuery.refetch();
+      countQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const deleteCustomerMutation = trpc.customers.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("Cliente excluído com sucesso!");
+      setView("list");
+      setSelectedCustomerId("new");
+      await customersQuery.refetch();
+      countQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   async function saveCustomer() {
     if (!customerForm.name.trim()) {
       toast.error("Informe o nome do cliente para cadastrar.");
       return;
     }
 
-    await createCustomerMutation.mutateAsync({
+    const data = {
       name: customerForm.name,
       reference: customerForm.reference || null,
       document: customerForm.document || null,
+      inscricaoEstadual: customerForm.inscricaoEstadual || null,
       phone: customerForm.phone || null,
       email: customerForm.email || null,
       city: customerForm.city || null,
       state: customerForm.state || null,
       notes: customerForm.notes || null,
-    });
+    };
+
+    if (selectedCustomerId !== "new") {
+      await updateCustomerMutation.mutateAsync({ id: Number(selectedCustomerId), ...data });
+    } else {
+      await createCustomerMutation.mutateAsync(data);
+    }
+  }
+
+  async function handleDeleteCustomer() {
+    if (selectedCustomerId === "new") return;
+    await deleteCustomerMutation.mutateAsync({ id: Number(selectedCustomerId) });
+    setShowDeleteConfirm(false);
   }
 
   function updateField(field: keyof CustomerForm, value: string) {
@@ -435,16 +480,64 @@ export default function Customers() {
               <p className="text-xs text-muted-foreground">{c.reference}</p>
             )}
           </div>
-          <Button
-            onClick={() => startEdit(c as CustomerRow)}
-            variant="outline"
-            size="sm"
-            className="gap-1.5 rounded-xl h-9 text-xs sm:text-sm"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Editar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => startEdit(c as CustomerRow)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 rounded-xl h-9 text-xs sm:text-sm"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Editar
+            </Button>
+            <Button
+              onClick={() => setShowDeleteConfirm(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 rounded-xl h-9 text-xs sm:text-sm text-destructive border-destructive/30 hover:bg-destructive/10"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
+
+        {/* Delete Confirmation */}
+        {showDeleteConfirm && (
+          <Card className="border-destructive/40 bg-destructive/5 shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-sm font-medium text-destructive mb-3">
+                Tem certeza que deseja excluir o cliente <strong>{c.name}</strong>?
+              </p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Essa ação não pode ser desfeita. Os pedidos vinculados a este cliente serão mantidos.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleDeleteCustomer}
+                  disabled={deleteCustomerMutation.isPending}
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1.5 rounded-xl h-9 text-xs"
+                >
+                  {deleteCustomerMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  Sim, excluir
+                </Button>
+                <Button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Profile Card */}
         <Card className="border-border/60 shadow-sm overflow-hidden">
@@ -498,6 +591,19 @@ export default function Customers() {
                   <p className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-muted-foreground">Documento</p>
                   <p className="text-sm font-medium text-foreground mt-0.5 truncate">
                     {c.document || "Não informado"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Inscrição Estadual */}
+              <div className="flex items-start gap-3 rounded-xl bg-muted/50 p-3 sm:p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10">
+                  <ClipboardList className="h-4 w-4 text-cyan-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-muted-foreground">Inscrição Estadual</p>
+                  <p className="text-sm font-medium text-foreground mt-0.5 truncate">
+                    {(c as any).inscricaoEstadual || "Não informado"}
                   </p>
                 </div>
               </div>
@@ -602,6 +708,15 @@ export default function Customers() {
                   className="h-11 text-sm rounded-xl"
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm font-medium">Inscrição Estadual</Label>
+                <Input
+                  value={customerForm.inscricaoEstadual}
+                  onChange={e => updateField("inscricaoEstadual", e.target.value)}
+                  placeholder="Número da inscrição estadual"
+                  className="h-11 text-sm rounded-xl"
+                />
+              </div>
             </div>
 
             {/* Divider */}
@@ -690,11 +805,11 @@ export default function Customers() {
             {/* Save button */}
             <Button
               onClick={saveCustomer}
-              disabled={createCustomerMutation.isPending || !customerForm.name.trim()}
+              disabled={(createCustomerMutation.isPending || updateCustomerMutation.isPending) || !customerForm.name.trim()}
               className="w-full h-12 text-sm font-semibold rounded-xl gap-2 shadow-sm"
               size="lg"
             >
-              {createCustomerMutation.isPending ? (
+              {(createCustomerMutation.isPending || updateCustomerMutation.isPending) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

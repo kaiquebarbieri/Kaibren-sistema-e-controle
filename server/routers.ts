@@ -10,6 +10,8 @@ import {
   createCampaign,
   createCampaignMessages,
   createCustomer,
+  deleteCustomer,
+  updateCustomer,
   createOrder,
   createProductUpload,
   getCampaignById,
@@ -66,6 +68,7 @@ const customerInputSchema = z.object({
   name: z.string().min(1),
   reference: z.string().optional().nullable(),
   document: z.string().optional().nullable(),
+  inscricaoEstadual: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   email: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
@@ -611,6 +614,7 @@ export const appRouter = router({
           name: input.name,
           reference: input.reference ?? null,
           document: input.document ?? null,
+          inscricaoEstadual: input.inscricaoEstadual ?? null,
           phone: input.phone ?? null,
           email: input.email ?? null,
           city: input.city ?? null,
@@ -626,6 +630,22 @@ export const appRouter = router({
         });
 
         return created;
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }).merge(customerInputSchema.partial()))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const existing = await getCustomerById(id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente não encontrado" });
+        return updateCustomer(id, data as any);
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const existing = await getCustomerById(input.id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente não encontrado" });
+        await deleteCustomer(input.id);
+        return { success: true };
       }),
     ranking: protectedProcedure
       .input(z.object({ periodYear: z.number().int(), periodMonth: z.number().int().min(1).max(12), limit: z.number().int().min(1).max(50).default(10) }))

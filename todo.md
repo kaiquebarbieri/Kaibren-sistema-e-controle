@@ -121,3 +121,5 @@
 - [x] Corrigir gráfico do Dashboard que sumiu após alterações na página de Clientes
 - [x] Adicionar contador de clientes cadastrados na página de Clientes
 - [x] Adicionar ranking de clientes que mais compraram no mês na página de Clientes
+- [x] Adicionar campo de Inscrição Estadual no cadastro de clientes
+- [x] Adicionar botão de excluir cliente com confirmação

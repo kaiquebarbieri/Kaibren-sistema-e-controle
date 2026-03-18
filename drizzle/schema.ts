@@ -67,6 +67,7 @@ export const customers = mysqlTable("customers", {
   name: varchar("name", { length: 255 }).notNull(),
   reference: varchar("reference", { length: 255 }),
   document: varchar("document", { length: 64 }),
+  inscricaoEstadual: varchar("inscricaoEstadual", { length: 64 }),
   phone: varchar("phone", { length: 64 }),
   email: varchar("email", { length: 320 }),
   city: varchar("city", { length: 160 }),
