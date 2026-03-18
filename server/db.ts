@@ -16,6 +16,10 @@ import {
   InsertProductUpload,
   InsertUser,
   InsertMyCnpj,
+  InsertBankStatement,
+  InsertBankTransaction,
+  bankStatements,
+  bankTransactions,
   marketingStrategies,
   monthlySnapshots,
   myCnpjs,
@@ -616,4 +620,82 @@ export async function getCnpjEvolution(periodYear: number) {
     .orderBy(orders.periodMonth);
 
   return rows;
+}
+
+
+/* ── Bank Statements ── */
+
+export async function createBankStatement(input: InsertBankStatement) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(bankStatements).values(input);
+  return { id: result.insertId };
+}
+
+export async function listBankStatements() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(bankStatements).orderBy(desc(bankStatements.periodYear), desc(bankStatements.periodMonth), desc(bankStatements.createdAt));
+}
+
+export async function getBankStatementById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(bankStatements).where(eq(bankStatements.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateBankStatement(id: number, data: Partial<InsertBankStatement>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(bankStatements).set(data).where(eq(bankStatements.id, id));
+}
+
+export async function deleteBankStatement(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(bankTransactions).where(eq(bankTransactions.statementId, id));
+  await db.delete(bankStatements).where(eq(bankStatements.id, id));
+}
+
+/* ── Bank Transactions ── */
+
+export async function createBankTransactions(items: InsertBankTransaction[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) return;
+  await db.insert(bankTransactions).values(items);
+}
+
+export async function listBankTransactions(statementId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(bankTransactions).where(eq(bankTransactions.statementId, statementId)).orderBy(bankTransactions.id);
+}
+
+export async function updateBankTransaction(id: number, data: { category?: string | null; userDescription?: string | null; isIdentified?: number; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(bankTransactions).set(data).where(eq(bankTransactions.id, id));
+}
+
+export async function updateBankTransactionsBatch(updates: { id: number; category?: string | null; userDescription?: string | null; isIdentified?: number; notes?: string | null }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  for (const u of updates) {
+    const { id, ...data } = u;
+    await db.update(bankTransactions).set(data).where(eq(bankTransactions.id, id));
+  }
+}
+
+export async function recalcStatementCounts(statementId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const txns = await db.select().from(bankTransactions).where(eq(bankTransactions.statementId, statementId));
+  const total = txns.length;
+  const identified = txns.filter(t => t.isIdentified === 1).length;
+  let status: "pending" | "partial" | "completed" = "pending";
+  if (identified > 0 && identified < total) status = "partial";
+  if (identified > 0 && identified >= total) status = "completed";
+  await db.update(bankStatements).set({ totalTransactions: total, totalIdentified: identified, status }).where(eq(bankStatements.id, statementId));
 }

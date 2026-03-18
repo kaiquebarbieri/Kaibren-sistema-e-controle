@@ -138,3 +138,13 @@
 - [x] Adicionar seção de gerenciamento de CNPJs (cadastro, edição, exclusão) na página de Clientes
 - [x] Adicionar seleção de CNPJ ao criar/editar compra pessoal na página de Pedidos
 - [x] Escrever testes vitest para o módulo de CNPJs
+- [x] Criar tabelas no banco para extratos bancários (bank_statements) e transações (bank_transactions)
+- [x] Implementar upload de PDF de extrato bancário com armazenamento em S3
+- [x] Implementar parsing automático de PDFs de extrato para extrair transações (data, valor, descrição, tipo)
+- [x] Criar procedures tRPC para CRUD de extratos e transações
+- [x] Criar página dedicada de Extratos Bancários com upload, listagem e categorização
+- [x] Permitir identificação manual de cada transação pelo usuário (campo descrição/categoria)
+- [x] Implementar exportação de transações em planilha Excel organizada para contabilidade
+- [x] Adicionar menu Extratos na navegação lateral do sistema
+- [x] Organizar extratos por mês e banco para fácil localização
+- [x] Escrever testes vitest para o módulo de extratos bancários

@@ -57,6 +57,13 @@
       "when": 1773868496227,
       "tag": "0007_damp_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1773873382399,
+      "tag": "0008_legal_marten_broadcloak",
+      "breakpoints": true
     }
   ]
 }

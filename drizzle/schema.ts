@@ -264,3 +264,65 @@ export const myCnpjs = mysqlTable("my_cnpjs", {
 
 export type MyCnpj = typeof myCnpjs.$inferSelect;
 export type InsertMyCnpj = typeof myCnpjs.$inferInsert;
+
+/* ── Extratos Bancários ── */
+
+export const bankStatements = mysqlTable("bank_statements", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Nome do banco (ex: Nubank, Itaú, Bradesco) */
+  bankName: varchar("bankName", { length: 128 }).notNull(),
+  /** Mês de referência */
+  periodMonth: int("periodMonth").notNull(),
+  /** Ano de referência */
+  periodYear: int("periodYear").notNull(),
+  /** Nome original do arquivo PDF */
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  /** Chave S3 do arquivo original */
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  /** URL do arquivo no S3 */
+  fileUrl: text("fileUrl").notNull(),
+  /** Total de transações extraídas */
+  totalTransactions: int("totalTransactions").notNull().default(0),
+  /** Total de transações já identificadas pelo usuário */
+  totalIdentified: int("totalIdentified").notNull().default(0),
+  /** Saldo inicial do período (se disponível) */
+  saldoInicial: decimal("saldoInicial", { precision: 14, scale: 2 }),
+  /** Saldo final do período (se disponível) */
+  saldoFinal: decimal("saldoFinal", { precision: 14, scale: 2 }),
+  /** Status: pending (aguardando identificação), partial, completed */
+  status: mysqlEnum("status", ["pending", "partial", "completed"]).default("pending").notNull(),
+  /** Observações */
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const bankTransactions = mysqlTable("bank_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  /** FK para o extrato */
+  statementId: int("statementId").notNull(),
+  /** Data da transação */
+  transactionDate: varchar("transactionDate", { length: 20 }).notNull(),
+  /** Descrição original do banco */
+  originalDescription: text("originalDescription").notNull(),
+  /** Valor (positivo = entrada, negativo = saída) */
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  /** Tipo: credit (entrada) ou debit (saída) */
+  transactionType: mysqlEnum("transactionType", ["credit", "debit"]).default("debit").notNull(),
+  /** Categoria identificada pelo usuário */
+  category: varchar("category", { length: 128 }),
+  /** Descrição/identificação do usuário (do que se trata o pagamento) */
+  userDescription: text("userDescription"),
+  /** Se já foi identificado pelo usuário */
+  isIdentified: int("isIdentified").notNull().default(0),
+  /** Observações adicionais */
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BankStatement = typeof bankStatements.$inferSelect;
+export type InsertBankStatement = typeof bankStatements.$inferInsert;
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type InsertBankTransaction = typeof bankTransactions.$inferInsert;

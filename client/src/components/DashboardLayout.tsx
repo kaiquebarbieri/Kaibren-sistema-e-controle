@@ -24,6 +24,7 @@ import { useIsMobile } from "@/hooks/useMobile";
 import {
   BarChart3,
   ClipboardList,
+  FileText,
   LogOut,
   Megaphone,
   PackageSearch,
@@ -41,6 +42,7 @@ const menuItems = [
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
   { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/pedidos" },
   { icon: Megaphone, label: "Marketing", section: "marketing", href: "/marketing" },
+  { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

@@ -52,6 +52,14 @@ import {
   deleteMyCnpj,
   getCnpjRanking,
   getCnpjEvolution,
+  listBankStatements,
+  getBankStatementById,
+  updateBankStatement,
+  deleteBankStatement,
+  listBankTransactions,
+  updateBankTransaction,
+  updateBankTransactionsBatch,
+  recalcStatementCounts,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
@@ -1117,6 +1125,69 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const year = input?.periodYear ?? new Date().getFullYear();
         return getCnpjEvolution(year);
+      }),
+  }),
+  bankStatements: router({
+    list: protectedProcedure.query(async () => {
+      return listBankStatements();
+    }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const statement = await getBankStatementById(input.id);
+        if (!statement) throw new TRPCError({ code: "NOT_FOUND", message: "Extrato n\u00e3o encontrado." });
+        const transactions = await listBankTransactions(input.id);
+        return { statement, transactions };
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        bankName: z.string().optional(),
+        periodMonth: z.number().int().min(1).max(12).optional(),
+        periodYear: z.number().int().optional(),
+        notes: z.string().optional().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateBankStatement(id, data);
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteBankStatement(input.id);
+        return { success: true };
+      }),
+    updateTransaction: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        statementId: z.number().int().positive(),
+        category: z.string().optional().nullable(),
+        userDescription: z.string().optional().nullable(),
+        isIdentified: z.number().int().min(0).max(1).optional(),
+        notes: z.string().optional().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, statementId, ...data } = input;
+        await updateBankTransaction(id, data);
+        await recalcStatementCounts(statementId);
+        return { success: true };
+      }),
+    updateTransactionsBatch: protectedProcedure
+      .input(z.object({
+        statementId: z.number().int().positive(),
+        updates: z.array(z.object({
+          id: z.number().int().positive(),
+          category: z.string().optional().nullable(),
+          userDescription: z.string().optional().nullable(),
+          isIdentified: z.number().int().min(0).max(1).optional(),
+          notes: z.string().optional().nullable(),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        await updateBankTransactionsBatch(input.updates);
+        await recalcStatementCounts(input.statementId);
+        return { success: true };
       }),
   }),
 });
