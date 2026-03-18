@@ -127,3 +127,4 @@
 - [x] Permitir alterar produtos, quantidades e informações de pedidos salvos
 - [x] Adicionar botão de editar e excluir pedido no histórico
 - [x] Recalcular automaticamente os totais do dashboard ao editar um pedido
+- [x] Adicionar botão rápido no histórico para trocar tipo do pedido (Cliente/Pessoal) sem editar o pedido inteiro

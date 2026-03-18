@@ -25,6 +25,7 @@ import {
   Trash2,
   X,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
@@ -361,6 +362,15 @@ export default function Orders() {
       await ordersQuery.refetch();
     },
     onError: error => toast.error(error.message),
+  });
+
+  const changeTypeMutation = trpc.orders.changeType.useMutation({
+    onSuccess: () => {
+      trpcUtils.orders.list.invalidate();
+      trpcUtils.dashboard.invalidate();
+      toast.success("Tipo do pedido alterado com sucesso!");
+    },
+    onError: (err: any) => toast.error(err.message),
   });
 
   const deleteOrderMutation = trpc.orders.delete.useMutation({
@@ -1164,7 +1174,17 @@ export default function Orders() {
                     <span>{order.orderType === "personal" ? "Mondial" : "Venda"}: {order.orderType === "personal" ? formatCurrency(order.totalMondial) : formatCurrency(order.totalCliente)}</span>
                     <span>Mondial: {formatCurrency(order.totalMondial)}</span>
                   </div>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => changeTypeMutation.mutate({ orderId: order.id, orderType: order.orderType === "personal" ? "customer" : "personal" })}
+                      disabled={changeTypeMutation.isPending}
+                      className="h-7 text-[10px] flex-1 border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
+                    >
+                      <RefreshCw className={`mr-1 h-3 w-3 ${changeTypeMutation.isPending ? "animate-spin" : ""}`} />
+                      {order.orderType === "personal" ? "Mudar p/ Cliente" : "Mudar p/ Pessoal"}
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => loadOrderForEditing(order.id)} className="h-7 text-[10px] flex-1">
                       <Edit3 className="mr-1 h-3 w-3" /> Editar
                     </Button>
@@ -1210,7 +1230,18 @@ export default function Orders() {
                   {(ordersQuery.data ?? []).map(order => (
                     <TableRow key={order.id}>
                       <TableCell>#{order.id}</TableCell>
-                      <TableCell>{order.orderType === "personal" ? "Pessoal" : "Cliente"}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => changeTypeMutation.mutate({ orderId: order.id, orderType: order.orderType === "personal" ? "customer" : "personal" })}
+                          disabled={changeTypeMutation.isPending}
+                          className="h-7 text-[11px] border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
+                        >
+                          <RefreshCw className={`mr-1 h-3 w-3 ${changeTypeMutation.isPending ? "animate-spin" : ""}`} />
+                          {order.orderType === "personal" ? "Pessoal" : "Cliente"}
+                        </Button>
+                      </TableCell>
                       <TableCell className="font-medium">{order.customerName}</TableCell>
                       <TableCell>{order.orderType === "personal" ? formatCurrency(order.totalMondial) : formatCurrency(order.totalCliente)}</TableCell>
                       <TableCell>{formatCurrency(order.totalMondial)}</TableCell>

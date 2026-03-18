@@ -892,6 +892,90 @@ export const appRouter = router({
 
         return getOrderWithItems(input.orderId);
       }),
+    changeType: protectedProcedure
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        orderType: z.enum(["customer", "personal"]),
+      }))
+      .mutation(async ({ input }) => {
+        const existing = await getOrderWithItems(input.orderId);
+        if (!existing.order) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\u00e3o encontrado." });
+        }
+
+        // Recalculate totals with new type
+        const totals = computeOrderTotals(
+          existing.items.map(item => ({
+            sku: item.sku,
+            titulo: item.titulo,
+            quantidade: Number(item.quantidade),
+            tabelaNovaCk: String(item.tabelaNovaCk),
+            imposto: String(item.imposto),
+            comissao: String(item.comissao),
+            valorProduto: String(item.valorProduto),
+            precoDesejado: String(item.precoDesejado),
+            precoFinal: String(item.precoFinal),
+            margemFinal: String(item.margemFinal),
+            lucroUnitario: String(item.lucroUnitario),
+          })),
+          input.orderType
+        );
+
+        // Update order type and recalculated totals
+        await updateOrder(input.orderId, {
+          orderType: input.orderType,
+          totalCliente: formatMoney(totals.totalCliente),
+          totalMondial: formatMoney(totals.totalMondial),
+          totalComissaoEvertonMondial: formatMoney(totals.totalComissaoEvertonMondial),
+          totalLucro: formatMoney(totals.totalLucro),
+          margemPedido: formatMargin(totals.margemPedido),
+        });
+
+        // Update order items with new type calculations
+        await deleteOrderItems(input.orderId);
+        await insertOrderItems(
+          existing.items.map(item => ({
+            orderId: input.orderId,
+            productId: item.productId ?? null,
+            sku: item.sku,
+            titulo: item.titulo,
+            quantidade: item.quantidade,
+            tabelaNovaCk: item.tabelaNovaCk,
+            imposto: item.imposto,
+            comissao: item.comissao,
+            valorProduto: item.valorProduto,
+            precoDesejado: item.precoDesejado,
+            precoFinal: item.precoFinal,
+            margemFinal: item.margemFinal,
+            lucroUnitario: input.orderType === "personal" ? "0.0000" : String(item.lucroUnitario),
+            totalCliente: input.orderType === "personal" ? "0.0000" : formatMoney(toNumber(String(item.precoFinal || item.precoDesejado)) * toNumber(String(item.quantidade))),
+            totalMondial: formatMoney(toNumber(String(item.valorProduto)) * toNumber(String(item.quantidade))),
+            totalComissaoEvertonMondial: formatMoney(toNumber(String(item.comissao)) * toNumber(String(item.quantidade))),
+            totalLucro: input.orderType === "personal" ? "0.0000" : formatMoney(toNumber(String(item.lucroUnitario)) * toNumber(String(item.quantidade))),
+          }))
+        );
+
+        // Recalculate monthly snapshot
+        const { periodYear, periodMonth } = existing.order;
+        const monthly = await getMonthlySummary(periodYear, periodMonth);
+        await upsertMonthlySnapshot({
+          periodYear,
+          periodMonth,
+          totalPedidos: Number(monthly.totalPedidos ?? 0),
+          totalPedidosCliente: Number(monthly.totalPedidosCliente ?? 0),
+          totalPedidosPessoais: Number(monthly.totalPedidosPessoais ?? 0),
+          totalCliente: String(monthly.totalCliente ?? "0.0000"),
+          totalMondial: String(monthly.totalMondial ?? "0.0000"),
+          totalComprasPessoais: String(monthly.totalComprasPessoais ?? "0.0000"),
+          totalVendasClientes: String(monthly.totalVendasClientes ?? "0.0000"),
+          totalComissaoEvertonMondial: String(monthly.totalComissaoEvertonMondial ?? "0.0000"),
+          totalLucro: String(monthly.totalLucro ?? "0.0000"),
+          margemMedia: String(monthly.margemMedia ?? "0.000000"),
+          atualizadoEm: Date.now(),
+        });
+
+        return { success: true };
+      }),
     delete: protectedProcedure
       .input(z.object({ orderId: z.number().int().positive() }))
       .mutation(async ({ input }) => {
