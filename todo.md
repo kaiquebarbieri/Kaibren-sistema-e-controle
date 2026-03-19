@@ -153,3 +153,6 @@
 - [x] Melhorar parser para capturar data contábil e tipo de transação como campos separados
 - [x] Ajustar exportação Excel com colunas iguais ao PDF do banco (Data, Data Contábil, Tipo, Descrição, Valor, Identificação/Categoria)
 - [x] Facilitar identificação de transações no frontend com campos claros
+- [x] Adicionar filtro por categoria nas transações do extrato com total gasto por categoria
+- [x] Criar seção/menu dedicado ao LIS (cheque especial) para acompanhar gastos mensais com juros e IOF
+- [x] Adicionar categoria "LIS / Cheque Especial" nas categorias disponíveis

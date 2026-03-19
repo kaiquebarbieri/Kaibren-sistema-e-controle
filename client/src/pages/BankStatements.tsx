@@ -41,10 +41,12 @@ const MONTHS = [
 const CATEGORIES = [
   "Fornecedor",
   "Imposto / Tributo",
+  "LIS / Cheque Especial",
   "Aluguel",
   "Salário / Funcionário",
   "Frete / Transporte",
   "Material / Insumo",
+  "Embalagem",
   "Serviço / Terceiro",
   "Venda / Recebimento",
   "Pix Recebido",
@@ -90,6 +92,7 @@ export default function BankStatements() {
   // Search in transactions
   const [txnSearch, setTxnSearch] = useState("");
   const [txnFilter, setTxnFilter] = useState<"all" | "identified" | "pending">("all");
+  const [txnCategoryFilter, setTxnCategoryFilter] = useState<string>("all");
 
   // Queries
   const statementsQuery = trpc.bankStatements.list.useQuery();
@@ -216,8 +219,46 @@ export default function BankStatements() {
     } else if (txnFilter === "pending") {
       list = list.filter(t => t.isIdentified === 0);
     }
+    if (txnCategoryFilter && txnCategoryFilter !== "all") {
+      list = list.filter(t => t.category === txnCategoryFilter);
+    }
     return list;
-  }, [detailQuery.data?.transactions, txnSearch, txnFilter]);
+  }, [detailQuery.data?.transactions, txnSearch, txnFilter, txnCategoryFilter]);
+
+  // Category breakdown stats
+  const categoryStats = useMemo(() => {
+    if (!detailQuery.data?.transactions) return [];
+    const txns = detailQuery.data.transactions;
+    const catMap = new Map<string, { count: number; total: number; type: "credit" | "debit" | "mixed" }>();
+    for (const t of txns) {
+      const cat = t.category || "Sem categoria";
+      const existing = catMap.get(cat) || { count: 0, total: 0, type: t.transactionType as "credit" | "debit" | "mixed" };
+      existing.count++;
+      existing.total += parseFloat(String(t.amount));
+      if (existing.type !== t.transactionType && existing.count > 1) existing.type = "mixed";
+      catMap.set(cat, existing);
+    }
+    return Array.from(catMap.entries())
+      .map(([category, stats]) => ({ category, ...stats }))
+      .sort((a, b) => b.total - a.total);
+  }, [detailQuery.data?.transactions]);
+
+  // LIS stats (Cheque Especial - juros e IOF)
+  const lisStats = useMemo(() => {
+    if (!detailQuery.data?.transactions) return { total: 0, count: 0, items: [] as any[] };
+    const txns = detailQuery.data.transactions;
+    // Auto-detect LIS transactions by description keywords or category
+    const lisItems = txns.filter(t => {
+      const desc = t.originalDescription.toLowerCase();
+      const cat = (t.category || "").toLowerCase();
+      return cat.includes("lis") || cat.includes("cheque especial") ||
+        desc.includes("cheque esp") || desc.includes("cheque especial") ||
+        desc.includes("iof cheque") || desc.includes("juros cheque") ||
+        desc.includes("lis ") || desc.includes("limite de credito");
+    });
+    const total = lisItems.reduce((s, t) => s + parseFloat(String(t.amount)), 0);
+    return { total, count: lisItems.length, items: lisItems };
+  }, [detailQuery.data?.transactions]);
 
   // Summary stats
   const txnStats = useMemo(() => {
@@ -375,6 +416,87 @@ export default function BankStatements() {
                 </Card>
               </div>
 
+              {/* LIS / Cheque Especial Card */}
+              {lisStats.count > 0 && (
+                <Card className="bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <AlertCircle className="h-5 w-5 text-purple-600" />
+                          <span className="text-sm font-semibold text-purple-700 dark:text-purple-400">LIS / Cheque Especial</span>
+                        </div>
+                        <p className="text-xs text-purple-600/70 dark:text-purple-400/70">
+                          {lisStats.count} transações detectadas (juros + IOF)
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{formatCurrency(lisStats.total)}</p>
+                        <p className="text-xs text-purple-600/70 dark:text-purple-400/70">gasto neste mês</p>
+                      </div>
+                    </div>
+                    {lisStats.items.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-800 space-y-1">
+                        {lisStats.items.map((item: any) => (
+                          <div key={item.id} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-purple-500">{item.transactionDate}</span>
+                              <span className="text-purple-700 dark:text-purple-300">{item.originalDescription}</span>
+                            </div>
+                            <span className="font-medium text-purple-700 dark:text-purple-300">{formatCurrency(item.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Category Breakdown */}
+              {categoryStats.length > 0 && categoryStats.some(c => c.category !== "Sem categoria") && (
+                <Card>
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Filter className="h-4 w-4" /> Gastos por Categoria
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="space-y-2">
+                      {categoryStats.filter(c => c.category !== "Sem categoria").map(cat => {
+                        const maxTotal = categoryStats[0]?.total || 1;
+                        const pct = (cat.total / maxTotal) * 100;
+                        const isActive = txnCategoryFilter === cat.category;
+                        return (
+                          <div
+                            key={cat.category}
+                            className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${
+                              isActive ? "bg-primary/10 ring-1 ring-primary" : "hover:bg-muted/50"
+                            }`}
+                            onClick={() => setTxnCategoryFilter(isActive ? "all" : cat.category)}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-medium truncate">{cat.category}</span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs text-muted-foreground">{cat.count}x</span>
+                                  <span className="text-sm font-bold">{formatCurrency(cat.total)}</span>
+                                </div>
+                              </div>
+                              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-primary/60 transition-all"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Search & Filter */}
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
@@ -385,6 +507,19 @@ export default function BankStatements() {
                     onChange={e => setTxnSearch(e.target.value)}
                     className="pl-9"
                   />
+                </div>
+                <div className="w-full sm:w-48">
+                  <Select value={txnCategoryFilter} onValueChange={setTxnCategoryFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas categorias</SelectItem>
+                      {CATEGORIES.map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -410,6 +545,21 @@ export default function BankStatements() {
                   </Button>
                 </div>
               </div>
+
+              {/* Active category filter indicator */}
+              {txnCategoryFilter !== "all" && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Badge variant="default" className="gap-1">
+                    <Filter className="h-3 w-3" /> {txnCategoryFilter}
+                    <button onClick={() => setTxnCategoryFilter("all")} className="ml-1 hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {filteredTransactions.length} transações — Total: {formatCurrency(filteredTransactions.reduce((s, t) => s + parseFloat(String(t.amount)), 0))}
+                  </span>
+                </div>
+              )}
 
               {/* Transactions List */}
               <div className="space-y-2">
