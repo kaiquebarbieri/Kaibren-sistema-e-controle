@@ -1189,6 +1189,69 @@ export const appRouter = router({
         await recalcStatementCounts(input.statementId);
         return { success: true };
       }),
+    exportExcel: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const statement = await getBankStatementById(input.id);
+        if (!statement) throw new TRPCError({ code: "NOT_FOUND", message: "Extrato não encontrado." });
+        const transactions = await listBankTransactions(input.id);
+
+        // Build Excel workbook with columns matching bank PDF format
+        const wb = XLSX.utils.book_new();
+
+        // Main transactions sheet
+        const rows = transactions.map(t => ({
+          "Data Lançamento": t.transactionDate || "",
+          "Data Contábil": t.accountingDate || t.transactionDate || "",
+          "Tipo": t.bankType || (t.transactionType === "credit" ? "Entrada" : "Saída"),
+          "Descrição": t.originalDescription || "",
+          "Valor": t.transactionType === "debit" ? `-R$ ${parseFloat(String(t.amount)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `R$ ${parseFloat(String(t.amount)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          "Categoria": t.category || "",
+          "Identificação": t.userDescription || "",
+          "Observações": t.notes || "",
+          "Status": t.isIdentified ? "Identificado" : "Pendente",
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        // Set column widths
+        ws["!cols"] = [
+          { wch: 16 }, // Data Lançamento
+          { wch: 16 }, // Data Contábil
+          { wch: 18 }, // Tipo
+          { wch: 50 }, // Descrição
+          { wch: 18 }, // Valor
+          { wch: 20 }, // Categoria
+          { wch: 40 }, // Identificação
+          { wch: 30 }, // Observações
+          { wch: 14 }, // Status
+        ];
+        XLSX.utils.book_append_sheet(wb, ws, "Transações");
+
+        // Summary sheet
+        const totalEntradas = transactions.filter(t => t.transactionType === "credit").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
+        const totalSaidas = transactions.filter(t => t.transactionType === "debit").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
+        const identified = transactions.filter(t => t.isIdentified).length;
+
+        const summaryRows = [
+          { "Informação": "Banco", "Valor": statement.bankName },
+          { "Informação": "Período", "Valor": `${String(statement.periodMonth).padStart(2, "0")}/${statement.periodYear}` },
+          { "Informação": "Total de Transações", "Valor": String(transactions.length) },
+          { "Informação": "Transações Identificadas", "Valor": `${identified} de ${transactions.length}` },
+          { "Informação": "Total Entradas", "Valor": `R$ ${totalEntradas.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+          { "Informação": "Total Saídas", "Valor": `R$ ${totalSaidas.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+          { "Informação": "Saldo", "Valor": `R$ ${(totalEntradas - totalSaidas).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+        ];
+        const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+        wsSummary["!cols"] = [{ wch: 30 }, { wch: 30 }];
+        XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo");
+
+        // Generate file and upload to S3
+        const xlsxBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        const suffix = crypto.randomBytes(4).toString("hex");
+        const xlsxKey = `bank-statements/exports/${statement.periodYear}-${String(statement.periodMonth).padStart(2, "0")}/${statement.bankName.replace(/\s+/g, "_")}-${suffix}.xlsx`;
+        const { url } = await storagePut(xlsxKey, xlsxBuffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return { url, fileName: `Extrato_${statement.bankName}_${String(statement.periodMonth).padStart(2, "0")}_${statement.periodYear}.xlsx` };
+      }),
   }),
 });
 

@@ -115,10 +115,12 @@ describe("Bank Statements Module", () => {
     expect(content).toContain("Resumo");
     expect(content).toContain("XLSX.utils.json_to_sheet");
     expect(content).toContain("XLSX.writeFile");
-    // Should include key columns
-    expect(content).toContain("Descrição Original");
+    // Should include key columns matching bank PDF format
+    expect(content).toContain("Data Lan\u00e7amento");
+    expect(content).toContain("Data Cont\u00e1bil");
+    expect(content).toContain("Descri\u00e7\u00e3o");
     expect(content).toContain("Categoria");
-    expect(content).toContain("Identificação");
-    expect(content).toContain("Valor (R$)");
+    expect(content).toContain("Identifica\u00e7\u00e3o");
+    expect(content).toContain("Valor");
   });
 });

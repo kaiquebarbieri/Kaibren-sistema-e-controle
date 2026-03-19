@@ -15,6 +15,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 interface ParsedTransaction {
   transactionDate: string;
+  accountingDate: string;
+  bankType: string;
   originalDescription: string;
   amount: string;
   transactionType: "credit" | "debit";
@@ -41,8 +43,11 @@ function parseExtractText(text: string): ParsedTransaction[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Skip "Saldo do dia" lines
+    // Skip "Saldo do dia" lines and header lines
     if (trimmed.startsWith("Saldo do dia")) continue;
+    if (trimmed.startsWith("Data")) continue;
+    if (trimmed.startsWith("lançamento")) continue;
+    if (trimmed.startsWith("contábil")) continue;
 
     // Check if line starts with a date
     if (!dateRegex.test(trimmed)) continue;
@@ -50,56 +55,47 @@ function parseExtractText(text: string): ParsedTransaction[] {
     // Split by tabs
     const parts = trimmed.split("\t").map(p => p.trim());
 
-    // Expected: [date, date_contabil, tipo, descricao, valor]
-    // Sometimes there are 4 or 5 parts
+    // Expected: [date_lancamento, date_contabil, tipo, descricao, valor]
     if (parts.length < 4) continue;
 
-    const date = parts[0]; // DD/MM
-    // Find the value (last part that contains R$)
-    let valueStr = "";
-    let description = "";
+    let dateLancamento = parts[0]; // DD/MM
+    let dateContabil = "";
     let tipo = "";
+    let description = "";
+    let valueStr = "";
 
     if (parts.length >= 5) {
-      // Standard format: date, date_contabil, tipo, descricao, valor
+      // Standard format: date_lancamento, date_contabil, tipo, descricao, valor
+      dateContabil = parts[1];
       tipo = parts[2];
       description = parts[3];
       valueStr = parts[4];
     } else if (parts.length === 4) {
-      // Could be: date, date_contabil, tipo, descricao (no value)
-      // or: date, tipo, descricao, valor
+      // Might be: date_lancamento, date_contabil, tipo, descricao (no value inline)
+      dateContabil = parts[1];
       tipo = parts[2];
       description = parts[3];
-      // Check if description contains a value
-      const valMatch = description.match(valueRegex);
-      if (valMatch) {
-        valueStr = description;
-        description = parts[2];
-        tipo = parts[1];
-      }
     }
 
     // Extract monetary value
     const valMatch = valueStr.match(valueRegex);
     if (!valMatch) {
-      // Try to find value in description or tipo
+      // Try to find value in description
       const descValMatch = description.match(valueRegex);
       if (descValMatch) {
-        valueStr = description;
-        // Re-extract
-        const m = valueStr.match(valueRegex);
-        if (m) {
-          const rawValue = m[2].replace(/\./g, "").replace(",", ".");
-          const numVal = parseFloat(rawValue);
-          if (!isNaN(numVal)) {
-            const isNegative = m[1] === "-";
-            transactions.push({
-              transactionDate: date,
-              originalDescription: `${tipo} - ${description.replace(valueRegex, "").trim()}`.trim(),
-              amount: numVal.toFixed(2),
-              transactionType: isNegative ? "debit" : "credit",
-            });
-          }
+        const rawValue = descValMatch[2].replace(/\./g, "").replace(",", ".");
+        const numVal = parseFloat(rawValue);
+        if (!isNaN(numVal) && numVal > 0) {
+          const isNegative = descValMatch[1] === "-";
+          const cleanDesc = description.replace(valueRegex, "").trim();
+          transactions.push({
+            transactionDate: dateLancamento,
+            accountingDate: dateContabil,
+            bankType: tipo,
+            originalDescription: cleanDesc || tipo || "Transação sem descrição",
+            amount: numVal.toFixed(2),
+            transactionType: isNegative ? "debit" : "credit",
+          });
         }
       }
       continue;
@@ -111,15 +107,11 @@ function parseExtractText(text: string): ParsedTransaction[] {
 
     const isNegative = valMatch[1] === "-";
 
-    // Build full description with tipo
-    let fullDescription = description;
-    if (tipo && tipo !== description) {
-      fullDescription = `${tipo} - ${description}`;
-    }
-
     transactions.push({
-      transactionDate: date,
-      originalDescription: fullDescription || "Transação sem descrição",
+      transactionDate: dateLancamento,
+      accountingDate: dateContabil,
+      bankType: tipo,
+      originalDescription: description || "Transação sem descrição",
       amount: numVal.toFixed(2),
       transactionType: isNegative ? "debit" : "credit",
     });
@@ -182,7 +174,6 @@ export function registerBankStatementUploadRoute(app: Express) {
         parsedTransactions = parseExtractText(text);
       } catch (parseError: any) {
         console.error("PDF parse error:", parseError);
-        // Check if it's a password error
         const errMsg = String(parseError?.message || "").toLowerCase();
         if (errMsg.includes("password") || errMsg.includes("encrypted") || errMsg.includes("need a password")) {
           return res.status(400).json({ 
@@ -190,7 +181,6 @@ export function registerBankStatementUploadRoute(app: Express) {
             needsPassword: true,
           });
         }
-        // Even if parsing fails for other reasons, we save the statement
       }
 
       // Create statement record
@@ -206,12 +196,14 @@ export function registerBankStatementUploadRoute(app: Express) {
         status: "pending",
       });
 
-      // Create transaction records
+      // Create transaction records with all parsed fields
       if (parsedTransactions.length > 0) {
         await createBankTransactions(
           parsedTransactions.map(t => ({
             statementId,
             transactionDate: t.transactionDate,
+            accountingDate: t.accountingDate || null,
+            bankType: t.bankType || null,
             originalDescription: t.originalDescription,
             amount: t.amount,
             transactionType: t.transactionType,

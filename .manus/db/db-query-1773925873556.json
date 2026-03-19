@@ -1,0 +1,100 @@
+{
+  "query": "SELECT id, transactionDate, accountingDate, bankType, originalDescription, amount, transactionType FROM bank_transactions WHERE statementId = 30001 LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT id, transactionDate, accountingDate, bankType, originalDescription, amount, transactionType FROM bank_transactions WHERE statementId = 30001 LIMIT 10;",
+  "rows": [
+    {
+      "id": "30001",
+      "transactionDate": "02/02",
+      "accountingDate": "02/02",
+      "bankType": "Pagamento",
+      "originalDescription": "PGTO FAT CARTAO C6",
+      "amount": "3094.45",
+      "transactionType": "debit"
+    },
+    {
+      "id": "30002",
+      "transactionDate": "02/02",
+      "accountingDate": "02/02",
+      "bankType": "Saída PIX",
+      "originalDescription": "Pix enviado para IGOR DE OLIVEIRA SILVA",
+      "amount": "38.00",
+      "transactionType": "debit"
+    },
+    {
+      "id": "30003",
+      "transactionDate": "02/02",
+      "accountingDate": "02/02",
+      "bankType": "Saída PIX",
+      "originalDescription": "Pix enviado para JOAO VICTOR DE PAULA PAIXAO",
+      "amount": "20.00",
+      "transactionType": "debit"
+    },
+    {
+      "id": "30004",
+      "transactionDate": "03/02",
+      "accountingDate": "02/02",
+      "bankType": "Outros gastos",
+      "originalDescription": "IOF CHEQUE ESPECIAL",
+      "amount": "212.85",
+      "transactionType": "debit"
+    },
+    {
+      "id": "30005",
+      "transactionDate": "03/02",
+      "accountingDate": "02/02",
+      "bankType": "Outros gastos",
+      "originalDescription": "JUROS CHEQUE ESP",
+      "amount": "2910.02",
+      "transactionType": "debit"
+    },
+    {
+      "id": "30006",
+      "transactionDate": "03/02",
+      "accountingDate": "03/02",
+      "bankType": "Saída PIX",
+      "originalDescription": "Pix enviado para SHPP BRASIL INSTITUICAO DE PAG",
+      "amount": "34.96",
+      "transactionType": "debit"
+    },
+    {
+      "id": "30007",
+      "transactionDate": "03/02",
+      "accountingDate": "03/02",
+      "bankType": "Devolução PIX",
+      "originalDescription": "Devol recebida pix de SHPP BRASIL INSTITUICAO DE PAG",
+      "amount": "34.96",
+      "transactionType": "credit"
+    },
+    {
+      "id": "30008",
+      "transactionDate": "03/02",
+      "accountingDate": "03/02",
+      "bankType": "Entrada PIX",
+      "originalDescription": "Pix recebido de C.K ATACADOS LTDA",
+      "amount": "5222.41",
+      "transactionType": "credit"
+    },
+    {
+      "id": "30009",
+      "transactionDate": "03/02",
+      "accountingDate": "03/02",
+      "bankType": "Entrada PIX",
+      "originalDescription": "Pix recebido de C.K ATACADOS LTDA",
+      "amount": "2671.25",
+      "transactionType": "credit"
+    },
+    {
+      "id": "30010",
+      "transactionDate": "04/02",
+      "accountingDate": "04/02",
+      "bankType": "Entrada PIX",
+      "originalDescription": "Pix recebido de KAIBREN E-COMMERCE E DISTRIBUIDORA LTDA",
+      "amount": "1382.00",
+      "transactionType": "credit"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttransactionDate\taccountingDate\tbankType\toriginalDescription\tamount\ttransactionType\n30001\t02/02\t02/02\tPagamento\tPGTO FAT CARTAO C6\t3094.45\tdebit\n30002\t02/02\t02/02\tSaída PIX\tPix enviado para IGOR DE OLIVEIRA SILVA\t38.00\tdebit\n30003\t02/02\t02/02\tSaída PIX\tPix enviado para JOAO VICTOR DE PAULA PAIXAO\t20.00\tdebit\n30004\t03/02\t02/02\tOutros gastos\tIOF CHEQUE ESPECIAL\t212.85\tdebit\n30005\t03/02\t02/02\tOutros gastos\tJUROS CHEQUE ESP\t2910.02\tdebit\n30006\t03/02\t03/02\tSaída PIX\tPix enviado para SHPP BRASIL INSTITUICAO DE PAG\t34.96\tdebit\n30007\t03/02\t03/02\tDevolução PIX\tDevol recebida pix de SHPP BRASIL INSTITUICAO DE PAG\t34.96\tcredit\n30008\t03/02\t03/02\tEntrada PIX\tPix recebido de C.K ATACADOS LTDA\t5222.41\tcredit\n30009\t03/02\t03/02\tEntrada PIX\tPix recebido de C.K ATACADOS LTDA\t2671.25\tcredit\n30010\t04/02\t04/02\tEntrada PIX\tPix recebido de KAIBREN E-COMMERCE E DISTRIBUIDORA LTDA\t1382.00\tcredit\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

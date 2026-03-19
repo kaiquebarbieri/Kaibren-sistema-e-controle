@@ -302,8 +302,12 @@ export const bankTransactions = mysqlTable("bank_transactions", {
   id: int("id").autoincrement().primaryKey(),
   /** FK para o extrato */
   statementId: int("statementId").notNull(),
-  /** Data da transação */
+  /** Data do lançamento (DD/MM) */
   transactionDate: varchar("transactionDate", { length: 20 }).notNull(),
+  /** Data contábil (DD/MM) */
+  accountingDate: varchar("accountingDate", { length: 20 }),
+  /** Tipo da transação conforme banco (Pagamento, Saída PIX, Entrada PIX, etc.) */
+  bankType: varchar("bankType", { length: 128 }),
   /** Descrição original do banco */
   originalDescription: text("originalDescription").notNull(),
   /** Valor (positivo = entrada, negativo = saída) */

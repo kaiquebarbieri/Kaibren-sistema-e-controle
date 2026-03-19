@@ -64,6 +64,13 @@
       "when": 1773873382399,
       "tag": "0008_legal_marten_broadcloak",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1773925643013,
+      "tag": "0009_elite_frightful_four",
+      "breakpoints": true
     }
   ]
 }

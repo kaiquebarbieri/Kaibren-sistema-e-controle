@@ -228,19 +228,26 @@ export default function BankStatements() {
     return { totalEntradas, totalSaidas, saldo: totalEntradas - totalSaidas };
   }, [detailQuery.data?.transactions]);
 
-  // Export to Excel
+  // Export to Excel - colunas iguais ao PDF do banco
   const handleExportExcel = useCallback(async () => {
     if (!detailQuery.data) return;
     const { statement, transactions } = detailQuery.data;
 
-    // Dynamic import XLSX
     const XLSX = await import("xlsx");
 
+    const fmtVal = (t: typeof transactions[0]) => {
+      const v = parseFloat(String(t.amount));
+      const formatted = v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return t.transactionType === "debit" ? `-R$ ${formatted}` : `R$ ${formatted}`;
+    };
+
+    // Colunas no mesmo formato do extrato do banco + identificação
     const rows = transactions.map(t => ({
-      "Data": t.transactionDate,
-      "Descrição Original": t.originalDescription,
-      "Tipo": t.transactionType === "credit" ? "Entrada" : "Saída",
-      "Valor (R$)": parseFloat(String(t.amount)),
+      "Data Lançamento": t.transactionDate || "",
+      "Data Contábil": (t as any).accountingDate || t.transactionDate || "",
+      "Tipo": (t as any).bankType || (t.transactionType === "credit" ? "Entrada" : "Saída"),
+      "Descrição": t.originalDescription || "",
+      "Valor": fmtVal(t),
       "Categoria": t.category || "",
       "Identificação": t.userDescription || "",
       "Observações": t.notes || "",
@@ -248,21 +255,29 @@ export default function BankStatements() {
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [
+      { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 50 },
+      { wch: 18 }, { wch: 20 }, { wch: 40 }, { wch: 30 }, { wch: 14 },
+    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Transações");
 
-    // Summary sheet
+    // Aba de resumo
+    const totalEntradas = txnStats.totalEntradas.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const totalSaidas = txnStats.totalSaidas.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const saldo = txnStats.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const summary = [
-      { "Campo": "Banco", "Valor": statement.bankName },
-      { "Campo": "Período", "Valor": `${MONTHS[statement.periodMonth - 1]}/${statement.periodYear}` },
-      { "Campo": "Total Transações", "Valor": transactions.length },
-      { "Campo": "Identificadas", "Valor": transactions.filter(t => t.isIdentified === 1).length },
-      { "Campo": "Pendentes", "Valor": transactions.filter(t => t.isIdentified === 0).length },
-      { "Campo": "Total Entradas", "Valor": txnStats.totalEntradas },
-      { "Campo": "Total Saídas", "Valor": txnStats.totalSaidas },
-      { "Campo": "Saldo", "Valor": txnStats.saldo },
+      { "Informação": "Banco", "Valor": statement.bankName },
+      { "Informação": "Período", "Valor": `${MONTHS[statement.periodMonth - 1]}/${statement.periodYear}` },
+      { "Informação": "Total de Transações", "Valor": String(transactions.length) },
+      { "Informação": "Transações Identificadas", "Valor": `${transactions.filter(t => t.isIdentified === 1).length} de ${transactions.length}` },
+      { "Informação": "Pendentes", "Valor": String(transactions.filter(t => t.isIdentified === 0).length) },
+      { "Informação": "Total Entradas", "Valor": `R$ ${totalEntradas}` },
+      { "Informação": "Total Saídas", "Valor": `R$ ${totalSaidas}` },
+      { "Informação": "Saldo", "Valor": `R$ ${saldo}` },
     ];
     const wsSummary = XLSX.utils.json_to_sheet(summary);
+    wsSummary["!cols"] = [{ wch: 30 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo");
 
     const fileName = `Extrato_${statement.bankName}_${MONTHS[statement.periodMonth - 1]}_${statement.periodYear}.xlsx`;
@@ -426,7 +441,15 @@ export default function BankStatements() {
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
                               <div>
-                                <span className="text-xs text-muted-foreground">{txn.transactionDate}</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-muted-foreground">{txn.transactionDate}</span>
+                                  {(txn as any).accountingDate && (txn as any).accountingDate !== txn.transactionDate && (
+                                    <span className="text-xs text-muted-foreground">(contábil: {(txn as any).accountingDate})</span>
+                                  )}
+                                  {(txn as any).bankType && (
+                                    <Badge variant="outline" className="text-[10px] h-4">{(txn as any).bankType}</Badge>
+                                  )}
+                                </div>
                                 <p className="text-sm font-medium">{txn.originalDescription}</p>
                               </div>
                               <span className={`text-lg font-bold ${txn.transactionType === "credit" ? "text-emerald-600" : "text-red-600"}`}>
@@ -498,8 +521,13 @@ export default function BankStatements() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
+                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                 <span className="text-xs text-muted-foreground">{txn.transactionDate}</span>
+                                {(txn as any).bankType && (
+                                  <Badge variant="outline" className="text-[10px] h-4 bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-900/30 dark:text-slate-400 dark:border-slate-700">
+                                    {(txn as any).bankType}
+                                  </Badge>
+                                )}
                                 {txn.isIdentified ? (
                                   <Badge variant="outline" className="text-[10px] h-4 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-700">
                                     <Check className="h-2.5 w-2.5 mr-0.5" /> Identificado

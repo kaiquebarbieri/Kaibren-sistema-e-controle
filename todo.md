@@ -150,3 +150,6 @@
 - [x] Escrever testes vitest para o módulo de extratos bancários
 - [x] Adicionar campo de senha de PDF no upload de extratos bancários (PDFs protegidos por senha)
 - [x] Bug: PDF de extrato bancário não extrai transações - corrigir parser e suporte a senha
+- [x] Melhorar parser para capturar data contábil e tipo de transação como campos separados
+- [x] Ajustar exportação Excel com colunas iguais ao PDF do banco (Data, Data Contábil, Tipo, Descrição, Valor, Identificação/Categoria)
+- [x] Facilitar identificação de transações no frontend com campos claros
