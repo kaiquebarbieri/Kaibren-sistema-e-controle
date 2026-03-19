@@ -74,6 +74,7 @@ export default function BankStatements() {
   const [uploadBankName, setUploadBankName] = useState("");
   const [uploadMonth, setUploadMonth] = useState(String(new Date().getMonth() + 1));
   const [uploadYear, setUploadYear] = useState(String(new Date().getFullYear()));
+  const [uploadPassword, setUploadPassword] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state
@@ -136,6 +137,9 @@ export default function BankStatements() {
       formData.append("bankName", uploadBankName.trim());
       formData.append("periodMonth", uploadMonth);
       formData.append("periodYear", uploadYear);
+      if (uploadPassword.trim()) {
+        formData.append("pdfPassword", uploadPassword.trim());
+      }
 
       const response = await fetch("/api/bank-statement/upload", {
         method: "POST",
@@ -149,6 +153,7 @@ export default function BankStatements() {
       utils.bankStatements.list.invalidate();
       setShowUpload(false);
       setUploadBankName("");
+      setUploadPassword("");
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       // Navigate to the new statement
@@ -564,7 +569,7 @@ export default function BankStatements() {
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                 <div>
                   <Label className="text-xs">Banco</Label>
                   <Input
@@ -597,6 +602,15 @@ export default function BankStatements() {
                   />
                 </div>
                 <div>
+                  <Label className="text-xs">Senha do PDF</Label>
+                  <Input
+                    type="password"
+                    value={uploadPassword}
+                    onChange={e => setUploadPassword(e.target.value)}
+                    placeholder="Se protegido..."
+                  />
+                </div>
+                <div className="sm:col-span-2">
                   <Label className="text-xs">Arquivo PDF</Label>
                   <Input
                     ref={fileInputRef}

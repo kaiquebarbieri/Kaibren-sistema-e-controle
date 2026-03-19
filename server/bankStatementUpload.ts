@@ -1,7 +1,6 @@
 import { Express, Request, Response } from "express";
 import multer from "multer";
-import * as pdfParseModule from "pdf-parse";
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { PDFParse } from "pdf-parse";
 import { storagePut } from "./storage";
 import {
   createBankStatement,
@@ -22,92 +21,138 @@ interface ParsedTransaction {
 }
 
 /**
- * Parse bank statement PDF text into structured transactions.
- * Supports common Brazilian bank formats (Nubank, Itaú, Bradesco, Sicoob, Inter, C6, etc.)
+ * Parse bank statement text (tab-separated C6 Bank format) into structured transactions.
+ * 
+ * Format per line:
+ *   DD/MM \t DD/MM \t Tipo \t Descrição \t [-]R$ X.XXX,XX
+ * 
+ * Also handles "Saldo do dia" lines (skipped).
  */
 function parseExtractText(text: string): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = [];
-  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const lines = text.split("\n");
 
-  // Common date patterns: DD/MM/YYYY, DD/MM/YY, DD/MM
-  const dateRegex = /^(\d{2}\/\d{2}(?:\/\d{2,4})?)/;
-  // Value pattern: R$ 1.234,56 or 1.234,56 or 1234,56 (with optional - or + prefix)
-  const valueRegex = /[+-]?\s*R?\$?\s*([\d.,]+)/;
+  // Date pattern at start of line: DD/MM
+  const dateRegex = /^(\d{2}\/\d{2})\s/;
+  // Value pattern: optional minus, R$, then number with dots and comma
+  const valueRegex = /(-?)R\$\s*([\d.]+,\d{2})/;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const dateMatch = line.match(dateRegex);
-    if (!dateMatch) continue;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
 
-    const date = dateMatch[1];
-    const rest = line.substring(dateMatch[0].length).trim();
+    // Skip "Saldo do dia" lines
+    if (trimmed.startsWith("Saldo do dia")) continue;
 
-    // Try to find a monetary value in the rest of the line
-    // Look for patterns like: description ... R$ 1.234,56 or description ... 1.234,56
-    const parts = rest.split(/\s+/);
-    let amount: string | null = null;
+    // Check if line starts with a date
+    if (!dateRegex.test(trimmed)) continue;
+
+    // Split by tabs
+    const parts = trimmed.split("\t").map(p => p.trim());
+
+    // Expected: [date, date_contabil, tipo, descricao, valor]
+    // Sometimes there are 4 or 5 parts
+    if (parts.length < 4) continue;
+
+    const date = parts[0]; // DD/MM
+    // Find the value (last part that contains R$)
+    let valueStr = "";
     let description = "";
-    let type: "credit" | "debit" = "debit";
+    let tipo = "";
 
-    // Try to find value from the end of the line
-    for (let j = parts.length - 1; j >= 0; j--) {
-      const part = parts[j].replace(/R\$/, "").trim();
-      // Check if this looks like a monetary value (has comma for decimals)
-      if (/^[+-]?[\d.]+,\d{2}$/.test(part)) {
-        const rawValue = part.replace(/\./g, "").replace(",", ".");
-        const numVal = parseFloat(rawValue);
-        if (!isNaN(numVal)) {
-          amount = Math.abs(numVal).toFixed(2);
-          type = numVal < 0 || rest.toLowerCase().includes("débito") || rest.toLowerCase().includes("saída") || rest.toLowerCase().includes("pagamento") || rest.toLowerCase().includes("pix enviado") || rest.toLowerCase().includes("transferência enviada") ? "debit" : "credit";
-          
-          // Check for credit indicators
-          if (rest.toLowerCase().includes("crédito") || rest.toLowerCase().includes("entrada") || rest.toLowerCase().includes("pix recebido") || rest.toLowerCase().includes("transferência recebida") || rest.toLowerCase().includes("depósito")) {
-            type = "credit";
-          }
-          
-          description = parts.slice(0, j).join(" ").replace(/R\$/g, "").trim();
-          break;
-        }
+    if (parts.length >= 5) {
+      // Standard format: date, date_contabil, tipo, descricao, valor
+      tipo = parts[2];
+      description = parts[3];
+      valueStr = parts[4];
+    } else if (parts.length === 4) {
+      // Could be: date, date_contabil, tipo, descricao (no value)
+      // or: date, tipo, descricao, valor
+      tipo = parts[2];
+      description = parts[3];
+      // Check if description contains a value
+      const valMatch = description.match(valueRegex);
+      if (valMatch) {
+        valueStr = description;
+        description = parts[2];
+        tipo = parts[1];
       }
     }
 
-    // If no value found in the same line, try next line
-    if (!amount && i + 1 < lines.length) {
-      const nextLine = lines[i + 1];
-      const nextMatch = nextLine.match(/[+-]?\s*R?\$?\s*([\d.]+,\d{2})/);
-      if (nextMatch) {
-        const rawValue = nextMatch[1].replace(/\./g, "").replace(",", ".");
-        const numVal = parseFloat(rawValue);
-        if (!isNaN(numVal)) {
-          amount = numVal.toFixed(2);
-          description = rest;
-          type = nextLine.includes("-") || rest.toLowerCase().includes("débito") || rest.toLowerCase().includes("pagamento") ? "debit" : "credit";
-          if (rest.toLowerCase().includes("crédito") || rest.toLowerCase().includes("entrada") || rest.toLowerCase().includes("pix recebido")) {
-            type = "credit";
+    // Extract monetary value
+    const valMatch = valueStr.match(valueRegex);
+    if (!valMatch) {
+      // Try to find value in description or tipo
+      const descValMatch = description.match(valueRegex);
+      if (descValMatch) {
+        valueStr = description;
+        // Re-extract
+        const m = valueStr.match(valueRegex);
+        if (m) {
+          const rawValue = m[2].replace(/\./g, "").replace(",", ".");
+          const numVal = parseFloat(rawValue);
+          if (!isNaN(numVal)) {
+            const isNegative = m[1] === "-";
+            transactions.push({
+              transactionDate: date,
+              originalDescription: `${tipo} - ${description.replace(valueRegex, "").trim()}`.trim(),
+              amount: numVal.toFixed(2),
+              transactionType: isNegative ? "debit" : "credit",
+            });
           }
-          i++; // skip next line as it was the value
         }
       }
-    }
-
-    if (!amount) {
-      // Line has a date but no value found - skip
       continue;
     }
 
-    if (!description) {
-      description = rest.replace(/[\d.,]+$/, "").trim() || "Transação sem descrição";
+    const rawValue = valMatch[2].replace(/\./g, "").replace(",", ".");
+    const numVal = parseFloat(rawValue);
+    if (isNaN(numVal) || numVal === 0) continue;
+
+    const isNegative = valMatch[1] === "-";
+
+    // Build full description with tipo
+    let fullDescription = description;
+    if (tipo && tipo !== description) {
+      fullDescription = `${tipo} - ${description}`;
     }
 
     transactions.push({
       transactionDate: date,
-      originalDescription: description,
-      amount,
-      transactionType: type,
+      originalDescription: fullDescription || "Transação sem descrição",
+      amount: numVal.toFixed(2),
+      transactionType: isNegative ? "debit" : "credit",
     });
   }
 
   return transactions;
+}
+
+/**
+ * Extract text from PDF buffer, with optional password support.
+ * Uses pdf-parse v2 PDFParse class.
+ */
+async function extractPdfText(buffer: Buffer, password?: string): Promise<string> {
+  const options: any = {
+    verbosity: 0,
+    data: new Uint8Array(buffer),
+  };
+  if (password) {
+    options.password = password;
+  }
+
+  const parser = new PDFParse(options);
+  await (parser as any).load();
+  const result = await (parser as any).getText();
+
+  // result is { pages: [{ text: string }] }
+  if (result && typeof result === "object" && "pages" in result) {
+    return (result as any).pages.map((p: any) => p.text).join("\n");
+  }
+  if (typeof result === "string") {
+    return result;
+  }
+  return JSON.stringify(result);
 }
 
 /* ── Express Route ── */
@@ -123,20 +168,29 @@ export function registerBankStatementUploadRoute(app: Express) {
       const bankName = (req.body.bankName as string) || "Banco";
       const periodMonth = parseInt(req.body.periodMonth as string) || (new Date().getMonth() + 1);
       const periodYear = parseInt(req.body.periodYear as string) || new Date().getFullYear();
+      const pdfPassword = (req.body.pdfPassword as string) || undefined;
 
       // Upload PDF to S3
       const suffix = crypto.randomBytes(4).toString("hex");
       const fileKey = `bank-statements/${periodYear}-${String(periodMonth).padStart(2, "0")}/${file.originalname.replace(/\s+/g, "_")}-${suffix}.pdf`;
       const { url: fileUrl } = await storagePut(fileKey, file.buffer, "application/pdf");
 
-      // Parse PDF
+      // Parse PDF (with optional password for protected PDFs)
       let parsedTransactions: ParsedTransaction[] = [];
       try {
-        const pdfData = await pdfParse(file.buffer);
-        parsedTransactions = parseExtractText(pdfData.text);
-      } catch (parseError) {
+        const text = await extractPdfText(file.buffer, pdfPassword);
+        parsedTransactions = parseExtractText(text);
+      } catch (parseError: any) {
         console.error("PDF parse error:", parseError);
-        // Even if parsing fails, we save the statement so user can see it
+        // Check if it's a password error
+        const errMsg = String(parseError?.message || "").toLowerCase();
+        if (errMsg.includes("password") || errMsg.includes("encrypted") || errMsg.includes("need a password")) {
+          return res.status(400).json({ 
+            error: "O PDF é protegido por senha. Informe a senha correta no campo 'Senha do PDF'.",
+            needsPassword: true,
+          });
+        }
+        // Even if parsing fails for other reasons, we save the statement
       }
 
       // Create statement record

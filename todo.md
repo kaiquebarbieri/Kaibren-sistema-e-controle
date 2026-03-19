@@ -148,3 +148,5 @@
 - [x] Adicionar menu Extratos na navegação lateral do sistema
 - [x] Organizar extratos por mês e banco para fácil localização
 - [x] Escrever testes vitest para o módulo de extratos bancários
+- [x] Adicionar campo de senha de PDF no upload de extratos bancários (PDFs protegidos por senha)
+- [x] Bug: PDF de extrato bancário não extrai transações - corrigir parser e suporte a senha
