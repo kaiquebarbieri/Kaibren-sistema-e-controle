@@ -156,3 +156,4 @@
 - [x] Adicionar filtro por categoria nas transações do extrato com total gasto por categoria
 - [x] Criar seção/menu dedicado ao LIS (cheque especial) para acompanhar gastos mensais com juros e IOF
 - [x] Adicionar categoria "LIS / Cheque Especial" nas categorias disponíveis
+- [x] Adicionar opção no histórico de pedidos para alterar o cliente de um pedido existente sem refazer a lista

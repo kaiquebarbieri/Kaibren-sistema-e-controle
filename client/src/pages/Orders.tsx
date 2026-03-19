@@ -27,8 +27,9 @@ import {
   X,
   AlertTriangle,
   RefreshCw,
+  Users,
 } from "lucide-react";
-import { useMemo, useRef, useState, useCallback } from "react";
+import React, { useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -303,6 +304,10 @@ export default function Orders() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [changingCustomerOrderId, setChangingCustomerOrderId] = useState<number | null>(null);
+  const [changeCustomerType, setChangeCustomerType] = useState<"customer" | "personal">("customer");
+  const [changeCustomerId, setChangeCustomerId] = useState<string>("");
+  const [changeCnpjId, setChangeCnpjId] = useState<string>("");
   const skuQuickEntryRef = useRef<HTMLInputElement | null>(null);
 
   const trpcUtils = trpc.useUtils();
@@ -311,6 +316,7 @@ export default function Orders() {
   const customersQuery = trpc.customers.search.useQuery({ query: customerSearch, limit: 50 });
   const campaignsQuery = trpc.marketing.campaigns.list.useQuery();
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
+  const allCustomersQuery = trpc.customers.list.useQuery({ limit: 500 });
 
   const createCustomerMutation = trpc.customers.create.useMutation({
     onSuccess: async customer => {
@@ -385,6 +391,18 @@ export default function Orders() {
       await ordersQuery.refetch();
     },
     onError: error => toast.error(error.message),
+  });
+
+  const changeCustomerMutation = trpc.orders.changeCustomer.useMutation({
+    onSuccess: async () => {
+      toast.success("Cliente do pedido alterado com sucesso!");
+      setChangingCustomerOrderId(null);
+      setChangeCustomerId("");
+      setChangeCnpjId("");
+      await ordersQuery.refetch();
+      trpcUtils.dashboard.invalidate();
+    },
+    onError: (err: any) => toast.error(err.message),
   });
 
   const allProducts = useMemo(() => {
@@ -1270,6 +1288,14 @@ export default function Orders() {
                       <RefreshCw className={`mr-1 h-3 w-3 ${changeTypeMutation.isPending ? "animate-spin" : ""}`} />
                       {order.orderType === "personal" ? "Mudar p/ Cliente" : "Mudar p/ Pessoal"}
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setChangingCustomerOrderId(changingCustomerOrderId === order.id ? null : order.id);
+                      setChangeCustomerType(order.orderType as "customer" | "personal");
+                      setChangeCustomerId(order.customerId ? String(order.customerId) : "");
+                      setChangeCnpjId((order as any).cnpjId ? String((order as any).cnpjId) : "");
+                    }} className="h-7 text-[10px] flex-1 border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10">
+                      <Users className="mr-1 h-3 w-3" /> Alterar Cliente
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => loadOrderForEditing(order.id)} className="h-7 text-[10px] flex-1">
                       <Edit3 className="mr-1 h-3 w-3" /> Editar
                     </Button>
@@ -1288,6 +1314,85 @@ export default function Orders() {
                       </Button>
                     )}
                   </div>
+                  {/* Change Customer Inline Form - Mobile */}
+                  {changingCustomerOrderId === order.id && (
+                    <div className="mt-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Alterar cliente do pedido #{order.id}</p>
+                      <div>
+                        <Label className="text-[10px]">Tipo</Label>
+                        <Select value={changeCustomerType} onValueChange={(v: "customer" | "personal") => setChangeCustomerType(v)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="customer">Cliente</SelectItem>
+                            <SelectItem value="personal">Pessoal (Compra Minha)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {changeCustomerType === "customer" && (
+                        <div>
+                          <Label className="text-[10px]">Selecionar Cliente</Label>
+                          <Select value={changeCustomerId} onValueChange={setChangeCustomerId}>
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Escolha um cliente..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(allCustomersQuery.data ?? []).map((c: any) => (
+                                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      {changeCustomerType === "personal" && (cnpjsQuery.data ?? []).length > 0 && (
+                        <div>
+                          <Label className="text-[10px]">CNPJ (opcional)</Label>
+                          <Select value={changeCnpjId || "none"} onValueChange={v => setChangeCnpjId(v === "none" ? "" : v)}>
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Selecionar CNPJ..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum</SelectItem>
+                              {(cnpjsQuery.data ?? []).map((cnpj: any) => (
+                                <SelectItem key={cnpj.id} value={String(cnpj.id)}>{cnpj.razaoSocial} - {cnpj.cnpj}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="h-7 text-[10px] flex-1 bg-emerald-600 hover:bg-emerald-700"
+                          disabled={changeCustomerMutation.isPending || (changeCustomerType === "customer" && !changeCustomerId)}
+                          onClick={() => {
+                            const selectedCustomer = changeCustomerType === "customer"
+                              ? (allCustomersQuery.data ?? []).find((c: any) => c.id === parseInt(changeCustomerId))
+                              : null;
+                            changeCustomerMutation.mutate({
+                              orderId: order.id,
+                              orderType: changeCustomerType,
+                              customerId: changeCustomerType === "customer" ? parseInt(changeCustomerId) : null,
+                              customerName: changeCustomerType === "customer"
+                                ? (selectedCustomer as any)?.name || order.customerName
+                                : "Compra Pessoal",
+                              customerReference: changeCustomerType === "customer"
+                                ? (selectedCustomer as any)?.reference || null
+                                : null,
+                              cnpjId: changeCustomerType === "personal" && changeCnpjId ? parseInt(changeCnpjId) : null,
+                            });
+                          }}
+                        >
+                          {changeCustomerMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                          Confirmar
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => setChangingCustomerOrderId(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               {(ordersQuery.data ?? []).length === 0 && (
@@ -1313,7 +1418,8 @@ export default function Orders() {
                 </TableHeader>
                 <TableBody>
                   {(ordersQuery.data ?? []).map(order => (
-                    <TableRow key={order.id}>
+                    <React.Fragment key={order.id}>
+                      <TableRow>
                       <TableCell>#{order.id}</TableCell>
                       <TableCell>
                         <Button
@@ -1332,6 +1438,14 @@ export default function Orders() {
                       <TableCell>{formatCurrency(order.totalMondial)}</TableCell>
                       <TableCell>{order.status}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setChangingCustomerOrderId(changingCustomerOrderId === order.id ? null : order.id);
+                          setChangeCustomerType(order.orderType as "customer" | "personal");
+                          setChangeCustomerId(order.customerId ? String(order.customerId) : "");
+                          setChangeCnpjId((order as any).cnpjId ? String((order as any).cnpjId) : "");
+                        }} className="h-8 text-xs mr-1 border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10">
+                          <Users className="mr-1 h-3.5 w-3.5" /> Alterar Cliente
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => loadOrderForEditing(order.id)} className="h-8 text-xs mr-1">
                           <Edit3 className="mr-1 h-3.5 w-3.5" /> Editar
                         </Button>
@@ -1351,6 +1465,90 @@ export default function Orders() {
                         )}
                       </TableCell>
                     </TableRow>
+                    {/* Change Customer Inline Form - Desktop */}
+                    {changingCustomerOrderId === order.id && (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-2">Alterar cliente do pedido #{order.id}</p>
+                            <div className="flex items-end gap-3 flex-wrap">
+                              <div className="min-w-[150px]">
+                                <Label className="text-[10px]">Tipo</Label>
+                                <Select value={changeCustomerType} onValueChange={(v: "customer" | "personal") => setChangeCustomerType(v)}>
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="customer">Cliente</SelectItem>
+                                    <SelectItem value="personal">Pessoal (Compra Minha)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {changeCustomerType === "customer" && (
+                                <div className="min-w-[200px]">
+                                  <Label className="text-[10px]">Selecionar Cliente</Label>
+                                  <Select value={changeCustomerId} onValueChange={setChangeCustomerId}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue placeholder="Escolha um cliente..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {(allCustomersQuery.data ?? []).map((c: any) => (
+                                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                              {changeCustomerType === "personal" && (cnpjsQuery.data ?? []).length > 0 && (
+                                <div className="min-w-[200px]">
+                                  <Label className="text-[10px]">CNPJ (opcional)</Label>
+                                  <Select value={changeCnpjId || "none"} onValueChange={v => setChangeCnpjId(v === "none" ? "" : v)}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue placeholder="Selecionar CNPJ..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">Nenhum</SelectItem>
+                                      {(cnpjsQuery.data ?? []).map((cnpj: any) => (
+                                        <SelectItem key={cnpj.id} value={String(cnpj.id)}>{cnpj.razaoSocial} - {cnpj.cnpj}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                              <Button
+                                size="sm"
+                                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
+                                disabled={changeCustomerMutation.isPending || (changeCustomerType === "customer" && !changeCustomerId)}
+                                onClick={() => {
+                                  const selectedCustomer = changeCustomerType === "customer"
+                                    ? (allCustomersQuery.data ?? []).find((c: any) => c.id === parseInt(changeCustomerId))
+                                    : null;
+                                  changeCustomerMutation.mutate({
+                                    orderId: order.id,
+                                    orderType: changeCustomerType,
+                                    customerId: changeCustomerType === "customer" ? parseInt(changeCustomerId) : null,
+                                    customerName: changeCustomerType === "customer"
+                                      ? (selectedCustomer as any)?.name || order.customerName
+                                      : "Compra Pessoal",
+                                    customerReference: changeCustomerType === "customer"
+                                      ? (selectedCustomer as any)?.reference || null
+                                      : null,
+                                    cnpjId: changeCustomerType === "personal" && changeCnpjId ? parseInt(changeCnpjId) : null,
+                                  });
+                                }}
+                              >
+                                {changeCustomerMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                                Confirmar
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setChangingCustomerOrderId(null)}>
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>

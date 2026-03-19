@@ -995,12 +995,79 @@ export const appRouter = router({
 
         return { success: true };
       }),
+    changeCustomer: protectedProcedure
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        orderType: z.enum(["customer", "personal"]),
+        customerId: z.number().int().positive().nullish(),
+        customerName: z.string().min(1),
+        customerReference: z.string().nullish(),
+        cnpjId: z.number().int().positive().nullish(),
+      }))
+      .mutation(async ({ input }) => {
+        const existing = await getOrderWithItems(input.orderId);
+        if (!existing.order) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\u00e3o encontrado." });
+        }
+
+        const orderType = input.orderType;
+        const items = existing.items;
+        const totals = computeOrderTotals(items.map(item => ({
+          sku: item.sku,
+          titulo: item.titulo,
+          quantidade: Number(item.quantidade),
+          tabelaNovaCk: String(item.tabelaNovaCk),
+          imposto: String(item.imposto),
+          comissao: String(item.comissao),
+          valorProduto: String(item.valorProduto),
+          precoDesejado: String(item.precoDesejado),
+          precoFinal: String(item.precoFinal),
+          margemFinal: String(item.margemFinal),
+          lucroUnitario: String(item.lucroUnitario),
+          productId: item.productId,
+        })), orderType);
+
+        await updateOrder(input.orderId, {
+          orderType,
+          customerId: orderType === "customer" ? (input.customerId ?? null) : null,
+          customerName: input.customerName,
+          customerReference: input.customerReference ?? null,
+          cnpjId: orderType === "personal" ? (input.cnpjId ?? null) : null,
+          totalCliente: formatMoney(totals.totalCliente),
+          totalMondial: formatMoney(totals.totalMondial),
+          totalComissaoEvertonMondial: formatMoney(totals.totalComissaoEvertonMondial),
+          totalLucro: formatMoney(totals.totalLucro),
+          margemPedido: formatMargin(totals.margemPedido),
+          totalItens: totals.totalItens,
+        });
+
+        // Recalculate monthly snapshot
+        const { periodYear, periodMonth } = existing.order;
+        const monthly = await getMonthlySummary(periodYear, periodMonth);
+        await upsertMonthlySnapshot({
+          periodYear,
+          periodMonth,
+          totalPedidos: Number(monthly.totalPedidos ?? 0),
+          totalPedidosCliente: Number(monthly.totalPedidosCliente ?? 0),
+          totalPedidosPessoais: Number(monthly.totalPedidosPessoais ?? 0),
+          totalCliente: String(monthly.totalCliente ?? "0.0000"),
+          totalMondial: String(monthly.totalMondial ?? "0.0000"),
+          totalComprasPessoais: String(monthly.totalComprasPessoais ?? "0.0000"),
+          totalVendasClientes: String(monthly.totalVendasClientes ?? "0.0000"),
+          totalComissaoEvertonMondial: String(monthly.totalComissaoEvertonMondial ?? "0.0000"),
+          totalLucro: String(monthly.totalLucro ?? "0.0000"),
+          margemMedia: String(monthly.margemMedia ?? "0.000000"),
+          atualizadoEm: Date.now(),
+        });
+
+        return { success: true };
+      }),
     delete: protectedProcedure
       .input(z.object({ orderId: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         const existing = await getOrderWithItems(input.orderId);
         if (!existing.order) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Pedido não encontrado." });
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\u00e3o encontrado." });
         }
 
         const { periodYear, periodMonth } = existing.order;
