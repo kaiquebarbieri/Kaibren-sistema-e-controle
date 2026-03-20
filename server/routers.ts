@@ -60,6 +60,25 @@ import {
   updateBankTransaction,
   updateBankTransactionsBatch,
   recalcStatementCounts,
+  listFixedCosts,
+  createFixedCost,
+  updateFixedCost,
+  deleteFixedCost,
+  listFixedCostPayments,
+  upsertFixedCostPayment,
+  listCreditCards,
+  createCreditCard,
+  updateCreditCard,
+  deleteCreditCard,
+  listCreditCardInvoices,
+  upsertCreditCardInvoice,
+  listLoans,
+  createLoan,
+  updateLoan,
+  deleteLoan,
+  listLoanInstallments,
+  upsertLoanInstallment,
+  getDREData,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
@@ -1318,6 +1337,298 @@ export const appRouter = router({
         const xlsxKey = `bank-statements/exports/${statement.periodYear}-${String(statement.periodMonth).padStart(2, "0")}/${statement.bankName.replace(/\s+/g, "_")}-${suffix}.xlsx`;
         const { url } = await storagePut(xlsxKey, xlsxBuffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         return { url, fileName: `Extrato_${statement.bankName}_${String(statement.periodMonth).padStart(2, "0")}_${statement.periodYear}.xlsx` };
+      }),
+  }),
+  finance: router({
+    // ── Custos Fixos ──
+    fixedCosts: router({
+      list: protectedProcedure.query(async () => listFixedCosts()),
+      create: protectedProcedure
+        .input(z.object({
+          name: z.string().min(1),
+          category: z.string().default("outros"),
+          amount: z.string(),
+          dueDay: z.number().int().min(1).max(31).default(1),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+          const id = await createFixedCost({ ...input, createdByUserId: ctx.user.id });
+          return { id };
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          name: z.string().min(1).optional(),
+          category: z.string().optional(),
+          amount: z.string().optional(),
+          dueDay: z.number().int().min(1).max(31).optional(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...data } = input;
+          await updateFixedCost(id, data);
+          return { success: true };
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(async ({ input }) => {
+          await deleteFixedCost(input.id);
+          return { success: true };
+        }),
+      payments: protectedProcedure
+        .input(z.object({ year: z.number(), month: z.number() }))
+        .query(async ({ input }) => listFixedCostPayments(input.year, input.month)),
+      upsertPayment: protectedProcedure
+        .input(z.object({
+          fixedCostId: z.number().int().positive(),
+          periodYear: z.number(),
+          periodMonth: z.number(),
+          amountPaid: z.string(),
+          status: z.enum(["paid", "pending", "overdue"]).default("pending"),
+          paidAt: z.date().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          const id = await upsertFixedCostPayment(input);
+          return { id };
+        }),
+    }),
+    // ── Cartões de Crédito ──
+    creditCards: router({
+      list: protectedProcedure.query(async () => listCreditCards()),
+      create: protectedProcedure
+        .input(z.object({
+          name: z.string().min(1),
+          brand: z.string().default("outros"),
+          lastFourDigits: z.string().max(4).optional().nullable(),
+          closingDay: z.number().int().min(1).max(31).default(1),
+          dueDay: z.number().int().min(1).max(31).default(10),
+          creditLimit: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+          const id = await createCreditCard({ ...input, createdByUserId: ctx.user.id });
+          return { id };
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          name: z.string().min(1).optional(),
+          brand: z.string().optional(),
+          lastFourDigits: z.string().max(4).optional().nullable(),
+          closingDay: z.number().int().min(1).max(31).optional(),
+          dueDay: z.number().int().min(1).max(31).optional(),
+          creditLimit: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...data } = input;
+          await updateCreditCard(id, data);
+          return { success: true };
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(async ({ input }) => {
+          await deleteCreditCard(input.id);
+          return { success: true };
+        }),
+      invoices: protectedProcedure
+        .input(z.object({ cardId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }))
+        .query(async ({ input }) => listCreditCardInvoices(input.cardId, input.year, input.month)),
+      upsertInvoice: protectedProcedure
+        .input(z.object({
+          cardId: z.number().int().positive(),
+          periodYear: z.number(),
+          periodMonth: z.number(),
+          totalAmount: z.string(),
+          minimumAmount: z.string().optional().nullable(),
+          amountPaid: z.string().optional().nullable(),
+          status: z.enum(["paid", "pending", "partial"]).default("pending"),
+          paidAt: z.date().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          const id = await upsertCreditCardInvoice(input);
+          return { id };
+        }),
+    }),
+    // ── Empréstimos ──
+    loans: router({
+      list: protectedProcedure.query(async () => listLoans()),
+      create: protectedProcedure
+        .input(z.object({
+          name: z.string().min(1),
+          institution: z.string().min(1),
+          totalAmount: z.string(),
+          totalInstallments: z.number().int().positive(),
+          installmentAmount: z.string(),
+          interestRate: z.string().optional().nullable(),
+          startDate: z.string(),
+          dueDay: z.number().int().min(1).max(31).default(1),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+          const id = await createLoan({ ...input, createdByUserId: ctx.user.id });
+          return { id };
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          name: z.string().min(1).optional(),
+          institution: z.string().min(1).optional(),
+          totalAmount: z.string().optional(),
+          totalInstallments: z.number().int().positive().optional(),
+          installmentAmount: z.string().optional(),
+          interestRate: z.string().optional().nullable(),
+          startDate: z.string().optional(),
+          dueDay: z.number().int().min(1).max(31).optional(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...data } = input;
+          await updateLoan(id, data);
+          return { success: true };
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(async ({ input }) => {
+          await deleteLoan(input.id);
+          return { success: true };
+        }),
+      installments: protectedProcedure
+        .input(z.object({ loanId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }))
+        .query(async ({ input }) => listLoanInstallments(input.loanId, input.year, input.month)),
+      upsertInstallment: protectedProcedure
+        .input(z.object({
+          loanId: z.number().int().positive(),
+          installmentNumber: z.number().int().positive(),
+          periodYear: z.number(),
+          periodMonth: z.number(),
+          amount: z.string(),
+          status: z.enum(["paid", "pending", "overdue"]).default("pending"),
+          paidAt: z.date().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          const id = await upsertLoanInstallment(input);
+          return { id };
+        }),
+    }),
+    // ── DRE Consolidado ──
+    dre: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => {
+        const data = await getDREData(input.year, input.month);
+        
+        // Calcular totais
+        const totalVendasClientes = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalCliente || "0")), 0);
+        const totalCustoMondialVendas = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalMondial || "0")), 0);
+        const totalComissaoEverton = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalComissaoEvertonMondial || "0")), 0);
+        const totalLucroVendas = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalLucro || "0")), 0);
+        const totalComprasPessoais = data.personalOrders.reduce((sum, o) => sum + parseFloat(String(o.totalMondial || "0")), 0);
+        
+        const totalCustosFixos = data.fixedCostPayments.reduce((sum, p) => sum + parseFloat(String(p.payment.amountPaid || "0")), 0);
+        const totalCartoes = data.cardInvoices.reduce((sum, i) => sum + parseFloat(String(i.invoice.totalAmount || "0")), 0);
+        const totalEmprestimos = data.loanInstallments.reduce((sum, i) => sum + parseFloat(String(i.installment.amount || "0")), 0);
+        
+        // LIS do extrato
+        const lisTransactions = data.bankTransactions.filter((t: any) => {
+          const desc = (t.originalDescription || "").toLowerCase();
+          const cat = (t.category || "").toLowerCase();
+          return cat.includes("lis") || cat.includes("cheque especial") ||
+            desc.includes("juros cheque") || desc.includes("iof cheque") ||
+            desc.includes("juros lis") || desc.includes("iof lis");
+        });
+        const totalLIS = lisTransactions.reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
+        
+        // Imposto sobre vendas (comissão Everton = imposto pago à Mondial)
+        const impostoVendas = totalComissaoEverton;
+        
+        // Receita líquida = vendas - custo mondial das vendas
+        const receitaBruta = totalVendasClientes;
+        const custoMercadoriaVendida = totalCustoMondialVendas;
+        const lucroBruto = receitaBruta - custoMercadoriaVendida;
+        
+        // Despesas operacionais
+        const despesasOperacionais = totalCustosFixos + totalCartoes + totalEmprestimos + totalLIS;
+        
+        // Resultado operacional
+        const resultadoOperacional = lucroBruto - despesasOperacionais;
+        
+        // Resultado líquido (inclui compras pessoais como investimento/uso próprio)
+        const resultadoLiquido = resultadoOperacional - totalComprasPessoais;
+        
+        // Margem líquida
+        const margemLiquida = receitaBruta > 0 ? (resultadoLiquido / receitaBruta) * 100 : 0;
+        
+        // Pontos de atenção
+        const alerts: { type: "danger" | "warning" | "info"; message: string }[] = [];
+        
+        if (resultadoLiquido < 0) {
+          alerts.push({ type: "danger", message: `Resultado líquido negativo de R$ ${Math.abs(resultadoLiquido).toFixed(2)}. Suas despesas superaram suas receitas neste mês.` });
+        }
+        if (totalLIS > 0) {
+          alerts.push({ type: "danger", message: `Você gastou R$ ${totalLIS.toFixed(2)} com LIS/Cheque Especial. Tente evitar usar o limite para reduzir custos com juros.` });
+        }
+        if (totalComprasPessoais > lucroBruto * 0.5 && lucroBruto > 0) {
+          alerts.push({ type: "warning", message: `Compras pessoais (R$ ${totalComprasPessoais.toFixed(2)}) representam ${((totalComprasPessoais / lucroBruto) * 100).toFixed(1)}% do lucro bruto. Avalie se o volume está adequado.` });
+        }
+        if (despesasOperacionais > lucroBruto && lucroBruto > 0) {
+          alerts.push({ type: "warning", message: `Despesas operacionais (R$ ${despesasOperacionais.toFixed(2)}) superam o lucro bruto (R$ ${lucroBruto.toFixed(2)}). Revise custos fixos e empréstimos.` });
+        }
+        if (totalCartoes > receitaBruta * 0.15 && receitaBruta > 0) {
+          alerts.push({ type: "warning", message: `Faturas de cartão (R$ ${totalCartoes.toFixed(2)}) representam ${((totalCartoes / receitaBruta) * 100).toFixed(1)}% da receita bruta. Atenção ao uso do crédito.` });
+        }
+        if (margemLiquida > 0 && margemLiquida < 10) {
+          alerts.push({ type: "warning", message: `Margem líquida de apenas ${margemLiquida.toFixed(1)}%. Margem saudável para distribuição é acima de 15%.` });
+        }
+        if (data.salesOrders.length === 0) {
+          alerts.push({ type: "info", message: "Nenhuma venda registrada neste mês. Cadastre seus pedidos de clientes para ter o DRE completo." });
+        }
+        if (data.fixedCostPayments.length === 0) {
+          alerts.push({ type: "info", message: "Nenhum custo fixo registrado neste mês. Cadastre e marque os pagamentos para ter o DRE completo." });
+        }
+        
+        return {
+          // Receitas
+          receitaBruta,
+          custoMercadoriaVendida,
+          lucroBruto,
+          impostoVendas,
+          totalVendasClientes,
+          totalCustoMondialVendas,
+          totalComissaoEverton,
+          totalLucroVendas,
+          qtdPedidosClientes: data.salesOrders.length,
+          
+          // Compras pessoais
+          totalComprasPessoais,
+          qtdPedidosPessoais: data.personalOrders.length,
+          
+          // Despesas
+          totalCustosFixos,
+          totalCartoes,
+          totalEmprestimos,
+          totalLIS,
+          despesasOperacionais,
+          
+          // Resultados
+          resultadoOperacional,
+          resultadoLiquido,
+          margemLiquida,
+          
+          // Detalhes
+          fixedCostPayments: data.fixedCostPayments,
+          cardInvoices: data.cardInvoices,
+          loanInstallments: data.loanInstallments,
+          lisTransactions,
+          
+          // Alertas
+          alerts,
+          
+          // Snapshot
+          snapshot: data.snapshot,
+        };
       }),
   }),
 });

@@ -30,6 +30,7 @@ import {
   PackageSearch,
   PanelLeft,
   UserPlus,
+  Wallet,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -43,6 +44,7 @@ const menuItems = [
   { icon: ClipboardList, label: "Pedidos", section: "pedidos", href: "/pedidos" },
   { icon: Megaphone, label: "Marketing", section: "marketing", href: "/marketing" },
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
+  { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

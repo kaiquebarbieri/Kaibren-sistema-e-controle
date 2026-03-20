@@ -18,8 +18,20 @@ import {
   InsertMyCnpj,
   InsertBankStatement,
   InsertBankTransaction,
+  InsertFixedCost,
+  InsertFixedCostPayment,
+  InsertCreditCard,
+  InsertCreditCardInvoice,
+  InsertLoan,
+  InsertLoanInstallment,
   bankStatements,
   bankTransactions,
+  fixedCosts,
+  fixedCostPayments,
+  creditCards,
+  creditCardInvoices,
+  loans,
+  loanInstallments,
   marketingStrategies,
   monthlySnapshots,
   myCnpjs,
@@ -698,4 +710,281 @@ export async function recalcStatementCounts(statementId: number) {
   if (identified > 0 && identified < total) status = "partial";
   if (identified > 0 && identified >= total) status = "completed";
   await db.update(bankStatements).set({ totalTransactions: total, totalIdentified: identified, status }).where(eq(bankStatements.id, statementId));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FINANCEIRO: Custos Fixos
+   ══════════════════════════════════════════════════════════════ */
+
+export async function listFixedCosts() {
+  const db = await getDb();
+  return db!.select().from(fixedCosts).where(eq(fixedCosts.isActive, 1)).orderBy(fixedCosts.name);
+}
+
+export async function createFixedCost(data: InsertFixedCost) {
+  const db = await getDb();
+  const [result] = await db!.insert(fixedCosts).values(data);
+  return result.insertId;
+}
+
+export async function updateFixedCost(id: number, data: Partial<InsertFixedCost>) {
+  const db = await getDb();
+  await db!.update(fixedCosts).set(data).where(eq(fixedCosts.id, id));
+}
+
+export async function deleteFixedCost(id: number) {
+  const db = await getDb();
+  await db!.update(fixedCosts).set({ isActive: 0 }).where(eq(fixedCosts.id, id));
+}
+
+export async function listFixedCostPayments(year: number, month: number) {
+  const db = await getDb();
+  return db!.select().from(fixedCostPayments)
+    .where(and(eq(fixedCostPayments.periodYear, year), eq(fixedCostPayments.periodMonth, month)));
+}
+
+export async function upsertFixedCostPayment(data: InsertFixedCostPayment) {
+  const db = await getDb();
+  // Check if payment exists for this fixedCostId + period
+  const existing = await db!.select().from(fixedCostPayments)
+    .where(and(
+      eq(fixedCostPayments.fixedCostId, data.fixedCostId),
+      eq(fixedCostPayments.periodYear, data.periodYear),
+      eq(fixedCostPayments.periodMonth, data.periodMonth),
+    ));
+  if (existing.length > 0) {
+    await db!.update(fixedCostPayments).set({
+      amountPaid: data.amountPaid,
+      status: data.status,
+      paidAt: data.paidAt,
+      notes: data.notes,
+    }).where(eq(fixedCostPayments.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [result] = await db!.insert(fixedCostPayments).values(data);
+  return result.insertId;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FINANCEIRO: Cartões de Crédito
+   ══════════════════════════════════════════════════════════════ */
+
+export async function listCreditCards() {
+  const db = await getDb();
+  return db!.select().from(creditCards).where(eq(creditCards.isActive, 1)).orderBy(creditCards.name);
+}
+
+export async function createCreditCard(data: InsertCreditCard) {
+  const db = await getDb();
+  const [result] = await db!.insert(creditCards).values(data);
+  return result.insertId;
+}
+
+export async function updateCreditCard(id: number, data: Partial<InsertCreditCard>) {
+  const db = await getDb();
+  await db!.update(creditCards).set(data).where(eq(creditCards.id, id));
+}
+
+export async function deleteCreditCard(id: number) {
+  const db = await getDb();
+  await db!.update(creditCards).set({ isActive: 0 }).where(eq(creditCards.id, id));
+}
+
+export async function listCreditCardInvoices(cardId?: number, year?: number, month?: number) {
+  const conditions = [];
+  if (cardId) conditions.push(eq(creditCardInvoices.cardId, cardId));
+  if (year) conditions.push(eq(creditCardInvoices.periodYear, year));
+  if (month) conditions.push(eq(creditCardInvoices.periodMonth, month));
+  const db = await getDb();
+  return db!.select().from(creditCardInvoices)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(creditCardInvoices.periodYear), desc(creditCardInvoices.periodMonth));
+}
+
+export async function upsertCreditCardInvoice(data: InsertCreditCardInvoice) {
+  const db = await getDb();
+  const existing = await db!.select().from(creditCardInvoices)
+    .where(and(
+      eq(creditCardInvoices.cardId, data.cardId),
+      eq(creditCardInvoices.periodYear, data.periodYear),
+      eq(creditCardInvoices.periodMonth, data.periodMonth),
+    ));
+  if (existing.length > 0) {
+    await db!.update(creditCardInvoices).set({
+      totalAmount: data.totalAmount,
+      minimumAmount: data.minimumAmount,
+      amountPaid: data.amountPaid,
+      status: data.status,
+      paidAt: data.paidAt,
+      notes: data.notes,
+    }).where(eq(creditCardInvoices.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [result] = await db!.insert(creditCardInvoices).values(data);
+  return result.insertId;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FINANCEIRO: Empréstimos
+   ══════════════════════════════════════════════════════════════ */
+
+export async function listLoans() {
+  const db = await getDb();
+  return db!.select().from(loans).where(eq(loans.isActive, 1)).orderBy(loans.name);
+}
+
+export async function createLoan(data: InsertLoan) {
+  const db = await getDb();
+  const [result] = await db!.insert(loans).values(data);
+  return result.insertId;
+}
+
+export async function updateLoan(id: number, data: Partial<InsertLoan>) {
+  const db = await getDb();
+  await db!.update(loans).set(data).where(eq(loans.id, id));
+}
+
+export async function deleteLoan(id: number) {
+  const db = await getDb();
+  await db!.update(loans).set({ isActive: 0 }).where(eq(loans.id, id));
+}
+
+export async function listLoanInstallments(loanId?: number, year?: number, month?: number) {
+  const conditions = [];
+  if (loanId) conditions.push(eq(loanInstallments.loanId, loanId));
+  if (year) conditions.push(eq(loanInstallments.periodYear, year));
+  if (month) conditions.push(eq(loanInstallments.periodMonth, month));
+  const db = await getDb();
+  return db!.select().from(loanInstallments)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(loanInstallments.installmentNumber);
+}
+
+export async function upsertLoanInstallment(data: InsertLoanInstallment) {
+  const db = await getDb();
+  const existing = await db!.select().from(loanInstallments)
+    .where(and(
+      eq(loanInstallments.loanId, data.loanId),
+      eq(loanInstallments.periodYear, data.periodYear),
+      eq(loanInstallments.periodMonth, data.periodMonth),
+    ));
+  if (existing.length > 0) {
+    await db!.update(loanInstallments).set({
+      amount: data.amount,
+      status: data.status,
+      paidAt: data.paidAt,
+      notes: data.notes,
+    }).where(eq(loanInstallments.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [result] = await db!.insert(loanInstallments).values(data);
+  return result.insertId;
+}
+
+export async function getLoanInstallmentsByPeriod(year: number, month: number) {
+  const db = await getDb();
+  return db!.select({
+    installment: loanInstallments,
+    loanName: loans.name,
+    institution: loans.institution,
+  }).from(loanInstallments)
+    .innerJoin(loans, eq(loanInstallments.loanId, loans.id))
+    .where(and(
+      eq(loanInstallments.periodYear, year),
+      eq(loanInstallments.periodMonth, month),
+    ));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DRE: Dados consolidados para o fechamento financeiro
+   ══════════════════════════════════════════════════════════════ */
+
+export async function getDREData(year: number, month: number) {
+  const db = await getDb();
+  // 1. Vendas (pedidos de clientes)
+  const salesOrders = await db!.select().from(orders)
+    .where(and(
+      eq(orders.periodYear, year),
+      eq(orders.periodMonth, month),
+      eq(orders.orderType, "customer"),
+    ));
+  
+  // 2. Compras pessoais
+  const personalOrders = await db!.select().from(orders)
+    .where(and(
+      eq(orders.periodYear, year),
+      eq(orders.periodMonth, month),
+      eq(orders.orderType, "personal"),
+    ));
+
+  // 3. Custos fixos pagos no período
+  const fixedCostPaymentsList = await db!.select({
+    payment: fixedCostPayments,
+    costName: fixedCosts.name,
+    costCategory: fixedCosts.category,
+  }).from(fixedCostPayments)
+    .innerJoin(fixedCosts, eq(fixedCostPayments.fixedCostId, fixedCosts.id))
+    .where(and(
+      eq(fixedCostPayments.periodYear, year),
+      eq(fixedCostPayments.periodMonth, month),
+    ));
+
+  // 4. Faturas de cartão no período
+  const cardInvoicesList = await db!.select({
+    invoice: creditCardInvoices,
+    cardName: creditCards.name,
+    cardBrand: creditCards.brand,
+  }).from(creditCardInvoices)
+    .innerJoin(creditCards, eq(creditCardInvoices.cardId, creditCards.id))
+    .where(and(
+      eq(creditCardInvoices.periodYear, year),
+      eq(creditCardInvoices.periodMonth, month),
+    ));
+
+  // 5. Parcelas de empréstimo no período
+  const loanInstallmentsList = await db!.select({
+    installment: loanInstallments,
+    loanName: loans.name,
+    institution: loans.institution,
+  }).from(loanInstallments)
+    .innerJoin(loans, eq(loanInstallments.loanId, loans.id))
+    .where(and(
+      eq(loanInstallments.periodYear, year),
+      eq(loanInstallments.periodMonth, month),
+    ));
+
+  // 6. Dados do extrato bancário (LIS, entradas, saídas)
+  const bankStatementsData = await db!.select().from(bankStatements)
+    .where(and(
+      eq(bankStatements.periodYear, year),
+      eq(bankStatements.periodMonth, month),
+    ));
+  
+  let bankTransactionsData: any[] = [];
+  if (bankStatementsData.length > 0) {
+    const statementIds = bankStatementsData.map((s: any) => s.id);
+    for (const sid of statementIds) {
+      const txns = await db!.select().from(bankTransactions)
+        .where(eq(bankTransactions.statementId, sid));
+      bankTransactionsData.push(...txns);
+    }
+  }
+
+  // 7. Snapshot mensal (se existir)
+  const snapshot = await db!.select().from(monthlySnapshots)
+    .where(and(
+      eq(monthlySnapshots.periodYear, year),
+      eq(monthlySnapshots.periodMonth, month),
+    ));
+
+  return {
+    salesOrders,
+    personalOrders,
+    fixedCostPayments: fixedCostPaymentsList,
+    cardInvoices: cardInvoicesList,
+    loanInstallments: loanInstallmentsList,
+    bankStatements: bankStatementsData,
+    bankTransactions: bankTransactionsData,
+    snapshot: snapshot[0] || null,
+  };
 }

@@ -71,6 +71,13 @@
       "when": 1773925643013,
       "tag": "0009_elite_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1774028459810,
+      "tag": "0010_modern_hobgoblin",
+      "breakpoints": true
     }
   ]
 }

@@ -157,3 +157,12 @@
 - [x] Criar seção/menu dedicado ao LIS (cheque especial) para acompanhar gastos mensais com juros e IOF
 - [x] Adicionar categoria "LIS / Cheque Especial" nas categorias disponíveis
 - [x] Adicionar opção no histórico de pedidos para alterar o cliente de um pedido existente sem refazer a lista
+- [x] Criar tabelas no banco: custos fixos (fixed_costs), cartões de crédito (credit_cards, credit_card_invoices), empréstimos (loans, loan_installments)
+- [x] Implementar CRUD de custos fixos recorrentes (aluguel, internet, contador, etc.)
+- [x] Implementar CRUD de cartões de crédito com faturas mensais
+- [x] Implementar CRUD de empréstimos com parcelas
+- [x] Criar menu "Financeiro" na navegação lateral
+- [x] Criar página Financeiro com sub-seções: Custos Fixos, Cartões, Empréstimos
+- [x] Implementar DRE mensal consolidado (receitas de vendas, custos de compras, custos fixos, cartões, empréstimos, LIS)
+- [x] Adicionar pontos de atenção e alertas automáticos na saúde financeira
+- [x] Escrever testes vitest para o módulo Financeiro/DRE

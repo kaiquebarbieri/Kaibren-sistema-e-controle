@@ -330,3 +330,141 @@ export type BankStatement = typeof bankStatements.$inferSelect;
 export type InsertBankStatement = typeof bankStatements.$inferInsert;
 export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
+
+/* ── Financeiro: Custos Fixos ── */
+
+export const fixedCosts = mysqlTable("fixed_costs", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Nome do custo fixo (ex: Aluguel, Internet, Contador) */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Categoria: aluguel, internet, telefone, contador, energia, agua, software, seguro, outros */
+  category: varchar("category", { length: 128 }).notNull().default("outros"),
+  /** Valor mensal */
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  /** Dia do vencimento (1-31) */
+  dueDay: int("dueDay").notNull().default(1),
+  /** Se está ativo (recorrente) */
+  isActive: int("isActive").notNull().default(1),
+  /** Observações */
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Registro mensal de pagamento de custo fixo */
+export const fixedCostPayments = mysqlTable("fixed_cost_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  fixedCostId: int("fixedCostId").notNull(),
+  periodYear: int("periodYear").notNull(),
+  periodMonth: int("periodMonth").notNull(),
+  /** Valor efetivamente pago (pode diferir do padrão) */
+  amountPaid: decimal("amountPaid", { precision: 14, scale: 2 }).notNull(),
+  /** pago | pendente | atrasado */
+  status: mysqlEnum("status", ["paid", "pending", "overdue"]).default("pending").notNull(),
+  paidAt: timestamp("paidAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/* ── Financeiro: Cartões de Crédito ── */
+
+export const creditCards = mysqlTable("credit_cards", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Nome/apelido do cartão (ex: Nubank, C6 Empresarial) */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Bandeira: visa, mastercard, elo, amex, outros */
+  brand: varchar("brand", { length: 64 }).notNull().default("outros"),
+  /** Últimos 4 dígitos */
+  lastFourDigits: varchar("lastFourDigits", { length: 4 }),
+  /** Dia de fechamento da fatura */
+  closingDay: int("closingDay").notNull().default(1),
+  /** Dia de vencimento da fatura */
+  dueDay: int("dueDay").notNull().default(10),
+  /** Limite do cartão */
+  creditLimit: decimal("creditLimit", { precision: 14, scale: 2 }),
+  isActive: int("isActive").notNull().default(1),
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Faturas mensais do cartão de crédito */
+export const creditCardInvoices = mysqlTable("credit_card_invoices", {
+  id: int("id").autoincrement().primaryKey(),
+  cardId: int("cardId").notNull(),
+  periodYear: int("periodYear").notNull(),
+  periodMonth: int("periodMonth").notNull(),
+  /** Valor total da fatura */
+  totalAmount: decimal("totalAmount", { precision: 14, scale: 2 }).notNull(),
+  /** Valor mínimo */
+  minimumAmount: decimal("minimumAmount", { precision: 14, scale: 2 }),
+  /** Valor pago */
+  amountPaid: decimal("amountPaid", { precision: 14, scale: 2 }),
+  /** pago | pendente | parcial */
+  status: mysqlEnum("status", ["paid", "pending", "partial"]).default("pending").notNull(),
+  paidAt: timestamp("paidAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/* ── Financeiro: Empréstimos ── */
+
+export const loans = mysqlTable("loans", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Nome/descrição do empréstimo (ex: Empréstimo C6, Capital de Giro Itaú) */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Instituição financeira */
+  institution: varchar("institution", { length: 255 }).notNull(),
+  /** Valor total do empréstimo */
+  totalAmount: decimal("totalAmount", { precision: 14, scale: 2 }).notNull(),
+  /** Número total de parcelas */
+  totalInstallments: int("totalInstallments").notNull(),
+  /** Valor da parcela mensal */
+  installmentAmount: decimal("installmentAmount", { precision: 14, scale: 2 }).notNull(),
+  /** Taxa de juros mensal (%) */
+  interestRate: decimal("interestRate", { precision: 8, scale: 4 }),
+  /** Data de início (primeiro pagamento) */
+  startDate: varchar("startDate", { length: 10 }).notNull(),
+  /** Dia de vencimento da parcela */
+  dueDay: int("dueDay").notNull().default(1),
+  /** ativo | quitado */
+  status: mysqlEnum("status", ["active", "paid_off"]).default("active").notNull(),
+  isActive: int("isActive").notNull().default(1),
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Parcelas do empréstimo */
+export const loanInstallments = mysqlTable("loan_installments", {
+  id: int("id").autoincrement().primaryKey(),
+  loanId: int("loanId").notNull(),
+  /** Número da parcela (1, 2, 3...) */
+  installmentNumber: int("installmentNumber").notNull(),
+  periodYear: int("periodYear").notNull(),
+  periodMonth: int("periodMonth").notNull(),
+  /** Valor da parcela */
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  /** pago | pendente | atrasado */
+  status: mysqlEnum("status", ["paid", "pending", "overdue"]).default("pending").notNull(),
+  paidAt: timestamp("paidAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type FixedCost = typeof fixedCosts.$inferSelect;
+export type InsertFixedCost = typeof fixedCosts.$inferInsert;
+export type FixedCostPayment = typeof fixedCostPayments.$inferSelect;
+export type InsertFixedCostPayment = typeof fixedCostPayments.$inferInsert;
+export type CreditCard = typeof creditCards.$inferSelect;
+export type InsertCreditCard = typeof creditCards.$inferInsert;
+export type CreditCardInvoice = typeof creditCardInvoices.$inferSelect;
+export type InsertCreditCardInvoice = typeof creditCardInvoices.$inferInsert;
+export type Loan = typeof loans.$inferSelect;
+export type InsertLoan = typeof loans.$inferInsert;
+export type LoanInstallment = typeof loanInstallments.$inferSelect;
+export type InsertLoanInstallment = typeof loanInstallments.$inferInsert;
