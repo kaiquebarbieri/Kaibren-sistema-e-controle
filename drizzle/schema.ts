@@ -418,18 +418,26 @@ export const loans = mysqlTable("loans", {
   name: varchar("name", { length: 255 }).notNull(),
   /** Instituição financeira */
   institution: varchar("institution", { length: 255 }).notNull(),
-  /** Valor total do empréstimo */
+  /** Tipo do empréstimo: parcelado mensalmente ou por retenção sobre vendas */
+  loanType: mysqlEnum("loanType", ["installment", "sales_retention"]).default("installment").notNull(),
+  /** Valor total contratado */
   totalAmount: decimal("totalAmount", { precision: 14, scale: 2 }).notNull(),
-  /** Número total de parcelas */
-  totalInstallments: int("totalInstallments").notNull(),
-  /** Valor da parcela mensal */
-  installmentAmount: decimal("installmentAmount", { precision: 14, scale: 2 }).notNull(),
+  /** Número total de parcelas quando for parcelado */
+  totalInstallments: int("totalInstallments"),
+  /** Valor da parcela mensal quando for parcelado */
+  installmentAmount: decimal("installmentAmount", { precision: 14, scale: 2 }),
   /** Taxa de juros mensal (%) */
   interestRate: decimal("interestRate", { precision: 8, scale: 4 }),
-  /** Data de início (primeiro pagamento) */
+  /** Data de início (primeiro pagamento ou início da retenção) */
   startDate: varchar("startDate", { length: 10 }).notNull(),
-  /** Dia de vencimento da parcela */
-  dueDay: int("dueDay").notNull().default(1),
+  /** Dia de vencimento da parcela para empréstimos parcelados */
+  dueDay: int("dueDay").default(1),
+  /** Percentual retido das vendas líquidas quando for empréstimo Mercado Livre */
+  retentionPercent: decimal("retentionPercent", { precision: 8, scale: 4 }),
+  /** Saldo atualizado já pago/abatido */
+  totalPaid: decimal("totalPaid", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  /** Fonte da retenção: mercado_livre, banco, outro */
+  retentionSource: varchar("retentionSource", { length: 128 }),
   /** ativo | quitado */
   status: mysqlEnum("status", ["active", "paid_off"]).default("active").notNull(),
   isActive: int("isActive").notNull().default(1),
@@ -456,6 +464,54 @@ export const loanInstallments = mysqlTable("loan_installments", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+/** Registros de abatimento/retenção de empréstimos sobre vendas */
+export const loanRetentionEntries = mysqlTable("loan_retention_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  loanId: int("loanId").notNull(),
+  /** Data da retenção/abatimento em YYYY-MM-DD */
+  entryDate: varchar("entryDate", { length: 10 }).notNull(),
+  periodYear: int("periodYear").notNull(),
+  periodMonth: int("periodMonth").notNull(),
+  /** daily | monthly | manual */
+  entryType: mysqlEnum("entryType", ["daily", "monthly", "manual"]).default("daily").notNull(),
+  /** venda | taxa | antecipacao | devolucao | abatimento_emprestimo | ajuste */
+  eventCategory: mysqlEnum("eventCategory", ["venda", "taxa", "antecipacao", "devolucao", "abatimento_emprestimo", "ajuste"]).default("abatimento_emprestimo").notNull(),
+  grossAmount: decimal("grossAmount", { precision: 14, scale: 2 }),
+  netAmount: decimal("netAmount", { precision: 14, scale: 2 }),
+  retentionPercentApplied: decimal("retentionPercentApplied", { precision: 8, scale: 4 }),
+  retainedAmount: decimal("retainedAmount", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  sourceReference: varchar("sourceReference", { length: 255 }),
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Contas a pagar: boletos, fornecedores, parcelas e compromissos manuais */
+export const payableAccounts = mysqlTable("payable_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  supplier: varchar("supplier", { length: 255 }),
+  category: varchar("category", { length: 128 }).notNull().default("outros"),
+  accountType: mysqlEnum("accountType", ["boleto", "fornecedor", "cartao", "emprestimo", "imposto", "investimento", "outros"]).default("boleto").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  dueDate: varchar("dueDate", { length: 10 }).notNull(),
+  status: mysqlEnum("status", ["pending", "paid", "overdue", "partial"]).default("pending").notNull(),
+  paidAmount: decimal("paidAmount", { precision: 14, scale: 2 }),
+  paidAt: timestamp("paidAt"),
+  installmentLabel: varchar("installmentLabel", { length: 64 }),
+  reminderDaysBefore: int("reminderDaysBefore").notNull().default(1),
+  description: text("description"),
+  notes: text("notes"),
+  receiptUrl: text("receiptUrl"),
+  receiptFileKey: varchar("receiptFileKey", { length: 512 }),
+  paymentMethod: varchar("paymentMethod", { length: 64 }),
+  isInvestment: int("isInvestment").notNull().default(0),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type FixedCost = typeof fixedCosts.$inferSelect;
 export type InsertFixedCost = typeof fixedCosts.$inferInsert;
 export type FixedCostPayment = typeof fixedCostPayments.$inferSelect;
@@ -468,3 +524,7 @@ export type Loan = typeof loans.$inferSelect;
 export type InsertLoan = typeof loans.$inferInsert;
 export type LoanInstallment = typeof loanInstallments.$inferSelect;
 export type InsertLoanInstallment = typeof loanInstallments.$inferInsert;
+export type LoanRetentionEntry = typeof loanRetentionEntries.$inferSelect;
+export type InsertLoanRetentionEntry = typeof loanRetentionEntries.$inferInsert;
+export type PayableAccount = typeof payableAccounts.$inferSelect;
+export type InsertPayableAccount = typeof payableAccounts.$inferInsert;

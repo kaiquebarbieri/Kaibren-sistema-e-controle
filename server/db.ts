@@ -24,6 +24,8 @@ import {
   InsertCreditCardInvoice,
   InsertLoan,
   InsertLoanInstallment,
+  InsertLoanRetentionEntry,
+  InsertPayableAccount,
   bankStatements,
   bankTransactions,
   fixedCosts,
@@ -32,6 +34,8 @@ import {
   creditCardInvoices,
   loans,
   loanInstallments,
+  loanRetentionEntries,
+  payableAccounts,
   marketingStrategies,
   monthlySnapshots,
   myCnpjs,
@@ -881,6 +885,107 @@ export async function upsertLoanInstallment(data: InsertLoanInstallment) {
   return result.insertId;
 }
 
+export async function listLoanRetentionEntries(loanId?: number, year?: number, month?: number) {
+  const conditions = [];
+  if (loanId) conditions.push(eq(loanRetentionEntries.loanId, loanId));
+  if (year) conditions.push(eq(loanRetentionEntries.periodYear, year));
+  if (month) conditions.push(eq(loanRetentionEntries.periodMonth, month));
+  const db = await getDb();
+  return db!.select().from(loanRetentionEntries)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(loanRetentionEntries.entryDate), desc(loanRetentionEntries.id));
+}
+
+export async function createLoanRetentionEntry(data: InsertLoanRetentionEntry) {
+  const db = await getDb();
+  const [result] = await db!.insert(loanRetentionEntries).values(data);
+  await syncLoanRetentionTotals(data.loanId);
+  return result.insertId;
+}
+
+export async function updateLoanRetentionEntry(id: number, data: Partial<InsertLoanRetentionEntry>) {
+  const db = await getDb();
+  const current = await db!.select().from(loanRetentionEntries).where(eq(loanRetentionEntries.id, id)).limit(1);
+  if (!current[0]) return;
+  await db!.update(loanRetentionEntries).set(data).where(eq(loanRetentionEntries.id, id));
+  await syncLoanRetentionTotals(current[0].loanId);
+}
+
+export async function deleteLoanRetentionEntry(id: number) {
+  const db = await getDb();
+  const current = await db!.select().from(loanRetentionEntries).where(eq(loanRetentionEntries.id, id)).limit(1);
+  if (!current[0]) return;
+  await db!.delete(loanRetentionEntries).where(eq(loanRetentionEntries.id, id));
+  await syncLoanRetentionTotals(current[0].loanId);
+}
+
+export async function syncLoanRetentionTotals(loanId: number) {
+  const db = await getDb();
+  const entries = await db!.select().from(loanRetentionEntries).where(eq(loanRetentionEntries.loanId, loanId));
+  const totalPaid = entries.reduce((sum, entry) => sum + parseFloat(String(entry.retainedAmount || "0")), 0);
+  const loanRows = await db!.select().from(loans).where(eq(loans.id, loanId)).limit(1);
+  const loan = loanRows[0];
+  if (!loan) return;
+  const totalAmount = parseFloat(String(loan.totalAmount || "0"));
+  await db!.update(loans).set({
+    totalPaid: String(totalPaid),
+    status: totalPaid >= totalAmount && totalAmount > 0 ? "paid_off" : "active",
+  }).where(eq(loans.id, loanId));
+}
+
+export async function listPayableAccounts(year?: number, month?: number, status?: string) {
+  const db = await getDb();
+  const conditions = [];
+  if (status && status !== "all") conditions.push(eq(payableAccounts.status, status as any));
+  if (year && month) {
+    const prefix = `${year}-${String(month).padStart(2, "0")}`;
+    conditions.push(like(payableAccounts.dueDate, `${prefix}%`));
+  }
+  return db!.select().from(payableAccounts)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(payableAccounts.dueDate, payableAccounts.title);
+}
+
+export async function createPayableAccount(data: InsertPayableAccount) {
+  const db = await getDb();
+  const [result] = await db!.insert(payableAccounts).values(data);
+  return result.insertId;
+}
+
+export async function updatePayableAccount(id: number, data: Partial<InsertPayableAccount>) {
+  const db = await getDb();
+  await db!.update(payableAccounts).set(data).where(eq(payableAccounts.id, id));
+}
+
+export async function deletePayableAccount(id: number) {
+  const db = await getDb();
+  await db!.delete(payableAccounts).where(eq(payableAccounts.id, id));
+}
+
+export async function getPayablesDashboard(referenceDate: string, year?: number, month?: number) {
+  const db = await getDb();
+  const allAccounts = await listPayableAccounts(year, month);
+  const pendingCount = allAccounts.filter(a => a.status === "pending").length;
+  const overdue = allAccounts.filter(a => a.status !== "paid" && a.dueDate < referenceDate);
+  const dueTomorrow = allAccounts.filter(a => a.status !== "paid" && a.dueDate >= referenceDate && a.dueDate <= addDays(referenceDate, 1));
+  const totalPending = allAccounts.filter(a => a.status !== "paid").reduce((sum, a) => sum + parseFloat(String(a.amount || "0")), 0);
+  const totalOverdue = overdue.reduce((sum, a) => sum + parseFloat(String(a.amount || "0")), 0);
+  return {
+    allAccounts,
+    overdue,
+    dueTomorrow,
+    pendingCount,
+    totalPending,
+    totalOverdue,
+  };
+}
+
+function addDays(dateStr: string, days: number) {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export async function getLoanInstallmentsByPeriod(year: number, month: number) {
   const db = await getDb();
   return db!.select({
@@ -895,21 +1000,16 @@ export async function getLoanInstallmentsByPeriod(year: number, month: number) {
     ));
 }
 
-/* ══════════════════════════════════════════════════════════════
-   DRE: Dados consolidados para o fechamento financeiro
-   ══════════════════════════════════════════════════════════════ */
-
 export async function getDREData(year: number, month: number) {
   const db = await getDb();
-  // 1. Vendas (pedidos de clientes)
+
   const salesOrders = await db!.select().from(orders)
     .where(and(
       eq(orders.periodYear, year),
       eq(orders.periodMonth, month),
       eq(orders.orderType, "customer"),
     ));
-  
-  // 2. Compras pessoais
+
   const personalOrders = await db!.select().from(orders)
     .where(and(
       eq(orders.periodYear, year),
@@ -917,7 +1017,6 @@ export async function getDREData(year: number, month: number) {
       eq(orders.orderType, "personal"),
     ));
 
-  // 3. Custos fixos pagos no período
   const fixedCostPaymentsList = await db!.select({
     payment: fixedCostPayments,
     costName: fixedCosts.name,
@@ -929,7 +1028,6 @@ export async function getDREData(year: number, month: number) {
       eq(fixedCostPayments.periodMonth, month),
     ));
 
-  // 4. Faturas de cartão no período
   const cardInvoicesList = await db!.select({
     invoice: creditCardInvoices,
     cardName: creditCards.name,
@@ -941,11 +1039,11 @@ export async function getDREData(year: number, month: number) {
       eq(creditCardInvoices.periodMonth, month),
     ));
 
-  // 5. Parcelas de empréstimo no período
   const loanInstallmentsList = await db!.select({
     installment: loanInstallments,
     loanName: loans.name,
     institution: loans.institution,
+    loanType: loans.loanType,
   }).from(loanInstallments)
     .innerJoin(loans, eq(loanInstallments.loanId, loans.id))
     .where(and(
@@ -953,29 +1051,66 @@ export async function getDREData(year: number, month: number) {
       eq(loanInstallments.periodMonth, month),
     ));
 
-  // 6. Dados do extrato bancário (LIS, entradas, saídas)
+  const loanRetentionEntriesList = await db!.select({
+    entry: loanRetentionEntries,
+    loanName: loans.name,
+    institution: loans.institution,
+    retentionSource: loans.retentionSource,
+    retentionPercent: loans.retentionPercent,
+    totalAmount: loans.totalAmount,
+    totalPaid: loans.totalPaid,
+  }).from(loanRetentionEntries)
+    .innerJoin(loans, eq(loanRetentionEntries.loanId, loans.id))
+    .where(and(
+      eq(loanRetentionEntries.periodYear, year),
+      eq(loanRetentionEntries.periodMonth, month),
+    ));
+
+  const payableAccountsList = await db!.select().from(payableAccounts)
+    .where(like(payableAccounts.dueDate, `${year}-${String(month).padStart(2, "0")}%`));
+
   const bankStatementsData = await db!.select().from(bankStatements)
     .where(and(
       eq(bankStatements.periodYear, year),
       eq(bankStatements.periodMonth, month),
     ));
-  
+
   let bankTransactionsData: any[] = [];
   if (bankStatementsData.length > 0) {
     const statementIds = bankStatementsData.map((s: any) => s.id);
     for (const sid of statementIds) {
-      const txns = await db!.select().from(bankTransactions)
-        .where(eq(bankTransactions.statementId, sid));
+      const txns = await db!.select().from(bankTransactions).where(eq(bankTransactions.statementId, sid));
       bankTransactionsData.push(...txns);
     }
   }
 
-  // 7. Snapshot mensal (se existir)
   const snapshot = await db!.select().from(monthlySnapshots)
     .where(and(
       eq(monthlySnapshots.periodYear, year),
       eq(monthlySnapshots.periodMonth, month),
     ));
+
+  const marketplaceBreakdown = {
+    vendas: loanRetentionEntriesList.filter(item => item.entry.eventCategory === "venda"),
+    taxas: loanRetentionEntriesList.filter(item => item.entry.eventCategory === "taxa"),
+    antecipacoes: loanRetentionEntriesList.filter(item => item.entry.eventCategory === "antecipacao"),
+    devolucoes: loanRetentionEntriesList.filter(item => item.entry.eventCategory === "devolucao"),
+    abatimentos: loanRetentionEntriesList.filter(item => item.entry.eventCategory === "abatimento_emprestimo"),
+    ajustes: loanRetentionEntriesList.filter(item => item.entry.eventCategory === "ajuste"),
+  };
+
+  const marketplaceSummary = {
+    totalVendas: marketplaceBreakdown.vendas.reduce((sum, item) => sum + parseFloat(String(item.entry.netAmount || item.entry.grossAmount || "0")), 0),
+    totalTaxas: marketplaceBreakdown.taxas.reduce((sum, item) => sum + Math.abs(parseFloat(String(item.entry.retainedAmount || item.entry.netAmount || item.entry.grossAmount || "0"))), 0),
+    totalAntecipacoes: marketplaceBreakdown.antecipacoes.reduce((sum, item) => sum + Math.abs(parseFloat(String(item.entry.retainedAmount || item.entry.netAmount || item.entry.grossAmount || "0"))), 0),
+    totalDevolucoes: marketplaceBreakdown.devolucoes.reduce((sum, item) => sum + Math.abs(parseFloat(String(item.entry.retainedAmount || item.entry.netAmount || item.entry.grossAmount || "0"))), 0),
+    totalAbatimentosEmprestimo: marketplaceBreakdown.abatimentos.reduce((sum, item) => sum + parseFloat(String(item.entry.retainedAmount || "0")), 0),
+    totalAjustes: marketplaceBreakdown.ajustes.reduce((sum, item) => sum + parseFloat(String(item.entry.retainedAmount || "0")), 0),
+  };
+
+  const cashInBank = bankTransactionsData.filter((t: any) => t.transactionType === "credit").reduce((sum: number, t: any) => sum + parseFloat(String(t.amount || "0")), 0);
+  const cashOutBank = bankTransactionsData.filter((t: any) => t.transactionType === "debit").reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
+  const investedCapital = payableAccountsList.filter(a => a.isInvestment === 1 || a.accountType === "investimento").reduce((sum, a) => sum + parseFloat(String(a.amount || "0")), 0);
 
   return {
     salesOrders,
@@ -983,8 +1118,19 @@ export async function getDREData(year: number, month: number) {
     fixedCostPayments: fixedCostPaymentsList,
     cardInvoices: cardInvoicesList,
     loanInstallments: loanInstallmentsList,
+    loanRetentionEntries: loanRetentionEntriesList,
+    payableAccounts: payableAccountsList,
     bankStatements: bankStatementsData,
     bankTransactions: bankTransactionsData,
+    marketplaceBreakdown,
+    marketplaceSummary,
+    healthBase: {
+      cashInBank,
+      cashOutBank,
+      investedCapital,
+      pendingPayables: payableAccountsList.filter(a => a.status !== "paid").reduce((sum, a) => sum + parseFloat(String(a.amount || "0")), 0),
+      overduePayables: payableAccountsList.filter(a => a.status === "overdue").reduce((sum, a) => sum + parseFloat(String(a.amount || "0")), 0),
+    },
     snapshot: snapshot[0] || null,
   };
 }

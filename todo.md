@@ -166,3 +166,53 @@
 - [x] Implementar DRE mensal consolidado (receitas de vendas, custos de compras, custos fixos, cartões, empréstimos, LIS)
 - [x] Adicionar pontos de atenção e alertas automáticos na saúde financeira
 - [x] Escrever testes vitest para o módulo Financeiro/DRE
+- [ ] Adaptar cadastro de empréstimos para suportar modalidade com abatimento automático sobre vendas
+- [ ] Ajustar cálculo do Financeiro/DRE para considerar amortização diária variável de empréstimos vinculados a vendas
+- [ ] Criar visualização específica para acompanhar saldo, percentual de abatimento e total já descontado de empréstimos tipo Mercado Livre
+- [ ] Criar módulo de contas a pagar com boletos, vencimentos e status de pagamento
+- [ ] Adicionar lembretes no painel para contas a vencer, com aviso 1 dia antes do vencimento
+- [ ] Permitir registrar pagamentos realizados para evitar atrasos e alimentar o fechamento financeiro
+- [ ] Adaptar o financeiro para empréstimos mensais e empréstimos com desconto automático sobre vendas
+- [ ] Criar tratamento específico para extrato do Mercado Livre com entradas, saídas, antecipações, taxas e devoluções
+- [ ] Mostrar no painel quanto está sendo perdido com antecipações e taxas do Mercado Livre
+- [ ] Integrar extratos, contas pagas, cartão, empréstimos e custos fixos em um DRE diário e mensal
+- [ ] Redesenhar a experiência do Financeiro para visualização intuitiva de boletos, parcelas, alertas e fechamento
+- [ ] Permitir configurar percentual negociado de retenção por venda em empréstimos do Mercado Livre
+- [ ] Exibir painel de empréstimo por vendas com total contratado, total pago, saldo restante, percentual retido e progresso visual
+- [ ] Permitir lançar retenções de empréstimo por vendas em base diária ou mensal
+- [ ] Separar no Financeiro e no DRE os valores de taxa, antecipação, devolução e retenção de empréstimo do Mercado Livre
+- [ ] Criar indicadores de saúde financeira com visão de caixa parado, pressão de dívidas e capacidade operacional
+- [ ] Criar módulo de contas a pagar com boletos, vencimento, status, data de pagamento, valor pago, observação e comprovante
+- [ ] Criar alertas visuais no painel financeiro para contas com vencimento amanhã, hoje e em atraso
+- [ ] Adaptar empréstimos para suportar modalidade por retenção percentual sobre vendas líquidas (ex: Mercado Livre)
+- [ ] Permitir configurar percentual negociado de retenção no cadastro do empréstimo
+- [ ] Mostrar painel de progresso do empréstimo Mercado Livre com contratado, pago, saldo restante e retenção acumulada no mês
+- [ ] Separar no financeiro do Mercado Livre: vendas líquidas, taxas, antecipações, devoluções e retenções de empréstimo
+- [ ] Criar visão de saúde financeira com caixa, dinheiro parado, pressão de despesas e capacidade de pagamento
+- [ ] Integrar contas a pagar e empréstimos por retenção ao DRE diário e mensal
+- [ ] Criar módulo de contas a pagar com boletos, parcelas, vencimento, status, data de pagamento, valor pago, observação e comprovante
+- [ ] Adicionar lembretes visuais no painel para contas a vencer 1 dia antes, no dia e em atraso até marcar como pago
+- [ ] Adaptar empréstimos para suportar dois tipos: parcela fixa mensal e retenção percentual sobre vendas líquidas
+- [ ] Permitir configurar percentual negociado do empréstimo por vendas (ex: Mercado Livre)
+- [ ] Exibir no painel do empréstimo por vendas: total contratado, total pago, saldo restante, percentual de retenção e progresso visual
+- [ ] Separar no Financeiro e no DRE: taxas Mercado Livre, antecipações, devoluções e abatimentos de empréstimo
+- [ ] Criar visão de saúde financeira com entradas, saídas, caixa, dinheiro parado, pressão de dívidas e pontos de atenção
+- [ ] Integrar contas a pagar, extratos, cartões, empréstimos e Mercado Livre no fechamento financeiro diário e mensal
+- [ ] Consolidar e implementar o financeiro operacional com contas a pagar, lembretes visuais, empréstimos parcelados e empréstimos por retenção sobre vendas líquidas
+- [ ] Criar painel Mercado Livre com retenções, taxas, antecipações, devoluções e progresso do empréstimo por percentual configurável
+- [ ] Integrar contas a pagar e retenções do Mercado Livre ao DRE diário e mensal com indicadores de saúde financeira
+- [ ] Criar CRUD de contas a pagar com vencimento, fornecedor, tipo, status e baixa manual
+- [ ] Adicionar lembretes visuais no painel para contas a vencer e
+- [ ] Criar CRUD de contas a pagar com vencimento, fornecedor, tipo, status, baixa manual, data paga, valor pago e observação
+- [ ] Adicionar lembretes visuais no painel para contas a vencer 1 dia antes e manter destaque das atrasadas até marcar como paga
+- [ ] Criar visão operacional de vencimentos com cards e lista semanal de contas, boletos, parcelas e cartões
+- [ ] Adaptar empréstimos para suportar tipo mensal fixo e tipo retenção percentual sobre vendas líquidas
+- [ ] Permitir configurar percentual negociado do empréstimo por retenção e acompanhar total contratado, total pago, saldo restante e progresso
+- [ ] Separar no Financeiro e no DRE os eventos do Mercado Livre: vendas, taxas, antecipações, devoluções e retenções de empréstimo
+- [ ] Criar indicadores de saúde financeira com caixa, compromissos a pagar, dinheiro parado, pressão de dívida e resultado diário/mensal
+- [x] Reestruturar o módulo Financeiro para incluir controle operacional de contas a pagar com vencimento, status, pagamento, comprovante e alertas.
+- [x] Implementar empréstimos por retenção sobre vendas do Mercado Livre com percentual configurável, saldo, progresso visual e registros de abatimento.
+- [x] Integrar contas a pagar e retenções de marketplace ao DRE mensal e diário.
+- [x] Criar visão de saúde financeira com entradas vs saídas, retenções do Mercado Livre, capital parado/investido e alertas.
+- [x] Separar dados do Mercado Livre em cards de vendas, taxas, antecipações, devoluções e abatimentos de empréstimo.
+- [x] Cobrir a nova lógica financeira com testes vitest e validar o ambiente.

@@ -78,6 +78,15 @@ import {
   deleteLoan,
   listLoanInstallments,
   upsertLoanInstallment,
+  listLoanRetentionEntries,
+  createLoanRetentionEntry,
+  updateLoanRetentionEntry,
+  deleteLoanRetentionEntry,
+  listPayableAccounts,
+  createPayableAccount,
+  updatePayableAccount,
+  deletePayableAccount,
+  getPayablesDashboard,
   getDREData,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
@@ -1340,7 +1349,6 @@ export const appRouter = router({
       }),
   }),
   finance: router({
-    // ── Custos Fixos ──
     fixedCosts: router({
       list: protectedProcedure.query(async () => listFixedCosts()),
       create: protectedProcedure
@@ -1351,10 +1359,7 @@ export const appRouter = router({
           dueDay: z.number().int().min(1).max(31).default(1),
           notes: z.string().optional().nullable(),
         }))
-        .mutation(async ({ input, ctx }) => {
-          const id = await createFixedCost({ ...input, createdByUserId: ctx.user.id });
-          return { id };
-        }),
+        .mutation(async ({ input, ctx }) => ({ id: await createFixedCost({ ...input, createdByUserId: ctx.user.id }) })),
       update: protectedProcedure
         .input(z.object({
           id: z.number().int().positive(),
@@ -1388,12 +1393,8 @@ export const appRouter = router({
           paidAt: z.date().optional().nullable(),
           notes: z.string().optional().nullable(),
         }))
-        .mutation(async ({ input }) => {
-          const id = await upsertFixedCostPayment(input);
-          return { id };
-        }),
+        .mutation(async ({ input }) => ({ id: await upsertFixedCostPayment(input) })),
     }),
-    // ── Cartões de Crédito ──
     creditCards: router({
       list: protectedProcedure.query(async () => listCreditCards()),
       create: protectedProcedure
@@ -1406,10 +1407,7 @@ export const appRouter = router({
           creditLimit: z.string().optional().nullable(),
           notes: z.string().optional().nullable(),
         }))
-        .mutation(async ({ input, ctx }) => {
-          const id = await createCreditCard({ ...input, createdByUserId: ctx.user.id });
-          return { id };
-        }),
+        .mutation(async ({ input, ctx }) => ({ id: await createCreditCard({ ...input, createdByUserId: ctx.user.id }) })),
       update: protectedProcedure
         .input(z.object({
           id: z.number().int().positive(),
@@ -1447,41 +1445,52 @@ export const appRouter = router({
           paidAt: z.date().optional().nullable(),
           notes: z.string().optional().nullable(),
         }))
-        .mutation(async ({ input }) => {
-          const id = await upsertCreditCardInvoice(input);
-          return { id };
-        }),
+        .mutation(async ({ input }) => ({ id: await upsertCreditCardInvoice(input) })),
     }),
-    // ── Empréstimos ──
     loans: router({
       list: protectedProcedure.query(async () => listLoans()),
       create: protectedProcedure
         .input(z.object({
           name: z.string().min(1),
           institution: z.string().min(1),
+          loanType: z.enum(["installment", "sales_retention"]).default("installment"),
           totalAmount: z.string(),
-          totalInstallments: z.number().int().positive(),
-          installmentAmount: z.string(),
+          totalInstallments: z.number().int().positive().optional().nullable(),
+          installmentAmount: z.string().optional().nullable(),
           interestRate: z.string().optional().nullable(),
           startDate: z.string(),
-          dueDay: z.number().int().min(1).max(31).default(1),
+          dueDay: z.number().int().min(1).max(31).optional().nullable(),
+          retentionPercent: z.string().optional().nullable(),
+          retentionSource: z.string().optional().nullable(),
           notes: z.string().optional().nullable(),
         }))
-        .mutation(async ({ input, ctx }) => {
-          const id = await createLoan({ ...input, createdByUserId: ctx.user.id });
-          return { id };
-        }),
+        .mutation(async ({ input, ctx }) => ({
+          id: await createLoan({
+            ...input,
+            totalInstallments: input.loanType === "installment" ? input.totalInstallments ?? 1 : null,
+            installmentAmount: input.loanType === "installment" ? input.installmentAmount ?? "0" : null,
+            dueDay: input.loanType === "installment" ? input.dueDay ?? 1 : null,
+            retentionPercent: input.loanType === "sales_retention" ? input.retentionPercent ?? "20" : null,
+            retentionSource: input.loanType === "sales_retention" ? input.retentionSource ?? "mercado_livre" : null,
+            createdByUserId: ctx.user.id,
+          })
+        })),
       update: protectedProcedure
         .input(z.object({
           id: z.number().int().positive(),
           name: z.string().min(1).optional(),
           institution: z.string().min(1).optional(),
+          loanType: z.enum(["installment", "sales_retention"]).optional(),
           totalAmount: z.string().optional(),
-          totalInstallments: z.number().int().positive().optional(),
-          installmentAmount: z.string().optional(),
+          totalInstallments: z.number().int().positive().optional().nullable(),
+          installmentAmount: z.string().optional().nullable(),
           interestRate: z.string().optional().nullable(),
           startDate: z.string().optional(),
-          dueDay: z.number().int().min(1).max(31).optional(),
+          dueDay: z.number().int().min(1).max(31).optional().nullable(),
+          retentionPercent: z.string().optional().nullable(),
+          retentionSource: z.string().optional().nullable(),
+          totalPaid: z.string().optional(),
+          status: z.enum(["active", "paid_off"]).optional(),
           notes: z.string().optional().nullable(),
         }))
         .mutation(async ({ input }) => {
@@ -1509,88 +1518,190 @@ export const appRouter = router({
           paidAt: z.date().optional().nullable(),
           notes: z.string().optional().nullable(),
         }))
+        .mutation(async ({ input }) => ({ id: await upsertLoanInstallment(input) })),
+      retentionEntries: protectedProcedure
+        .input(z.object({ loanId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }))
+        .query(async ({ input }) => listLoanRetentionEntries(input.loanId, input.year, input.month)),
+      createRetentionEntry: protectedProcedure
+        .input(z.object({
+          loanId: z.number().int().positive(),
+          entryDate: z.string(),
+          periodYear: z.number(),
+          periodMonth: z.number(),
+          entryType: z.enum(["daily", "monthly", "manual"]).default("daily"),
+          eventCategory: z.enum(["venda", "taxa", "antecipacao", "devolucao", "abatimento_emprestimo", "ajuste"]).default("abatimento_emprestimo"),
+          grossAmount: z.string().optional().nullable(),
+          netAmount: z.string().optional().nullable(),
+          retentionPercentApplied: z.string().optional().nullable(),
+          retainedAmount: z.string(),
+          sourceReference: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input, ctx }) => ({ id: await createLoanRetentionEntry({ ...input, createdByUserId: ctx.user.id }) })),
+      updateRetentionEntry: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          entryDate: z.string().optional(),
+          periodYear: z.number().optional(),
+          periodMonth: z.number().optional(),
+          entryType: z.enum(["daily", "monthly", "manual"]).optional(),
+          eventCategory: z.enum(["venda", "taxa", "antecipacao", "devolucao", "abatimento_emprestimo", "ajuste"]).optional(),
+          grossAmount: z.string().optional().nullable(),
+          netAmount: z.string().optional().nullable(),
+          retentionPercentApplied: z.string().optional().nullable(),
+          retainedAmount: z.string().optional(),
+          sourceReference: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
         .mutation(async ({ input }) => {
-          const id = await upsertLoanInstallment(input);
-          return { id };
+          const { id, ...data } = input;
+          await updateLoanRetentionEntry(id, data);
+          return { success: true };
+        }),
+      deleteRetentionEntry: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(async ({ input }) => {
+          await deleteLoanRetentionEntry(input.id);
+          return { success: true };
         }),
     }),
-    // ── DRE Consolidado ──
+    payables: router({
+      list: protectedProcedure
+        .input(z.object({ year: z.number().optional(), month: z.number().optional(), status: z.string().optional() }).optional())
+        .query(async ({ input }) => listPayableAccounts(input?.year, input?.month, input?.status)),
+      dashboard: protectedProcedure
+        .input(z.object({ referenceDate: z.string(), year: z.number().optional(), month: z.number().optional() }))
+        .query(async ({ input }) => getPayablesDashboard(input.referenceDate, input.year, input.month)),
+      create: protectedProcedure
+        .input(z.object({
+          title: z.string().min(1),
+          supplier: z.string().optional().nullable(),
+          category: z.string().default("outros"),
+          accountType: z.enum(["boleto", "fornecedor", "cartao", "emprestimo", "imposto", "investimento", "outros"]).default("boleto"),
+          amount: z.string(),
+          dueDate: z.string(),
+          status: z.enum(["pending", "paid", "overdue", "partial"]).default("pending"),
+          paidAmount: z.string().optional().nullable(),
+          paidAt: z.date().optional().nullable(),
+          installmentLabel: z.string().optional().nullable(),
+          reminderDaysBefore: z.number().int().min(0).max(30).default(1),
+          description: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+          receiptUrl: z.string().optional().nullable(),
+          receiptFileKey: z.string().optional().nullable(),
+          paymentMethod: z.string().optional().nullable(),
+          isInvestment: z.number().int().min(0).max(1).default(0),
+        }))
+        .mutation(async ({ input, ctx }) => ({ id: await createPayableAccount({ ...input, createdByUserId: ctx.user.id }) })),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          title: z.string().min(1).optional(),
+          supplier: z.string().optional().nullable(),
+          category: z.string().optional(),
+          accountType: z.enum(["boleto", "fornecedor", "cartao", "emprestimo", "imposto", "investimento", "outros"]).optional(),
+          amount: z.string().optional(),
+          dueDate: z.string().optional(),
+          status: z.enum(["pending", "paid", "overdue", "partial"]).optional(),
+          paidAmount: z.string().optional().nullable(),
+          paidAt: z.date().optional().nullable(),
+          installmentLabel: z.string().optional().nullable(),
+          reminderDaysBefore: z.number().int().min(0).max(30).optional(),
+          description: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+          receiptUrl: z.string().optional().nullable(),
+          receiptFileKey: z.string().optional().nullable(),
+          paymentMethod: z.string().optional().nullable(),
+          isInvestment: z.number().int().min(0).max(1).optional(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...data } = input;
+          await updatePayableAccount(id, data);
+          return { success: true };
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(async ({ input }) => {
+          await deletePayableAccount(input.id);
+          return { success: true };
+        }),
+      registerPayment: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          paidAmount: z.string(),
+          paidAt: z.date(),
+          receiptUrl: z.string().optional().nullable(),
+          receiptFileKey: z.string().optional().nullable(),
+          paymentMethod: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        }))
+        .mutation(async ({ input }) => {
+          await updatePayableAccount(input.id, {
+            status: "paid",
+            paidAmount: input.paidAmount,
+            paidAt: input.paidAt,
+            receiptUrl: input.receiptUrl ?? null,
+            receiptFileKey: input.receiptFileKey ?? null,
+            paymentMethod: input.paymentMethod ?? null,
+            notes: input.notes ?? null,
+          });
+          return { success: true };
+        }),
+    }),
     dre: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => {
         const data = await getDREData(input.year, input.month);
-        
-        // Calcular totais
+
         const totalVendasClientes = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalCliente || "0")), 0);
         const totalCustoMondialVendas = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalMondial || "0")), 0);
         const totalComissaoEverton = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalComissaoEvertonMondial || "0")), 0);
         const totalLucroVendas = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalLucro || "0")), 0);
         const totalComprasPessoais = data.personalOrders.reduce((sum, o) => sum + parseFloat(String(o.totalMondial || "0")), 0);
-        
         const totalCustosFixos = data.fixedCostPayments.reduce((sum, p) => sum + parseFloat(String(p.payment.amountPaid || "0")), 0);
         const totalCartoes = data.cardInvoices.reduce((sum, i) => sum + parseFloat(String(i.invoice.totalAmount || "0")), 0);
-        const totalEmprestimos = data.loanInstallments.reduce((sum, i) => sum + parseFloat(String(i.installment.amount || "0")), 0);
-        
-        // LIS do extrato
+        const totalEmprestimosMensais = data.loanInstallments.reduce((sum, i) => sum + parseFloat(String(i.installment.amount || "0")), 0);
+        const totalRetencaoEmprestimos = data.loanRetentionEntries.reduce((sum, i) => sum + parseFloat(String(i.entry.retainedAmount || "0")), 0);
+        const totalContasPagas = data.payableAccounts.filter((a: any) => a.status === "paid" || a.status === "partial").reduce((sum: number, a: any) => sum + parseFloat(String(a.paidAmount || a.amount || "0")), 0);
+        const totalInvestimentos = data.payableAccounts.filter((a: any) => a.isInvestment === 1 || a.accountType === "investimento").reduce((sum: number, a: any) => sum + parseFloat(String(a.amount || "0")), 0);
+
         const lisTransactions = data.bankTransactions.filter((t: any) => {
           const desc = (t.originalDescription || "").toLowerCase();
           const cat = (t.category || "").toLowerCase();
-          return cat.includes("lis") || cat.includes("cheque especial") ||
-            desc.includes("juros cheque") || desc.includes("iof cheque") ||
-            desc.includes("juros lis") || desc.includes("iof lis");
+          return cat.includes("lis") || cat.includes("cheque especial") || desc.includes("juros cheque") || desc.includes("iof cheque") || desc.includes("juros lis") || desc.includes("iof lis");
         });
         const totalLIS = lisTransactions.reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
-        
-        // Imposto sobre vendas (comissão Everton = imposto pago à Mondial)
+
         const impostoVendas = totalComissaoEverton;
-        
-        // Receita líquida = vendas - custo mondial das vendas
-        const receitaBruta = totalVendasClientes;
+        const receitaBruta = totalVendasClientes + data.marketplaceSummary.totalVendas;
         const custoMercadoriaVendida = totalCustoMondialVendas;
         const lucroBruto = receitaBruta - custoMercadoriaVendida;
-        
-        // Despesas operacionais
-        const despesasOperacionais = totalCustosFixos + totalCartoes + totalEmprestimos + totalLIS;
-        
-        // Resultado operacional
+        const totalTaxasMarketplace = data.marketplaceSummary.totalTaxas + data.marketplaceSummary.totalAntecipacoes + data.marketplaceSummary.totalDevolucoes;
+        const totalEmprestimos = totalEmprestimosMensais + totalRetencaoEmprestimos;
+        const despesasOperacionais = totalCustosFixos + totalCartoes + totalEmprestimos + totalLIS + totalTaxasMarketplace + totalContasPagas;
         const resultadoOperacional = lucroBruto - despesasOperacionais;
-        
-        // Resultado líquido (inclui compras pessoais como investimento/uso próprio)
         const resultadoLiquido = resultadoOperacional - totalComprasPessoais;
-        
-        // Margem líquida
         const margemLiquida = receitaBruta > 0 ? (resultadoLiquido / receitaBruta) * 100 : 0;
-        
-        // Pontos de atenção
+
+        const entradasTotais = data.healthBase.cashInBank + totalVendasClientes + data.marketplaceSummary.totalVendas;
+        const saidasTotais = data.healthBase.cashOutBank + totalContasPagas + totalTaxasMarketplace + totalRetencaoEmprestimos;
+        const saldoOperacional = entradasTotais - saidasTotais;
+        const dinheiroParado = data.healthBase.investedCapital;
+
         const alerts: { type: "danger" | "warning" | "info"; message: string }[] = [];
-        
-        if (resultadoLiquido < 0) {
-          alerts.push({ type: "danger", message: `Resultado líquido negativo de R$ ${Math.abs(resultadoLiquido).toFixed(2)}. Suas despesas superaram suas receitas neste mês.` });
-        }
-        if (totalLIS > 0) {
-          alerts.push({ type: "danger", message: `Você gastou R$ ${totalLIS.toFixed(2)} com LIS/Cheque Especial. Tente evitar usar o limite para reduzir custos com juros.` });
-        }
-        if (totalComprasPessoais > lucroBruto * 0.5 && lucroBruto > 0) {
-          alerts.push({ type: "warning", message: `Compras pessoais (R$ ${totalComprasPessoais.toFixed(2)}) representam ${((totalComprasPessoais / lucroBruto) * 100).toFixed(1)}% do lucro bruto. Avalie se o volume está adequado.` });
-        }
-        if (despesasOperacionais > lucroBruto && lucroBruto > 0) {
-          alerts.push({ type: "warning", message: `Despesas operacionais (R$ ${despesasOperacionais.toFixed(2)}) superam o lucro bruto (R$ ${lucroBruto.toFixed(2)}). Revise custos fixos e empréstimos.` });
-        }
-        if (totalCartoes > receitaBruta * 0.15 && receitaBruta > 0) {
-          alerts.push({ type: "warning", message: `Faturas de cartão (R$ ${totalCartoes.toFixed(2)}) representam ${((totalCartoes / receitaBruta) * 100).toFixed(1)}% da receita bruta. Atenção ao uso do crédito.` });
-        }
-        if (margemLiquida > 0 && margemLiquida < 10) {
-          alerts.push({ type: "warning", message: `Margem líquida de apenas ${margemLiquida.toFixed(1)}%. Margem saudável para distribuição é acima de 15%.` });
-        }
-        if (data.salesOrders.length === 0) {
-          alerts.push({ type: "info", message: "Nenhuma venda registrada neste mês. Cadastre seus pedidos de clientes para ter o DRE completo." });
-        }
-        if (data.fixedCostPayments.length === 0) {
-          alerts.push({ type: "info", message: "Nenhum custo fixo registrado neste mês. Cadastre e marque os pagamentos para ter o DRE completo." });
-        }
-        
+        if (resultadoLiquido < 0) alerts.push({ type: "danger", message: `Resultado líquido negativo de R$ ${Math.abs(resultadoLiquido).toFixed(2)}.` });
+        if (data.healthBase.overduePayables > 0) alerts.push({ type: "danger", message: `Há R$ ${data.healthBase.overduePayables.toFixed(2)} em contas atrasadas.` });
+        if (totalLIS > 0) alerts.push({ type: "danger", message: `Você gastou R$ ${totalLIS.toFixed(2)} com LIS/Cheque Especial.` });
+        if (totalRetencaoEmprestimos > 0) alerts.push({ type: "warning", message: `O Mercado Livre reteve R$ ${totalRetencaoEmprestimos.toFixed(2)} para abatimento de empréstimos no período.` });
+        if (totalTaxasMarketplace > receitaBruta * 0.12 && receitaBruta > 0) alerts.push({ type: "warning", message: `Taxas, antecipações e devoluções do marketplace consumiram ${((totalTaxasMarketplace / receitaBruta) * 100).toFixed(1)}% da receita.` });
+        if (saldoOperacional < 0) alerts.push({ type: "warning", message: `As saídas superaram as entradas em R$ ${Math.abs(saldoOperacional).toFixed(2)}.` });
+        if (dinheiroParado > 0) alerts.push({ type: "info", message: `Existem R$ ${dinheiroParado.toFixed(2)} classificados como investimento/capital parado.` });
+        if (data.salesOrders.length === 0 && data.marketplaceSummary.totalVendas <= 0) alerts.push({ type: "info", message: "Nenhuma venda registrada neste mês. Cadastre vendas e movimentos do marketplace para completar o DRE." });
+
+        const dailyAverageRevenue = receitaBruta / 30;
+        const dailyAverageExpenses = despesasOperacionais / 30;
+
         return {
-          // Receitas
           receitaBruta,
           custoMercadoriaVendida,
           lucroBruto,
@@ -1600,33 +1711,52 @@ export const appRouter = router({
           totalComissaoEverton,
           totalLucroVendas,
           qtdPedidosClientes: data.salesOrders.length,
-          
-          // Compras pessoais
           totalComprasPessoais,
           qtdPedidosPessoais: data.personalOrders.length,
-          
-          // Despesas
           totalCustosFixos,
           totalCartoes,
           totalEmprestimos,
+          totalEmprestimosMensais,
+          totalRetencaoEmprestimos,
+          totalContasPagas,
           totalLIS,
+          totalTaxasMarketplace,
           despesasOperacionais,
-          
-          // Resultados
           resultadoOperacional,
           resultadoLiquido,
           margemLiquida,
-          
-          // Detalhes
+          entradasTotais,
+          saidasTotais,
+          saldoOperacional,
+          dinheiroParado,
+          dailyDre: {
+            entradas: dailyAverageRevenue,
+            saidas: dailyAverageExpenses,
+            resultado: dailyAverageRevenue - dailyAverageExpenses,
+          },
+          monthlyDre: {
+            entradas: entradasTotais,
+            saidas: saidasTotais,
+            resultado: saldoOperacional,
+          },
           fixedCostPayments: data.fixedCostPayments,
           cardInvoices: data.cardInvoices,
           loanInstallments: data.loanInstallments,
+          loanRetentionEntries: data.loanRetentionEntries,
+          payableAccounts: data.payableAccounts,
+          marketplaceBreakdown: data.marketplaceBreakdown,
+          marketplaceSummary: data.marketplaceSummary,
           lisTransactions,
-          
-          // Alertas
+          health: {
+            entradas: entradasTotais,
+            saidas: saidasTotais,
+            retidoMercadoLivre: totalRetencaoEmprestimos,
+            capitalParado: dinheiroParado,
+            pendencias: data.healthBase.pendingPayables,
+            atrasados: data.healthBase.overduePayables,
+            status: resultadoLiquido >= 0 && saldoOperacional >= 0 ? "saudavel" : resultadoLiquido >= 0 ? "atencao" : "critico",
+          },
           alerts,
-          
-          // Snapshot
           snapshot: data.snapshot,
         };
       }),

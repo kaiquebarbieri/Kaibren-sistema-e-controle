@@ -78,6 +78,20 @@
       "when": 1774028459810,
       "tag": "0010_modern_hobgoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1774038075108,
+      "tag": "0011_lame_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1774039343989,
+      "tag": "0012_loving_red_skull",
+      "breakpoints": true
     }
   ]
 }
