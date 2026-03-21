@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import {
   AlertTriangle,
@@ -25,7 +25,7 @@ import {
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-type Tab = "visao" | "pagar" | "custos" | "cartoes" | "emprestimos";
+type FinanceTab = "dre" | "contas" | "cartoes" | "emprestimos";
 
 function fmt(v: number | string | null | undefined): string {
   const n = parseFloat(String(v || "0"));
@@ -62,11 +62,25 @@ function BarRow({ label, amount, total, tone = "rose" }: { label: string; amount
   );
 }
 
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="rounded-2xl border border-dashed bg-muted/20 p-6 text-center">
+          <p className="text-sm font-medium">{title}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Finance() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [, params] = useRoute("/financeiro/:tab");
-  const activeTab = (params?.tab as Tab) || "visao";
+  const routeTab = (params?.tab as FinanceTab) || "dre";
+  const activeTab: FinanceTab = ["dre", "contas", "cartoes", "emprestimos"].includes(routeTab) ? routeTab : "dre";
 
   const now = new Date();
   const today = ymd(now);
@@ -75,6 +89,7 @@ export default function Finance() {
   const [selectedCnpjId, setSelectedCnpjId] = useState<string>("all");
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
+  const statementsQuery = trpc.bankStatements.list.useQuery();
   const payablesQuery = trpc.finance.payables.list.useQuery({ year: selectedYear, month: selectedMonth });
   const payablesDashboardQuery = trpc.finance.payables.dashboard.useQuery({ referenceDate: today, year: selectedYear, month: selectedMonth });
   const fixedCostsQuery = trpc.finance.fixedCosts.list.useQuery();
@@ -85,9 +100,9 @@ export default function Finance() {
   const loanInstallmentsQuery = trpc.finance.loans.installments.useQuery({ year: selectedYear, month: selectedMonth });
   const retentionEntriesQuery = trpc.finance.loans.retentionEntries.useQuery({ year: selectedYear, month: selectedMonth });
   const dreQuery = trpc.finance.dre.useQuery({ year: selectedYear, month: selectedMonth });
-  const statementsQuery = trpc.bankStatements.list.useQuery();
 
   const cnpjs = cnpjsQuery.data ?? [];
+  const statements = statementsQuery.data ?? [];
   const payables = payablesQuery.data ?? [];
   const payablesDashboard = payablesDashboardQuery.data;
   const fixedCosts = fixedCostsQuery.data ?? [];
@@ -98,15 +113,22 @@ export default function Finance() {
   const loanInstallments = loanInstallmentsQuery.data ?? [];
   const retentionEntries = retentionEntriesQuery.data ?? [];
   const dre = dreQuery.data;
-  const statements = statementsQuery.data ?? [];
 
-  const tabs = [
-    { key: "visao", label: "DRE + caixa", icon: Wallet },
-    { key: "pagar", label: "Contas a pagar", icon: Receipt },
-    { key: "custos", label: "Custos fixos", icon: Building2 },
-    { key: "cartoes", label: "Cartões", icon: CreditCard },
-    { key: "emprestimos", label: "Empréstimos", icon: Landmark },
-  ] as const;
+  useEffect(() => {
+    if (statements.length === 0) return;
+    const sorted = [...statements].sort((a: any, b: any) => {
+      const left = Number(a.periodYear) * 100 + Number(a.periodMonth);
+      const right = Number(b.periodYear) * 100 + Number(b.periodMonth);
+      return right - left;
+    });
+    const latest = sorted[0];
+    const latestYear = Number(latest.periodYear);
+    const latestMonth = Number(latest.periodMonth);
+    if (latestYear !== selectedYear || latestMonth !== selectedMonth) {
+      setSelectedYear(latestYear);
+      setSelectedMonth(latestMonth);
+    }
+  }, [statements, selectedMonth, selectedYear]);
 
   const selectedCnpj = useMemo(() => cnpjs.find((item: any) => String(item.id) === selectedCnpjId) ?? null, [cnpjs, selectedCnpjId]);
   const cnpjLabel = selectedCnpj ? `${selectedCnpj.nomeFantasia || selectedCnpj.razaoSocial} • ${selectedCnpj.cnpj}` : "Todos os CNPJs cadastrados";
@@ -137,13 +159,8 @@ export default function Finance() {
     return items.filter((item: any) => Number(item.amount || 0) > 0);
   }, [dre?.topExpenseCategories]);
 
-  const topCredits = useMemo(() => {
-    return allTransactions.filter((item: any) => item.transactionType === "credit").slice(0, 5);
-  }, [allTransactions]);
-
-  const topDebits = useMemo(() => {
-    return allTransactions.filter((item: any) => item.transactionType === "debit").slice(0, 8);
-  }, [allTransactions]);
+  const topCredits = useMemo(() => allTransactions.filter((item: any) => item.transactionType === "credit").slice(0, 5), [allTransactions]);
+  const topDebits = useMemo(() => allTransactions.filter((item: any) => item.transactionType === "debit").slice(0, 8), [allTransactions]);
 
   const mercadoPagoSummary = useMemo(() => {
     const mercadoPagoStatements = currentMonthStatements.filter((statement: any) => String(statement.bankName || "").toLowerCase().includes("mercado pago"));
@@ -175,6 +192,13 @@ export default function Finance() {
 
   const alerts = Array.isArray(dre?.alerts) ? dre.alerts : [];
 
+  const mainTabs = [
+    { key: "dre", label: "DRE / Caixa", icon: Wallet },
+    { key: "contas", label: "Contas a pagar", icon: Receipt },
+    { key: "cartoes", label: "Cartões de crédito", icon: CreditCard },
+    { key: "emprestimos", label: "Empréstimos", icon: Landmark },
+  ] as const;
+
   function prevMonth() {
     const date = new Date(selectedYear, selectedMonth - 2, 1);
     setSelectedYear(date.getFullYear());
@@ -195,9 +219,9 @@ export default function Finance() {
             <div className="space-y-2">
               <Badge variant="outline" className="w-fit">Financeiro profissional</Badge>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">DRE de caixa e controle de obrigações</h1>
+                <h1 className="text-2xl font-semibold tracking-tight">Painel financeiro por extrato e obrigações</h1>
                 <p className="text-sm text-muted-foreground">
-                  Esta visão separa o que já aconteceu no banco do que ainda precisa ser controlado. O resultado principal usa o extrato classificado; cartões, contas a pagar, custos fixos e empréstimos aparecem como apoio gerencial para evitar duplicidade.
+                  O DRE principal mostra o caixa realizado pelo extrato. Contas a pagar, cartões e empréstimos agora ficam em menus próprios para controle separado.
                 </p>
               </div>
             </div>
@@ -227,63 +251,12 @@ export default function Finance() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-emerald-200 bg-emerald-50/70">
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Entradas do caixa</p>
-                  <p className="mt-2 text-2xl font-bold text-emerald-700">R$ {fmt(bankSummary.entradas)}</p>
-                  <p className="mt-1 text-xs text-emerald-700/80">{cnpjLabel}</p>
-                </div>
-                <ArrowUpCircle className="h-8 w-8 text-emerald-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-rose-200 bg-rose-50/70">
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Saídas do caixa</p>
-                  <p className="mt-2 text-2xl font-bold text-rose-700">R$ {fmt(bankSummary.saidas)}</p>
-                  <p className="mt-1 text-xs text-rose-700/80">Somente débitos do extrato</p>
-                </div>
-                <ArrowDownCircle className="h-8 w-8 text-rose-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-sky-200 bg-sky-50/70">
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Resultado de caixa</p>
-                  <p className={`mt-2 text-2xl font-bold ${bankSummary.saldo >= 0 ? "text-sky-700" : "text-red-600"}`}>R$ {fmt(bankSummary.saldo)}</p>
-                  <p className="mt-1 text-xs text-sky-700/80">Entrou menos saiu no período</p>
-                </div>
-                <Wallet className="h-8 w-8 text-sky-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-violet-200 bg-violet-50/70">
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Saídas classificadas</p>
-                  <p className="mt-2 text-2xl font-bold text-violet-700">{toPercent(Number(dre?.percentualSaidasClassificadas || 0))}</p>
-                  <p className="mt-1 text-xs text-violet-700/80">Quanto do extrato já está explicado</p>
-                </div>
-                <PieChart className="h-8 w-8 text-violet-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         <div className="flex gap-1 overflow-x-auto rounded-xl bg-muted/60 p-1">
-          {tabs.map((tab) => (
+          {mainTabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => navigate(`/financeiro/${tab.key}`)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               <tab.icon className="h-4 w-4" />
               {tab.label}
@@ -291,8 +264,59 @@ export default function Finance() {
           ))}
         </div>
 
-        {activeTab === "visao" && (
+        {activeTab === "dre" && (
           <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Card className="border-emerald-200 bg-emerald-50/70">
+                <CardContent className="pt-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Entradas do caixa</p>
+                      <p className="mt-2 text-2xl font-bold text-emerald-700">R$ {fmt(bankSummary.entradas)}</p>
+                      <p className="mt-1 text-xs text-emerald-700/80">{cnpjLabel}</p>
+                    </div>
+                    <ArrowUpCircle className="h-8 w-8 text-emerald-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-rose-200 bg-rose-50/70">
+                <CardContent className="pt-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Saídas do caixa</p>
+                      <p className="mt-2 text-2xl font-bold text-rose-700">R$ {fmt(bankSummary.saidas)}</p>
+                      <p className="mt-1 text-xs text-rose-700/80">Somente débitos do extrato</p>
+                    </div>
+                    <ArrowDownCircle className="h-8 w-8 text-rose-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-sky-200 bg-sky-50/70">
+                <CardContent className="pt-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Resultado de caixa</p>
+                      <p className={`mt-2 text-2xl font-bold ${bankSummary.saldo >= 0 ? "text-sky-700" : "text-red-600"}`}>R$ {fmt(bankSummary.saldo)}</p>
+                      <p className="mt-1 text-xs text-sky-700/80">Entrou menos saiu no período</p>
+                    </div>
+                    <Wallet className="h-8 w-8 text-sky-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-violet-200 bg-violet-50/70">
+                <CardContent className="pt-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Saídas classificadas</p>
+                      <p className="mt-2 text-2xl font-bold text-violet-700">{toPercent(Number(dre?.percentualSaidasClassificadas || 0))}</p>
+                      <p className="mt-1 text-xs text-violet-700/80">Quanto do extrato já está explicado</p>
+                    </div>
+                    <PieChart className="h-8 w-8 text-violet-500" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             {alerts.length > 0 && (
               <div className="space-y-3">
                 {alerts.map((alert: any, index: number) => (
@@ -344,17 +368,17 @@ export default function Finance() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Controle de obrigações</CardTitle>
+                  <CardTitle>Painel Mercado Pago</CardTitle>
                   <CardDescription>
-                    Estas informações não entram de novo no saldo principal. Elas servem para você enxergar compromissos, dívidas e pressão futura no caixa.
+                    A automação continua restrita ao layout do Mercado Pago/Mercado Livre para facilitar repasses e ajustes desse fluxo.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Contas a pagar registradas</span><span className="font-medium">R$ {fmt(obligations.totalContas)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Custos fixos pagos</span><span className="font-medium">R$ {fmt(obligations.totalCustos)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Cartões controlados</span><span className="font-medium">R$ {fmt(obligations.totalCartoes)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Empréstimos e retenções</span><span className="font-medium">R$ {fmt(obligations.totalEmprestimos)}</span></div>
-                  <div className="flex items-center justify-between border-t pt-3"><span className="text-muted-foreground">Volume gerencial monitorado</span><span className="font-semibold">R$ {fmt(obligations.total)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Extratos no período</span><span className="font-medium">{mercadoPagoSummary.statementCount}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Movimentos lidos</span><span className="font-medium">{mercadoPagoSummary.totalTransactions}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Autoidentificados</span><span className="font-medium text-emerald-600">{mercadoPagoSummary.identified}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Repasses Mercado Pago → C6</span><span className="font-medium text-sky-600">R$ {fmt(mercadoPagoSummary.transfers)}</span></div>
+                  <div className="flex items-center justify-between border-t pt-3"><span className="text-muted-foreground">Pendentes no Mercado Pago</span><span className="font-medium text-amber-600">{mercadoPagoSummary.pending}</span></div>
                 </CardContent>
               </Card>
             </div>
@@ -378,17 +402,17 @@ export default function Finance() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Painel Mercado Pago</CardTitle>
+                  <CardTitle>Pressão gerencial fora do caixa</CardTitle>
                   <CardDescription>
-                    A automação continua restrita ao layout do Mercado Pago/Mercado Livre para facilitar repasses e ajustes desse fluxo.
+                    Use este quadro apenas como apoio para enxergar compromissos. Ele não soma duas vezes no resultado principal.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Extratos no período</span><span className="font-medium">{mercadoPagoSummary.statementCount}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Movimentos lidos</span><span className="font-medium">{mercadoPagoSummary.totalTransactions}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Autoidentificados</span><span className="font-medium text-emerald-600">{mercadoPagoSummary.identified}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Repasses Mercado Pago → C6</span><span className="font-medium text-sky-600">R$ {fmt(mercadoPagoSummary.transfers)}</span></div>
-                  <div className="flex items-center justify-between border-t pt-3"><span className="text-muted-foreground">Pendentes no Mercado Pago</span><span className="font-medium text-amber-600">{mercadoPagoSummary.pending}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Contas a pagar registradas</span><span className="font-medium">R$ {fmt(obligations.totalContas)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Custos fixos pagos</span><span className="font-medium">R$ {fmt(obligations.totalCustos)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Cartões controlados</span><span className="font-medium">R$ {fmt(obligations.totalCartoes)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Empréstimos e retenções</span><span className="font-medium">R$ {fmt(obligations.totalEmprestimos)}</span></div>
+                  <div className="flex items-center justify-between border-t pt-3"><span className="text-muted-foreground">Volume monitorado</span><span className="font-semibold">R$ {fmt(obligations.total)}</span></div>
                 </CardContent>
               </Card>
             </div>
@@ -431,13 +455,13 @@ export default function Finance() {
           </div>
         )}
 
-        {activeTab === "pagar" && (
+        {activeTab === "contas" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Contas a pagar</h2>
-                <p className="text-sm text-muted-foreground">Use esta área para controlar obrigações, sem duplicar o efeito no DRE de caixa quando o pagamento já saiu do banco.</p>
-              </div>
+            <div>
+              <h2 className="text-lg font-semibold">Contas a pagar</h2>
+              <p className="text-sm text-muted-foreground">
+                Este é um menu próprio para suas obrigações a vencer, vencidas ou já pagas, separado dos cartões e empréstimos.
+              </p>
             </div>
             <div className="grid gap-4 md:grid-cols-4">
               <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Total pendente</p><p className="text-xl font-bold text-amber-600">R$ {fmt(payablesDashboard?.totalPending)}</p></CardContent></Card>
@@ -447,10 +471,11 @@ export default function Finance() {
             </div>
             <Card>
               <CardHeader>
-                <CardTitle>Resumo operacional</CardTitle>
+                <CardTitle>Lista operacional</CardTitle>
+                <CardDescription>Use esta área para acompanhar fornecedor, vencimento, status e valor sem misturar com cartões ou empréstimos.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                {payables.length > 0 ? payables.slice(0, 10).map((item: any) => (
+                {payables.length > 0 ? payables.map((item: any) => (
                   <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3">
                     <div>
                       <p className="font-medium">{item.title}</p>
@@ -467,39 +492,13 @@ export default function Finance() {
           </div>
         )}
 
-        {activeTab === "custos" && (
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">Custos fixos</h2>
-              <p className="text-sm text-muted-foreground">Cadastre custos recorrentes para prever pressão no caixa e acompanhar onde a estrutura da empresa pesa mais.</p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Custos cadastrados</p><p className="text-xl font-bold">{fixedCosts.length}</p></CardContent></Card>
-              <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Pagamentos do mês</p><p className="text-xl font-bold">{fixedCostPayments.length}</p></CardContent></Card>
-              <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Total pago</p><p className="text-xl font-bold text-rose-600">R$ {fmt(dre?.totalCustosFixos)}</p></CardContent></Card>
-            </div>
-            <Card>
-              <CardHeader><CardTitle>Lista de custos</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {fixedCosts.length > 0 ? fixedCosts.map((cost: any) => (
-                  <div key={cost.id} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3">
-                    <div>
-                      <p className="font-medium">{cost.name}</p>
-                      <p className="text-xs text-muted-foreground">Categoria: {cost.category || "outros"} • Vence dia {cost.dueDay}</p>
-                    </div>
-                    <span className="font-medium">R$ {fmt(cost.amount)}</span>
-                  </div>
-                )) : <p className="text-sm text-muted-foreground">Nenhum custo fixo cadastrado.</p>}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         {activeTab === "cartoes" && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold">Cartões</h2>
-              <p className="text-sm text-muted-foreground">Acompanhe o que você deve e o que já pagou, sem somar novamente no caixa se o pagamento já saiu do banco.</p>
+              <h2 className="text-lg font-semibold">Cartões de crédito</h2>
+              <p className="text-sm text-muted-foreground">
+                Este menu é exclusivo para controle de cartões, limites, fechamento e faturas, sem se misturar com contas a pagar ou empréstimos.
+              </p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Cartões cadastrados</p><p className="text-xl font-bold">{creditCards.length}</p></CardContent></Card>
@@ -507,7 +506,10 @@ export default function Finance() {
               <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Volume monitorado</p><p className="text-xl font-bold text-amber-600">R$ {fmt(dre?.totalCartoes)}</p></CardContent></Card>
             </div>
             <Card>
-              <CardHeader><CardTitle>Seus cartões</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Seus cartões</CardTitle>
+                <CardDescription>Cadastre e acompanhe o que deve, o que vence e o que já foi quitado pelo banco.</CardDescription>
+              </CardHeader>
               <CardContent className="space-y-3">
                 {creditCards.length > 0 ? creditCards.map((card: any) => (
                   <div key={card.id} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3">
@@ -520,7 +522,7 @@ export default function Finance() {
                       <p className="text-muted-foreground">Fecha dia {card.closingDay} • vence dia {card.dueDay}</p>
                     </div>
                   </div>
-                )) : <p className="text-sm text-muted-foreground">Nenhum cartão cadastrado.</p>}
+                )) : <EmptyState title="Nenhum cartão cadastrado" description="Cadastre seus cartões para acompanhar limite, vencimento e faturas sem interferir no DRE de caixa." />}
               </CardContent>
             </Card>
           </div>
@@ -530,7 +532,9 @@ export default function Finance() {
           <div className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Empréstimos</h2>
-              <p className="text-sm text-muted-foreground">Controle parcelas, saldos e retenções para entender compromissos futuros sem distorcer o resultado de caixa do mês.</p>
+              <p className="text-sm text-muted-foreground">
+                Este menu é exclusivo para parcelas, saldos e retenções, sem se confundir com contas operacionais ou cartões.
+              </p>
             </div>
             <div className="grid gap-4 md:grid-cols-4">
               <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Empréstimos cadastrados</p><p className="text-xl font-bold">{loans.length}</p></CardContent></Card>
@@ -539,7 +543,10 @@ export default function Finance() {
               <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Volume monitorado</p><p className="text-xl font-bold text-sky-600">R$ {fmt(dre?.totalEmprestimos)}</p></CardContent></Card>
             </div>
             <Card>
-              <CardHeader><CardTitle>Carteira de empréstimos</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Carteira de empréstimos</CardTitle>
+                <CardDescription>Acompanhe o que ainda falta pagar e o peso das retenções sem duplicar impacto no caixa realizado.</CardDescription>
+              </CardHeader>
               <CardContent className="space-y-3">
                 {loans.length > 0 ? loans.map((loan: any) => (
                   <div key={loan.id} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3">
@@ -552,7 +559,7 @@ export default function Finance() {
                       <p className="text-muted-foreground">Parcela R$ {fmt(loan.installmentAmount)}</p>
                     </div>
                   </div>
-                )) : <p className="text-sm text-muted-foreground">Nenhum empréstimo cadastrado.</p>}
+                )) : <EmptyState title="Nenhum empréstimo cadastrado" description="Cadastre empréstimos e retenções para acompanhar saldos, parcelas e compromissos futuros." />}
               </CardContent>
             </Card>
           </div>

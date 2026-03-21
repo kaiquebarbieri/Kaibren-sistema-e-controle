@@ -244,3 +244,7 @@
 - [ ] Criar gráficos no painel financeiro para explicar entradas, saídas, categorias de gasto e fluxo do dinheiro
 - [ ] Implementar o modelo financeiro em duas camadas: Caixa Realizado baseado no extrato e Painel de Obrigações separado para cartões, contas a pagar, custos fixos e empréstimos
 - [ ] Criar análise financeira por categoria para mostrar onde o dinheiro mais saiu e apoiar decisões de corte de gastos
+- [x] Criar um menu principal de Contas a Pagar com submenus próprios para custos fixos, cartões e empréstimos dentro do Financeiro
+- [x] Corrigir o painel Financeiro para puxar corretamente os dados do extrato bancário de fevereiro no fechamento do período
+- [ ] Corrigir a divergência entre a interface atual do Financeiro e o comportamento esperado, garantindo que o novo menu operacional e os dados do extrato apareçam de fato no painel
+- [ ] Criar menus próprios e separados no Financeiro para Contas a Pagar, Cartões de Crédito e Empréstimos, em vez de mantê-los como um agrupamento que parece igual ao layout anterior
