@@ -31,6 +31,7 @@ import {
   PanelLeft,
   UserPlus,
   Wallet,
+  ReceiptText,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -45,6 +46,7 @@ const menuItems = [
   { icon: Megaphone, label: "Marketing", section: "marketing", href: "/marketing" },
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
   { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro" },
+  { icon: ReceiptText, label: "Obrigações", section: "obrigacoes", href: "/obrigacoes" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -270,7 +272,7 @@ function DashboardLayoutContent({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-muted-foreground">CK Distribuidora</p>
                   <span className="truncate text-base font-semibold tracking-tight text-foreground">
-                    Gestão de pedidos e margens
+                    Gestão operacional e financeira
                   </span>
                 </div>
               ) : null}

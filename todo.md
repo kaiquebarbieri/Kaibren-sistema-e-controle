@@ -248,3 +248,4 @@
 - [x] Corrigir o painel Financeiro para puxar corretamente os dados do extrato bancário de fevereiro no fechamento do período
 - [ ] Corrigir a divergência entre a interface atual do Financeiro e o comportamento esperado, garantindo que o novo menu operacional e os dados do extrato apareçam de fato no painel
 - [ ] Criar menus próprios e separados no Financeiro para Contas a Pagar, Cartões de Crédito e Empréstimos, em vez de mantê-los como um agrupamento que parece igual ao layout anterior
+- [ ] Criar um menu totalmente separado do Financeiro para Obrigações, contendo Contas a Pagar, Cartões de Crédito e Empréstimos fora do menu Financeiro principal
