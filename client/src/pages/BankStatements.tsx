@@ -38,6 +38,8 @@ const MONTHS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
+const BANK_OPTIONS = ["C6 Bank", "Mercado Pago", "Bradesco", "Santander"];
+
 const CATEGORIES = [
   "Fornecedor",
   "Imposto / Tributo",
@@ -160,8 +162,17 @@ export default function BankStatements() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Erro ao enviar extrato.");
 
-      toast.success(`Extrato enviado! ${result.totalTransactions} transações extraídas.`);
-      utils.bankStatements.list.invalidate();
+      toast.success(`Extrato enviado! ${result.totalTransactions} transações extraídas e fechamento atualizado.`);
+      await Promise.all([
+        utils.bankStatements.list.invalidate(),
+        utils.finance.dre.invalidate(),
+        utils.finance.payables.list.invalidate(),
+        utils.finance.payables.dashboard.invalidate(),
+        utils.finance.fixedCosts.payments.invalidate(),
+        utils.finance.creditCards.invoices.invalidate(),
+        utils.finance.loans.installments.invalidate(),
+        utils.finance.loans.retentionEntries.invalidate(),
+      ]);
       setShowUpload(false);
       setUploadBankName("");
       setUploadPassword("");
@@ -773,11 +784,16 @@ export default function BankStatements() {
               <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
                 <div>
                   <Label className="text-xs">Banco</Label>
-                  <Input
-                    value={uploadBankName}
-                    onChange={e => setUploadBankName(e.target.value)}
-                    placeholder="Ex: Nubank, Itaú..."
-                  />
+                  <Select value={uploadBankName} onValueChange={setUploadBankName}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o banco" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BANK_OPTIONS.map((bank) => (
+                        <SelectItem key={bank} value={bank}>{bank}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label className="text-xs">CNPJ</Label>

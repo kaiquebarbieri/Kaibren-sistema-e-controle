@@ -231,3 +231,6 @@
 - [x] Restringir a identificação automática de transações apenas aos extratos do Mercado Pago
 - [x] Criar uma simulação de fechamento financeiro consolidado com os dois bancos usando custos fixos informados pelo usuário: aluguel 5000, funcionário 5000, carro alugado 3000 e água/luz 500
 - [x] Exibir no detalhe de Extratos todas as movimentações do Mercado Pago já identificadas automaticamente, sem pendências aparentes ao abrir o extrato
+- [x] Restringir a identificação automática apenas ao layout específico do arquivo do Mercado Pago/Mercado Livre, sem classificar automaticamente extratos da C6 Bank
+- [x] Substituir o campo livre de banco por opções fixas: C6 Bank, Mercado Pago, Bradesco e Santander
+- [x] Preencher automaticamente o DRE e finalizar o fechamento financeiro após o upload de extratos bancários

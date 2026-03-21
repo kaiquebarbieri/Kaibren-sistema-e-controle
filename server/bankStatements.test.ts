@@ -121,7 +121,7 @@ R$ 0,00`;
     expect(transactions[1].originalDescription).toContain("Reclamações no Mercado Livre");
   });
 
-  it("should auto-identify Mercado Pago transfers to C6 Bank", () => {
+  it("should auto-identify Mercado Pago transfers to C6 Bank only for the expected Mercado Pago layout", () => {
     const identified = autoIdentifyTransactions([
       {
         transactionDate: "01-02-2026",
@@ -139,7 +139,7 @@ R$ 0,00`;
         amount: "13.47",
         transactionType: "debit",
       },
-    ], "Mercado Pago");
+    ], "Mercado Pago", `EXTRATO DE CONTA\nDETALHE DOS MOVIMENTOS\nData\nDescrição\nID da operação\nValor\nSaldo\n01-02-2026\nPagamento com Código QR\nMercado Livre\n2724130882\nR$ 38,60\nR$ 38,60`);
 
     expect(identified[0]).toMatchObject({
       category: "Repasse para C6 Bank",
@@ -150,6 +150,24 @@ R$ 0,00`;
       category: "Ajustes e devoluções Mercado Pago",
       isIdentified: 1,
     });
+  });
+
+  it("should not auto-identify C6 Bank transactions when the selected bank is not Mercado Pago", () => {
+    const originalTransactions = [
+      {
+        transactionDate: "01-02-2026",
+        accountingDate: "01-02-2026",
+        bankType: "Extrato C6",
+        originalDescription: "Pix enviado para C6 Bank conta principal",
+        amount: "1500.00",
+        transactionType: "debit" as const,
+      },
+    ];
+
+    const identified = autoIdentifyTransactions(originalTransactions, "C6 Bank", `Extrato de Conta Corrente\nPix enviado para C6 Bank conta principal`);
+
+    expect(identified).toEqual(originalTransactions);
+    expect(identified[0].isIdentified).toBeUndefined();
   });
 
   it("should have Extratos menu item in navigation", async () => {

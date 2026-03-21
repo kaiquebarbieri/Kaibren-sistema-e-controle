@@ -88,14 +88,16 @@ function inferMercadoPagoClassification(transaction: ParsedTransaction): ParsedT
   });
 }
 
-export function autoIdentifyTransactions(transactions: ParsedTransaction[], bankName: string): ParsedTransaction[] {
-  const normalizedBank = bankName.toLowerCase();
-  const isMercadoPagoStatement = normalizedBank.includes("mercado pago") || transactions.some((transaction) => {
-    const raw = `${transaction.bankType || ""} ${transaction.originalDescription || ""}`.toLowerCase();
-    return raw.includes("mercado pago") || raw.includes("mercado livre");
-  });
+export function autoIdentifyTransactions(transactions: ParsedTransaction[], bankName: string, sourceText?: string): ParsedTransaction[] {
+  const normalizedBank = bankName.toLowerCase().trim();
+  const normalizedText = String(sourceText || "").toLowerCase();
+  const selectedMercadoPago = normalizedBank === "mercado pago";
+  const matchesMercadoPagoLayout = normalizedText.includes("detalhe dos movimentos")
+    && normalizedText.includes("id da operação")
+    && normalizedText.includes("saldo")
+    && (normalizedText.includes("mercado pago") || normalizedText.includes("mercado livre") || normalizedText.includes("pagamento com código qr"));
 
-  if (!isMercadoPagoStatement) {
+  if (!selectedMercadoPago || !matchesMercadoPagoLayout) {
     return transactions;
   }
 
@@ -271,7 +273,7 @@ export function registerBankStatementUploadRoute(app: Express) {
       let parsedTransactions: ParsedTransaction[] = [];
       try {
         const text = await extractPdfText(file.buffer, pdfPassword);
-        parsedTransactions = autoIdentifyTransactions(parseExtractText(text), bankName);
+        parsedTransactions = autoIdentifyTransactions(parseExtractText(text), bankName, text);
       } catch (parseError: any) {
         console.error("PDF parse error:", parseError);
         const errMsg = String(parseError?.message || "").toLowerCase();
