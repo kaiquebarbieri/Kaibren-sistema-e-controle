@@ -438,6 +438,30 @@ export default function Finance() {
     }));
   }, [payables]);
 
+  const mercadoPagoSummary = useMemo(() => {
+    const mercadoPagoStatements = currentMonthStatements.filter((statement: any) => String(statement.bankName || "").toLowerCase().includes("mercado pago"));
+    const repassesParaC6 = mercadoPagoStatements
+      .filter((statement: any) => {
+        const fileName = String(statement.fileName || "").toLowerCase();
+        return fileName.includes("mercado") || String(statement.bankName || "").toLowerCase().includes("mercado pago");
+      })
+      .reduce((sum: number, statement: any) => sum + Number(statement.totalIdentified || 0), 0);
+
+    const totalMercadoPago = mercadoPagoStatements.reduce((sum: number, statement: any) => sum + Number(statement.totalTransactions || 0), 0);
+    const identifiedMercadoPago = mercadoPagoStatements.reduce((sum: number, statement: any) => sum + Number(statement.totalIdentified || 0), 0);
+    const estimatedTransfers = mercadoPagoStatements.length;
+    const estimatedPending = Math.max(totalMercadoPago - identifiedMercadoPago, 0);
+
+    return {
+      statementCount: mercadoPagoStatements.length,
+      repassesParaC6,
+      totalMercadoPago,
+      identifiedMercadoPago,
+      estimatedTransfers,
+      estimatedPending,
+    };
+  }, [currentMonthStatements]);
+
   const salesRetentionLoans = useMemo(() => loans.filter((loan: any) => loan.loanType === "sales_retention"), [loans]);
 
   function getPaymentForCost(costId: number) {
@@ -507,7 +531,7 @@ export default function Finance() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="border-emerald-200 bg-emerald-50/70">
             <CardContent className="pt-5">
               <div className="flex items-start justify-between gap-3">
@@ -536,11 +560,23 @@ export default function Finance() {
             <CardContent className="pt-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Retido pelo marketplace</p>
-                  <p className="mt-2 text-2xl font-bold text-sky-700">R$ {fmt(dre?.totalRetencaoEmprestimos)}</p>
-                  <p className="mt-1 text-xs text-sky-700/80">Lançado manualmente nas retenções</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Repasse Mercado Pago → C6</p>
+                  <p className="mt-2 text-2xl font-bold text-sky-700">{mercadoPagoSummary.repassesParaC6}</p>
+                  <p className="mt-1 text-xs text-sky-700/80">Transações autoidentificadas no fluxo de repasse</p>
                 </div>
                 <Target className="h-8 w-8 text-sky-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-violet-200 bg-violet-50/70">
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Extratos Mercado Pago</p>
+                  <p className="mt-2 text-2xl font-bold text-violet-700">{mercadoPagoSummary.statementCount}</p>
+                  <p className="mt-1 text-xs text-violet-700/80">{mercadoPagoSummary.identifiedMercadoPago} de {mercadoPagoSummary.totalMercadoPago} movimentos identificados</p>
+                </div>
+                <Building2 className="h-8 w-8 text-violet-500" />
               </div>
             </CardContent>
           </Card>
@@ -647,6 +683,21 @@ export default function Finance() {
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Atrasados</span><span className="font-medium text-red-600">R$ {fmt(payablesDashboard?.totalOverdue)}</span></div>
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Capital investido</span><span className="font-medium text-sky-600">R$ {fmt(dre?.dinheiroParado)}</span></div>
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Retido no marketplace</span><span className="font-medium text-sky-600">R$ {fmt(dre?.totalRetencaoEmprestimos)}</span></div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Resumo automático do Mercado Pago</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Extratos Mercado Pago no mês</span><span className="font-medium text-violet-700">{mercadoPagoSummary.statementCount}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Movimentos autoidentificados</span><span className="font-medium text-emerald-600">{mercadoPagoSummary.identifiedMercadoPago}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Movimentos pendentes</span><span className="font-medium text-amber-600">{mercadoPagoSummary.estimatedPending}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Repasses estimados para C6</span><span className="font-medium text-sky-600">{mercadoPagoSummary.estimatedTransfers}</span></div>
+                    <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+                      Para este tipo de extrato, o sistema trata automaticamente os movimentos do Mercado Pago como fluxo operacional da carteira e destaca os repasses para a conta C6 Bank.
+                    </p>
                   </CardContent>
                 </Card>
 

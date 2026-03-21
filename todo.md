@@ -226,3 +226,5 @@
 - [ ] Corrigir a identificação e extração de transações do PDF de extrato do Mercado Pago enviado pelo usuário
 - [ ] Corrigir o upload/processamento do PDF bancário com senha que ainda falha mesmo com a senha correta
 - [x] Zerar os dados do módulo Financeiro para evitar que lançamentos antigos distorçam o DRE
+- [x] Identificar automaticamente os lançamentos do extrato do Mercado Pago com regras específicas do fluxo Mercado Pago -> C6 Bank
+- [x] Destacar no dashboard Financeiro os indicadores mais importantes extraídos automaticamente do extrato do Mercado Pago

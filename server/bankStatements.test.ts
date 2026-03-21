@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExtractText } from "./bankStatementUpload";
+import { parseExtractText, autoIdentifyTransactions } from "./bankStatementUpload";
 
 describe("Bank Statements Module", () => {
   it("should have bankStatements and bankTransactions tables in schema", async () => {
@@ -119,6 +119,37 @@ R$ 0,00`;
       amount: "13.47",
     });
     expect(transactions[1].originalDescription).toContain("Reclamações no Mercado Livre");
+  });
+
+  it("should auto-identify Mercado Pago transfers to C6 Bank", () => {
+    const identified = autoIdentifyTransactions([
+      {
+        transactionDate: "01-02-2026",
+        accountingDate: "01-02-2026",
+        bankType: "Mercado Pago 123456",
+        originalDescription: "Pix enviado para C6 Bank conta principal",
+        amount: "1500.00",
+        transactionType: "debit",
+      },
+      {
+        transactionDate: "01-02-2026",
+        accountingDate: "01-02-2026",
+        bankType: "Mercado Pago 123457",
+        originalDescription: "Reclamações no Mercado Livre",
+        amount: "13.47",
+        transactionType: "debit",
+      },
+    ], "Mercado Pago");
+
+    expect(identified[0]).toMatchObject({
+      category: "Repasse para C6 Bank",
+      isIdentified: 1,
+    });
+    expect(identified[0].userDescription).toContain("C6 Bank");
+    expect(identified[1]).toMatchObject({
+      category: "Ajustes e devoluções Mercado Pago",
+      isIdentified: 1,
+    });
   });
 
   it("should have Extratos menu item in navigation", async () => {

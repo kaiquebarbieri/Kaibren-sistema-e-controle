@@ -18,10 +18,13 @@ interface ParsedTransaction {
   originalDescription: string;
   amount: string;
   transactionType: "credit" | "debit";
+  category?: string | null;
+  userDescription?: string | null;
+  notes?: string | null;
+  isIdentified?: number;
 }
 
 const MONEY_REGEX = /R\$\s*(-?[\d.]+,\d{2})/;
-const DATE_SLASH_REGEX = /\b\d{2}\/\d{2}(?:\/\d{4})?\b/;
 const DATE_DASH_REGEX = /\b\d{2}-\d{2}-\d{4}\b/;
 const OPERATION_ID_REGEX = /^\d{6,}$/;
 
@@ -33,6 +36,70 @@ function normalizeDate(value: string): string {
   if (value.includes("-")) return value;
   const [day, month, year] = value.split("/");
   return `${day}/${month}${year ? `/${year}` : ""}`;
+}
+
+function inferMercadoPagoClassification(transaction: ParsedTransaction): ParsedTransaction {
+  const raw = `${transaction.bankType || ""} ${transaction.originalDescription || ""}`.toLowerCase();
+
+  const withMeta = (patch: Partial<ParsedTransaction>): ParsedTransaction => ({
+    ...transaction,
+    ...patch,
+    isIdentified: patch.isIdentified ?? 1,
+  });
+
+  if (raw.includes("c6") || raw.includes("transfer") || raw.includes("pix enviado") || raw.includes("ted enviada")) {
+    return withMeta({
+      category: "Repasse para C6 Bank",
+      userDescription: "Transferência do saldo do Mercado Pago para a conta C6 Bank",
+      notes: "Movimento classificado automaticamente como repasse interno entre contas.",
+    });
+  }
+
+  if (raw.includes("dívida") || raw.includes("reclama") || raw.includes("estorno") || raw.includes("devolu")) {
+    return withMeta({
+      category: "Ajustes e devoluções Mercado Pago",
+      userDescription: "Ajuste, devolução ou débito operacional do Mercado Pago",
+      notes: "Movimento classificado automaticamente como ajuste do ecossistema Mercado Pago/Mercado Livre.",
+    });
+  }
+
+  if (raw.includes("mercado livre") || raw.includes("venda") || raw.includes("recebimento") || raw.includes("pagamento com código qr")) {
+    return withMeta({
+      category: transaction.transactionType === "credit" ? "Entrada Mercado Pago" : "Saída Mercado Pago",
+      userDescription: transaction.transactionType === "credit"
+        ? "Entrada recebida no Mercado Pago"
+        : "Saída operacional registrada no Mercado Pago",
+      notes: "Movimento classificado automaticamente a partir do extrato do Mercado Pago.",
+    });
+  }
+
+  if (transaction.transactionType === "credit") {
+    return withMeta({
+      category: "Entrada Mercado Pago",
+      userDescription: "Entrada recebida via Mercado Pago",
+      notes: "Movimento de crédito classificado automaticamente no extrato do Mercado Pago.",
+    });
+  }
+
+  return withMeta({
+    category: "Saída Mercado Pago",
+    userDescription: "Saída operacional via Mercado Pago",
+    notes: "Movimento de débito classificado automaticamente no extrato do Mercado Pago.",
+  });
+}
+
+export function autoIdentifyTransactions(transactions: ParsedTransaction[], bankName: string): ParsedTransaction[] {
+  const normalizedBank = bankName.toLowerCase();
+  const isMercadoPagoStatement = normalizedBank.includes("mercado pago") || transactions.some((transaction) => {
+    const raw = `${transaction.bankType || ""} ${transaction.originalDescription || ""}`.toLowerCase();
+    return raw.includes("mercado pago") || raw.includes("mercado livre");
+  });
+
+  if (!isMercadoPagoStatement) {
+    return transactions;
+  }
+
+  return transactions.map((transaction) => inferMercadoPagoClassification(transaction));
 }
 
 function parseTabularExtract(text: string): ParsedTransaction[] {
@@ -204,7 +271,7 @@ export function registerBankStatementUploadRoute(app: Express) {
       let parsedTransactions: ParsedTransaction[] = [];
       try {
         const text = await extractPdfText(file.buffer, pdfPassword);
-        parsedTransactions = parseExtractText(text);
+        parsedTransactions = autoIdentifyTransactions(parseExtractText(text), bankName);
       } catch (parseError: any) {
         console.error("PDF parse error:", parseError);
         const errMsg = String(parseError?.message || "").toLowerCase();
@@ -219,6 +286,8 @@ export function registerBankStatementUploadRoute(app: Express) {
         });
       }
 
+      const identifiedCount = parsedTransactions.filter((transaction) => transaction.isIdentified === 1).length;
+
       const { id: statementId } = await createBankStatement({
         cnpjId,
         bankName,
@@ -228,8 +297,8 @@ export function registerBankStatementUploadRoute(app: Express) {
         fileKey,
         fileUrl,
         totalTransactions: parsedTransactions.length,
-        totalIdentified: 0,
-        status: parsedTransactions.length > 0 ? "pending" : "pending",
+        totalIdentified: identifiedCount,
+        status: parsedTransactions.length > 0 ? (identifiedCount >= parsedTransactions.length ? "completed" : identifiedCount > 0 ? "partial" : "pending") : "pending",
       });
 
       if (parsedTransactions.length > 0) {
@@ -242,7 +311,10 @@ export function registerBankStatementUploadRoute(app: Express) {
             originalDescription: transaction.originalDescription,
             amount: transaction.amount,
             transactionType: transaction.transactionType,
-            isIdentified: 0,
+            category: transaction.category || null,
+            userDescription: transaction.userDescription || null,
+            notes: transaction.notes || null,
+            isIdentified: transaction.isIdentified ?? 0,
           }))
         );
       }
@@ -253,6 +325,7 @@ export function registerBankStatementUploadRoute(app: Express) {
         success: true,
         statementId,
         totalTransactions: parsedTransactions.length,
+        autoIdentifiedTransactions: identifiedCount,
         fileUrl,
       });
     } catch (error: any) {
