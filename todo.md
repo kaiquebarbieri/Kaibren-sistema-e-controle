@@ -224,3 +224,5 @@
 - [x] Fazer o fechamento financeiro usar exclusivamente extratos bancários e lançamentos manuais de débitos, empréstimos e obrigações por CNPJ, sem puxar compras e vendas dos módulos de pedidos
 - [ ] Corrigir o processamento de PDF de extrato protegido por senha no upload de extratos bancários
 - [ ] Corrigir a identificação e extração de transações do PDF de extrato do Mercado Pago enviado pelo usuário
+- [ ] Corrigir o upload/processamento do PDF bancário com senha que ainda falha mesmo com a senha correta
+- [x] Zerar os dados do módulo Financeiro para evitar que lançamentos antigos distorçam o DRE

@@ -176,7 +176,7 @@ export default function BankStatements() {
     } finally {
       setUploading(false);
     }
-  }, [uploadBankName, uploadCnpjId, uploadMonth, uploadYear, utils, setLocation]);
+  }, [uploadBankName, uploadCnpjId, uploadMonth, uploadPassword, uploadYear, utils, setLocation]);
 
   const handleSaveTxn = useCallback((txnId: number) => {
     if (!detailId) return;
