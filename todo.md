@@ -228,3 +228,5 @@
 - [x] Zerar os dados do módulo Financeiro para evitar que lançamentos antigos distorçam o DRE
 - [x] Identificar automaticamente os lançamentos do extrato do Mercado Pago com regras específicas do fluxo Mercado Pago -> C6 Bank
 - [x] Destacar no dashboard Financeiro os indicadores mais importantes extraídos automaticamente do extrato do Mercado Pago
+- [x] Restringir a identificação automática de transações apenas aos extratos do Mercado Pago
+- [x] Criar uma simulação de fechamento financeiro consolidado com os dois bancos usando custos fixos informados pelo usuário: aluguel 5000, funcionário 5000, carro alugado 3000 e água/luz 500
