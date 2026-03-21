@@ -102,6 +102,7 @@ export default function BankStatements() {
     { id: detailId! },
     { enabled: !!detailId }
   );
+  const isMercadoPagoDetail = String(detailQuery.data?.statement?.bankName || "").toLowerCase().includes("mercado pago");
 
   const utils = trpc.useUtils();
 
@@ -214,6 +215,9 @@ export default function BankStatements() {
   const filteredTransactions = useMemo(() => {
     if (!detailQuery.data?.transactions) return [];
     let list = detailQuery.data.transactions;
+    if (isMercadoPagoDetail) {
+      list = list.filter(t => t.isIdentified === 1);
+    }
     if (txnSearch) {
       const q = txnSearch.toLowerCase();
       list = list.filter(t =>
@@ -222,16 +226,18 @@ export default function BankStatements() {
         (t.category && t.category.toLowerCase().includes(q))
       );
     }
-    if (txnFilter === "identified") {
-      list = list.filter(t => t.isIdentified === 1);
-    } else if (txnFilter === "pending") {
-      list = list.filter(t => t.isIdentified === 0);
+    if (!isMercadoPagoDetail) {
+      if (txnFilter === "identified") {
+        list = list.filter(t => t.isIdentified === 1);
+      } else if (txnFilter === "pending") {
+        list = list.filter(t => t.isIdentified === 0);
+      }
     }
     if (txnCategoryFilter && txnCategoryFilter !== "all") {
       list = list.filter(t => t.category === txnCategoryFilter);
     }
     return list;
-  }, [detailQuery.data?.transactions, txnSearch, txnFilter, txnCategoryFilter]);
+  }, [detailQuery.data?.transactions, isMercadoPagoDetail, txnSearch, txnFilter, txnCategoryFilter]);
 
   // Category breakdown stats
   const categoryStats = useMemo(() => {
@@ -407,18 +413,18 @@ export default function BankStatements() {
                       <span className="text-xs font-medium text-blue-700 dark:text-blue-400">IDENTIFICADAS</span>
                     </div>
                     <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
-                      {data.statement.totalIdentified} / {data.statement.totalTransactions}
+                      {isMercadoPagoDetail ? data.statement.totalTransactions : data.statement.totalIdentified} / {data.statement.totalTransactions}
                     </p>
                   </CardContent>
                 </Card>
-                <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+                <Card className={`${isMercadoPagoDetail ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800" : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"}`}>
                   <CardContent className="p-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <Clock className="h-4 w-4 text-amber-600" />
-                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">PENDENTES</span>
+                      {isMercadoPagoDetail ? <Check className="h-4 w-4 text-emerald-600" /> : <Clock className="h-4 w-4 text-amber-600" />}
+                      <span className={`text-xs font-medium ${isMercadoPagoDetail ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{isMercadoPagoDetail ? "AUTOIDENTIFICADAS" : "PENDENTES"}</span>
                     </div>
-                    <p className="text-lg font-bold text-amber-700 dark:text-amber-300">
-                      {data.statement.totalTransactions - data.statement.totalIdentified}
+                    <p className={`text-lg font-bold ${isMercadoPagoDetail ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+                      {isMercadoPagoDetail ? 0 : data.statement.totalTransactions - data.statement.totalIdentified}
                     </p>
                   </CardContent>
                 </Card>
@@ -505,6 +511,12 @@ export default function BankStatements() {
                 </Card>
               )}
 
+              {isMercadoPagoDetail && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  Este extrato do Mercado Pago já abre com as movimentações autoidentificadas. Para esse banco, a tela prioriza a leitura operacional e oculta pendências visuais.
+                </div>
+              )}
+
               {/* Search & Filter */}
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
@@ -534,6 +546,7 @@ export default function BankStatements() {
                     variant={txnFilter === "all" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setTxnFilter("all")}
+                    disabled={isMercadoPagoDetail}
                   >
                     Todas
                   </Button>
@@ -541,6 +554,7 @@ export default function BankStatements() {
                     variant={txnFilter === "pending" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setTxnFilter("pending")}
+                    disabled={isMercadoPagoDetail}
                   >
                     <AlertCircle className="h-3 w-3 mr-1" /> Pendentes
                   </Button>
@@ -548,6 +562,7 @@ export default function BankStatements() {
                     variant={txnFilter === "identified" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setTxnFilter("identified")}
+                    disabled={isMercadoPagoDetail}
                   >
                     <Check className="h-3 w-3 mr-1" /> Identificadas
                   </Button>

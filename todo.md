@@ -230,3 +230,4 @@
 - [x] Destacar no dashboard Financeiro os indicadores mais importantes extraídos automaticamente do extrato do Mercado Pago
 - [x] Restringir a identificação automática de transações apenas aos extratos do Mercado Pago
 - [x] Criar uma simulação de fechamento financeiro consolidado com os dois bancos usando custos fixos informados pelo usuário: aluguel 5000, funcionário 5000, carro alugado 3000 e água/luz 500
+- [x] Exibir no detalhe de Extratos todas as movimentações do Mercado Pago já identificadas automaticamente, sem pendências aparentes ao abrir o extrato
