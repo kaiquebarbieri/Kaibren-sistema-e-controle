@@ -269,6 +269,8 @@ export type InsertMyCnpj = typeof myCnpjs.$inferInsert;
 
 export const bankStatements = mysqlTable("bank_statements", {
   id: int("id").autoincrement().primaryKey(),
+  /** CNPJ vinculado ao extrato para separar o fechamento por empresa */
+  cnpjId: int("cnpjId").notNull(),
   /** Nome do banco (ex: Nubank, Itaú, Bradesco) */
   bankName: varchar("bankName", { length: 128 }).notNull(),
   /** Mês de referência */

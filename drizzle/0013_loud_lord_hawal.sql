@@ -1,0 +1,1 @@
+ALTER TABLE `bank_statements` ADD `cnpjId` int NOT NULL;

@@ -160,7 +160,12 @@ export function registerBankStatementUploadRoute(app: Express) {
       const bankName = (req.body.bankName as string) || "Banco";
       const periodMonth = parseInt(req.body.periodMonth as string) || (new Date().getMonth() + 1);
       const periodYear = parseInt(req.body.periodYear as string) || new Date().getFullYear();
+      const cnpjId = parseInt(req.body.cnpjId as string);
       const pdfPassword = (req.body.pdfPassword as string) || undefined;
+
+      if (!Number.isFinite(cnpjId) || cnpjId <= 0) {
+        return res.status(400).json({ error: "Selecione o CNPJ vinculado a este extrato." });
+      }
 
       // Upload PDF to S3
       const suffix = crypto.randomBytes(4).toString("hex");
@@ -185,6 +190,7 @@ export function registerBankStatementUploadRoute(app: Express) {
 
       // Create statement record
       const { id: statementId } = await createBankStatement({
+        cnpjId,
         bankName,
         periodMonth,
         periodYear,

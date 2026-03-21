@@ -92,6 +92,13 @@
       "when": 1774039343989,
       "tag": "0012_loving_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1774051906977,
+      "tag": "0013_loud_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

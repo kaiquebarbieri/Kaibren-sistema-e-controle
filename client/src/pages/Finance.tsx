@@ -13,15 +13,11 @@ import { useLocation, useRoute } from "wouter";
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowDownRight,
-  ArrowUpRight,
   Building2,
   Check,
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  DollarSign,
-  Info,
   Landmark,
   Pencil,
   Plus,
@@ -38,9 +34,7 @@ import {
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 type Tab = "visao" | "pagar" | "custos" | "cartoes" | "emprestimos";
-
 type LoanType = "installment" | "sales_retention";
-
 type PayableStatus = "pending" | "paid" | "overdue" | "partial";
 
 const FIXED_COST_CATEGORIES = [
@@ -117,6 +111,7 @@ export default function Finance() {
   const today = ymd(now);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [selectedCnpjId, setSelectedCnpjId] = useState<string>("all");
 
   const [showCostForm, setShowCostForm] = useState(false);
   const [editingCostId, setEditingCostId] = useState<number | null>(null);
@@ -183,6 +178,7 @@ export default function Finance() {
   const [payableNotes, setPayableNotes] = useState("");
   const [payableIsInvestment, setPayableIsInvestment] = useState("0");
 
+  const cnpjsQuery = trpc.myCnpjs.list.useQuery();
   const fixedCostsQuery = trpc.finance.fixedCosts.list.useQuery();
   const fixedCostPaymentsQuery = trpc.finance.fixedCosts.payments.useQuery({ year: selectedYear, month: selectedMonth });
   const creditCardsQuery = trpc.finance.creditCards.list.useQuery();
@@ -193,8 +189,11 @@ export default function Finance() {
   const payablesQuery = trpc.finance.payables.list.useQuery({ year: selectedYear, month: selectedMonth });
   const payablesDashboardQuery = trpc.finance.payables.dashboard.useQuery({ referenceDate: today, year: selectedYear, month: selectedMonth });
   const dreQuery = trpc.finance.dre.useQuery({ year: selectedYear, month: selectedMonth });
+  const statementsQuery = trpc.bankStatements.list.useQuery();
 
   const utils = trpc.useUtils();
+
+  const cnpjs = cnpjsQuery.data ?? [];
 
   const invalidateFinance = async () => {
     await Promise.all([
@@ -208,6 +207,7 @@ export default function Finance() {
       utils.finance.payables.list.invalidate(),
       utils.finance.payables.dashboard.invalidate(),
       utils.finance.dre.invalidate(),
+      utils.bankStatements.list.invalidate(),
     ]);
   };
 
@@ -355,7 +355,7 @@ export default function Finance() {
   }
 
   const tabs: { key: Tab; label: string; icon: any }[] = [
-    { key: "visao", label: "Saúde + DRE", icon: TrendingUp },
+    { key: "visao", label: "Saúde + Fechamento", icon: TrendingUp },
     { key: "pagar", label: "Contas a Pagar", icon: Receipt },
     { key: "custos", label: "Custos Fixos", icon: Wallet },
     { key: "cartoes", label: "Cartões", icon: CreditCard },
@@ -372,6 +372,71 @@ export default function Finance() {
   const payables = payablesQuery.data ?? [];
   const payablesDashboard = payablesDashboardQuery.data;
   const dre = dreQuery.data;
+  const statements = statementsQuery.data ?? [];
+
+  const selectedCnpj = useMemo(() => {
+    if (selectedCnpjId === "all") return null;
+    return cnpjs.find((item: any) => item.id === Number(selectedCnpjId)) ?? null;
+  }, [cnpjs, selectedCnpjId]);
+
+  const statementsForSelection = useMemo(() => {
+    if (selectedCnpjId === "all") return statements;
+    return statements.filter((statement: any) => String(statement.cnpjId) === selectedCnpjId);
+  }, [selectedCnpjId, statements]);
+
+  const currentMonthStatements = useMemo(() => {
+    return statementsForSelection.filter((statement: any) => statement.periodYear === selectedYear && statement.periodMonth === selectedMonth);
+  }, [selectedYear, selectedMonth, statementsForSelection]);
+
+  const currentMonthStatementIds = useMemo(() => new Set(currentMonthStatements.map((statement: any) => statement.id)), [currentMonthStatements]);
+
+  const bankSummary = useMemo(() => {
+    const entradas = Number(dre?.entradasTotais || 0);
+    const saidas = Number(dre?.saidasTotais || 0);
+    const identificadas = currentMonthStatements.reduce((sum: number, statement: any) => sum + Number(statement.totalIdentified || 0), 0);
+    const totalTransactions = currentMonthStatements.reduce((sum: number, statement: any) => sum + Number(statement.totalTransactions || 0), 0);
+    return {
+      entradas,
+      saidas,
+      saldo: entradas - saidas,
+      identificadas,
+      pendentes: Math.max(totalTransactions - identificadas, 0),
+    };
+  }, [dre?.entradasTotais, dre?.saidasTotais, currentMonthStatements]);
+
+  const categoryTotals = useMemo(() => {
+    const entries = [
+      { category: "Contas a pagar", amount: Number(dre?.totalContasPagas || 0) },
+      { category: "Custos fixos", amount: Number(dre?.totalCustosFixos || 0) },
+      { category: "Cartões", amount: Number(dre?.totalCartoes || 0) },
+      { category: "Parcelas de empréstimos", amount: Number(dre?.totalEmprestimosMensais || 0) },
+      { category: "Retenções do marketplace", amount: Number(dre?.totalRetencaoEmprestimos || 0) },
+      { category: "LIS / Cheque especial", amount: Number(dre?.totalLIS || 0) },
+    ];
+    return entries.filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 6);
+  }, [dre?.totalContasPagas, dre?.totalCustosFixos, dre?.totalCartoes, dre?.totalEmprestimosMensais, dre?.totalRetencaoEmprestimos, dre?.totalLIS]);
+
+  const identifiedCredits = useMemo(() => {
+    return currentMonthStatements.slice(0, 6).map((statement: any) => ({
+      id: `credito-${statement.id}`,
+      userDescription: `${statement.bankName} • ${statement.fileName}`,
+      originalDescription: `${statement.bankName} • ${statement.fileName}`,
+      amount: statement.totalIdentified || 0,
+      transactionDate: `${statement.periodYear}-${String(statement.periodMonth).padStart(2, "0")}-01`,
+      category: "Extrato vinculado",
+    }));
+  }, [currentMonthStatements]);
+
+  const identifiedDebits = useMemo(() => {
+    return payables.slice(0, 6).map((item: any) => ({
+      id: `debito-${item.id}`,
+      userDescription: item.title,
+      originalDescription: item.title,
+      amount: item.paidAmount || item.amount || 0,
+      transactionDate: item.dueDate,
+      category: item.category || item.accountType || "Lançamento manual",
+    }));
+  }, [payables]);
 
   const salesRetentionLoans = useMemo(() => loans.filter((loan: any) => loan.loanType === "sales_retention"), [loans]);
 
@@ -396,29 +461,49 @@ export default function Finance() {
     }, {});
   }, [retentionEntries]);
 
+  const cnpjLabel = selectedCnpj ? `${selectedCnpj.nomeFantasia || selectedCnpj.razaoSocial} • ${selectedCnpj.cnpj}` : "Todos os CNPJs";
+
   return (
     <DashboardLayout activeSection="financeiro">
       <div className="container max-w-7xl py-6 space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <Wallet className="h-7 w-7 text-primary" />
               Financeiro
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Visão operacional com saúde financeira, DRE, contas a pagar, cartões, empréstimos e retenções do marketplace.
+              Fechamento por subconta empresarial usando somente os extratos bancários enviados e os lançamentos manuais de débitos, contas a pagar e empréstimos.
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-sm">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={prevMonth}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[150px] text-center text-sm font-semibold">
-              {MONTHS[selectedMonth - 1]} {selectedYear}
-            </span>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={nextMonth}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="min-w-[260px] rounded-xl border bg-card px-3 py-2 shadow-sm">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">CNPJ / subconta</Label>
+              <Select value={selectedCnpjId} onValueChange={setSelectedCnpjId}>
+                <SelectTrigger className="mt-1 border-0 px-0 shadow-none focus:ring-0">
+                  <SelectValue placeholder="Selecione o CNPJ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os CNPJs</SelectItem>
+                  {cnpjs.map((item: any) => (
+                    <SelectItem key={item.id} value={String(item.id)}>
+                      {(item.nomeFantasia || item.razaoSocial)} • {item.cnpj}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-sm">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={prevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-[150px] text-center text-sm font-semibold">
+                {MONTHS[selectedMonth - 1]} {selectedYear}
+              </span>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={nextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -427,25 +512,23 @@ export default function Finance() {
             <CardContent className="pt-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Resultado do mês</p>
-                  <p className={`mt-2 text-2xl font-bold ${dre && dre.resultadoLiquido >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                    R$ {fmt(dre?.resultadoLiquido)}
-                  </p>
-                  <p className="mt-1 text-xs text-emerald-700/80">Usuário: {user?.name || "Operador"}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Entradas bancárias</p>
+                  <p className="mt-2 text-2xl font-bold text-emerald-700">R$ {fmt(bankSummary.entradas)}</p>
+                  <p className="mt-1 text-xs text-emerald-700/80">{cnpjLabel}</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-emerald-500" />
               </div>
             </CardContent>
           </Card>
-          <Card className="border-amber-200 bg-amber-50/70">
+          <Card className="border-rose-200 bg-rose-50/70">
             <CardContent className="pt-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Contas em aberto</p>
-                  <p className="mt-2 text-2xl font-bold text-amber-700">R$ {fmt(payablesDashboard?.totalPending)}</p>
-                  <p className="mt-1 text-xs text-amber-700/80">{payablesDashboard?.pendingCount || 0} lançamentos pendentes</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Saídas bancárias</p>
+                  <p className="mt-2 text-2xl font-bold text-rose-700">R$ {fmt(bankSummary.saidas)}</p>
+                  <p className="mt-1 text-xs text-rose-700/80">Débitos conciliados pelo extrato</p>
                 </div>
-                <ShieldAlert className="h-8 w-8 text-amber-500" />
+                <TrendingDown className="h-8 w-8 text-rose-500" />
               </div>
             </CardContent>
           </Card>
@@ -455,7 +538,7 @@ export default function Finance() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Retido pelo marketplace</p>
                   <p className="mt-2 text-2xl font-bold text-sky-700">R$ {fmt(dre?.totalRetencaoEmprestimos)}</p>
-                  <p className="mt-1 text-xs text-sky-700/80">Abatimentos no período</p>
+                  <p className="mt-1 text-xs text-sky-700/80">Lançado manualmente nas retenções</p>
                 </div>
                 <Target className="h-8 w-8 text-sky-500" />
               </div>
@@ -480,216 +563,159 @@ export default function Finance() {
 
         {activeTab === "visao" && (
           <div className="space-y-6">
-            {dreQuery.isLoading ? (
-              <div className="py-12 text-center text-muted-foreground">Carregando visão financeira...</div>
-            ) : dre ? (
-              <>
-                {dre.alerts?.length > 0 && (
-                  <div className="space-y-2">
-                    {dre.alerts.map((alert: any, index: number) => (
-                      <div
-                        key={index}
-                        className={`flex items-start gap-3 rounded-xl border p-3 ${
-                          alert.type === "danger"
-                            ? "border-red-200 bg-red-50 text-red-800"
-                            : alert.type === "warning"
-                              ? "border-amber-200 bg-amber-50 text-amber-800"
-                              : "border-blue-200 bg-blue-50 text-blue-800"
-                        }`}
-                      >
-                        {alert.type === "danger" ? (
-                          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-                        ) : alert.type === "warning" ? (
-                          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-                        ) : (
-                          <Info className="mt-0.5 h-5 w-5 shrink-0" />
-                        )}
-                        <span className="text-sm">{alert.message}</span>
-                      </div>
-                    ))}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Card>
+                <CardContent className="pt-5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Saldo do período</p>
+                  <p className={`mt-2 text-2xl font-bold ${bankSummary.saldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    R$ {fmt(bankSummary.saldo)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">Entradas do extrato menos saídas do extrato</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contas pendentes</p>
+                  <p className="mt-2 text-2xl font-bold text-amber-600">R$ {fmt(payablesDashboard?.totalPending)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Compromissos cadastrados manualmente</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Extratos do mês</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">{currentMonthStatements.length}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Arquivos vinculados ao CNPJ selecionado</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Identificação bancária</p>
+                  <p className="mt-2 text-2xl font-bold text-blue-600">{bankSummary.identificadas}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{bankSummary.pendentes} transações ainda pendentes</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {(bankSummary.pendentes > 0 || (payablesDashboard?.overdue?.length ?? 0) > 0) && (
+              <div className="space-y-2">
+                {bankSummary.pendentes > 0 && (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <span className="text-sm">Ainda existem {bankSummary.pendentes} transações do extrato sem identificação. O fechamento fica mais fiel quando todas as entradas e saídas são classificadas.</span>
                   </div>
                 )}
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Card>
-                    <CardContent className="pt-5">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Receita bruta</p>
-                      <p className="mt-2 text-2xl font-bold text-emerald-600">R$ {fmt(dre.receitaBruta)}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Clientes + marketplace</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-5">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Despesas operacionais</p>
-                      <p className="mt-2 text-2xl font-bold text-orange-600">R$ {fmt(dre.despesasOperacionais)}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Inclui contas pagas, taxas e empréstimos</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-5">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Saldo operacional</p>
-                      <p className={`mt-2 text-2xl font-bold ${dre.saldoOperacional >= 0 ? "text-blue-600" : "text-red-600"}`}>
-                        R$ {fmt(dre.saldoOperacional)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Entradas - saídas do mês</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-5">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Saúde financeira</p>
-                      <p className={`mt-2 text-2xl font-bold ${dre.health?.status === "saudavel" ? "text-emerald-600" : dre.health?.status === "atencao" ? "text-amber-600" : "text-red-600"}`}>
-                        {dre.health?.status === "saudavel" ? "Saudável" : dre.health?.status === "atencao" ? "Atenção" : "Crítico"}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Baseado em resultado, caixa e pendências</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>DRE consolidado do período</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-sm">
-                      <div className="border-b pb-2 font-semibold">Receitas</div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Receita total</span>
-                        <span className="font-medium text-emerald-600">R$ {fmt(dre.receitaBruta)}</span>
-                      </div>
-                      <div className="flex justify-between pl-4 text-xs text-muted-foreground">
-                        <span>Vendas clientes</span>
-                        <span>R$ {fmt(dre.totalVendasClientes)}</span>
-                      </div>
-                      <div className="flex justify-between pl-4 text-xs text-muted-foreground">
-                        <span>Vendas marketplace</span>
-                        <span>R$ {fmt(dre.marketplaceSummary?.totalVendas)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">CMV</span>
-                        <span className="font-medium text-red-500">- R$ {fmt(dre.custoMercadoriaVendida)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Comissão Everton / Mondial</span>
-                        <span className="font-medium text-red-500">- R$ {fmt(dre.totalComissaoEverton)}</span>
-                      </div>
-                      <div className="flex justify-between border-t py-2 font-semibold">
-                        <span>Lucro bruto</span>
-                        <span className="text-blue-600">R$ {fmt(dre.lucroBruto)}</span>
-                      </div>
-
-                      <div className="border-b pb-2 pt-4 font-semibold">Despesas operacionais</div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Custos fixos</span><span>- R$ {fmt(dre.totalCustosFixos)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Cartões</span><span>- R$ {fmt(dre.totalCartoes)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Empréstimos parcelados</span><span>- R$ {fmt(dre.totalEmprestimosMensais)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Retenção de empréstimos</span><span>- R$ {fmt(dre.totalRetencaoEmprestimos)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Taxas / antecipações / devoluções</span><span>- R$ {fmt(dre.totalTaxasMarketplace)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Contas pagas operacionais</span><span>- R$ {fmt(dre.totalContasPagas)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">LIS / cheque especial</span><span>- R$ {fmt(dre.totalLIS)}</span></div>
-                      <div className="flex justify-between border-t py-2 font-semibold">
-                        <span>Resultado líquido</span>
-                        <span className={dre.resultadoLiquido >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(dre.resultadoLiquido)}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Saúde financeira</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3 text-sm">
-                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Entradas</span><span className="font-medium text-emerald-600">R$ {fmt(dre.health?.entradas)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Saídas</span><span className="font-medium text-red-500">R$ {fmt(dre.health?.saidas)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Pendências</span><span className="font-medium text-amber-600">R$ {fmt(dre.health?.pendencias)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Atrasados</span><span className="font-medium text-red-600">R$ {fmt(dre.health?.atrasados)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Dinheiro parado / investimento</span><span className="font-medium text-sky-600">R$ {fmt(dre.health?.capitalParado)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Retido no Mercado Livre</span><span className="font-medium text-sky-600">R$ {fmt(dre.health?.retidoMercadoLivre)}</span></div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Fluxo médio</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3 text-sm">
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-emerald-700">Média diária</span>
-                            <ArrowUpRight className="h-4 w-4 text-emerald-600" />
-                          </div>
-                          <p className="mt-2 text-lg font-semibold text-emerald-700">R$ {fmt(dre.dailyDre?.resultado)}</p>
-                          <p className="text-xs text-emerald-700/80">Entradas: R$ {fmt(dre.dailyDre?.entradas)} • Saídas: R$ {fmt(dre.dailyDre?.saidas)}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-700">Fluxo mensal</span>
-                            <ArrowDownRight className="h-4 w-4 text-slate-600" />
-                          </div>
-                          <p className="mt-2 text-lg font-semibold text-slate-800">R$ {fmt(dre.monthlyDre?.resultado)}</p>
-                          <p className="text-xs text-slate-600">Entradas: R$ {fmt(dre.monthlyDre?.entradas)} • Saídas: R$ {fmt(dre.monthlyDre?.saidas)}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                {(payablesDashboard?.overdue?.length ?? 0) > 0 && (
+                  <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-red-800">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <span className="text-sm">Existem {(payablesDashboard?.overdue?.length ?? 0)} contas atrasadas registradas para o período analisado.</span>
                   </div>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Mercado Livre: composição do mês</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-sm">
-                      <div className="flex justify-between"><span className="text-muted-foreground">Vendas</span><span className="text-emerald-600">R$ {fmt(dre.marketplaceSummary?.totalVendas)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Taxas</span><span className="text-red-500">R$ {fmt(dre.marketplaceSummary?.totalTaxas)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Antecipações</span><span className="text-red-500">R$ {fmt(dre.marketplaceSummary?.totalAntecipacoes)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Devoluções</span><span className="text-red-500">R$ {fmt(dre.marketplaceSummary?.totalDevolucoes)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Abatimentos do empréstimo</span><span className="text-sky-600">R$ {fmt(dre.marketplaceSummary?.totalAbatimentosEmprestimo)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Ajustes</span><span className="text-amber-600">R$ {fmt(dre.marketplaceSummary?.totalAjustes)}</span></div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Pendências imediatas</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Vencem amanhã</p>
-                        <div className="mt-2 space-y-2">
-                          {(payablesDashboard?.dueTomorrow ?? []).slice(0, 4).map((item: any) => (
-                            <div key={item.id} className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{item.title}</span>
-                                <span>R$ {fmt(item.amount)}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground">Vence em {item.dueDate}</p>
-                            </div>
-                          ))}
-                          {(payablesDashboard?.dueTomorrow ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conta com vencimento imediato.</p>}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Atrasadas</p>
-                        <div className="mt-2 space-y-2">
-                          {(payablesDashboard?.overdue ?? []).slice(0, 4).map((item: any) => (
-                            <div key={item.id} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{item.title}</span>
-                                <span>R$ {fmt(item.amount)}</span>
-                              </div>
-                              <p className="text-xs">Venceu em {item.dueDate}</p>
-                            </div>
-                          ))}
-                          {(payablesDashboard?.overdue ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conta atrasada no período.</p>}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </>
-            ) : (
-              <div className="py-12 text-center text-muted-foreground">Nenhum dado disponível para este período.</div>
+                )}
+              </div>
             )}
+
+            <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Fechamento financeiro por extrato</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="border-b pb-2 font-semibold">Movimento bancário do período</div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Entradas confirmadas</span><span className="font-medium text-emerald-600">R$ {fmt(bankSummary.entradas)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Saídas confirmadas</span><span className="font-medium text-red-500">- R$ {fmt(bankSummary.saidas)}</span></div>
+                  <div className="flex justify-between border-t py-2 font-semibold"><span>Saldo apurado no banco</span><span className={bankSummary.saldo >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(bankSummary.saldo)}</span></div>
+
+                  <div className="border-b pb-2 pt-4 font-semibold">Lançamentos manuais que compõem o fechamento</div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Custos fixos pagos</span><span>- R$ {fmt(dre?.totalCustosFixos)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Faturas de cartão</span><span>- R$ {fmt(dre?.totalCartoes)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Parcelas de empréstimos</span><span>- R$ {fmt(dre?.totalEmprestimosMensais)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Retenção sobre vendas</span><span>- R$ {fmt(dre?.totalRetencaoEmprestimos)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Contas operacionais pagas</span><span>- R$ {fmt(dre?.totalContasPagas)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">LIS / cheque especial</span><span>- R$ {fmt(dre?.totalLIS)}</span></div>
+                  <div className="flex justify-between border-t py-2 font-semibold"><span>Resultado operacional cadastrado</span><span className={(dre?.resultadoLiquido ?? 0) >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(dre?.resultadoLiquido)}</span></div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Saúde financeira</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Entradas bancárias</span><span className="font-medium text-emerald-600">R$ {fmt(bankSummary.entradas)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Saídas bancárias</span><span className="font-medium text-red-500">R$ {fmt(bankSummary.saidas)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Pendências cadastradas</span><span className="font-medium text-amber-600">R$ {fmt(payablesDashboard?.totalPending)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Atrasados</span><span className="font-medium text-red-600">R$ {fmt(payablesDashboard?.totalOverdue)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Capital investido</span><span className="font-medium text-sky-600">R$ {fmt(dre?.dinheiroParado)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Retido no marketplace</span><span className="font-medium text-sky-600">R$ {fmt(dre?.totalRetencaoEmprestimos)}</span></div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Extratos usados no fechamento</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    {currentMonthStatements.length > 0 ? currentMonthStatements.map((statement: any) => (
+                      <div key={statement.id} className="rounded-lg border bg-muted/30 px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium">{statement.bankName}</p>
+                            <p className="text-xs text-muted-foreground">{statement.fileName}</p>
+                          </div>
+                          <Badge variant="outline">{statement.totalIdentified}/{statement.totalTransactions}</Badge>
+                        </div>
+                      </div>
+                    )) : <p className="text-sm text-muted-foreground">Nenhum extrato vinculado ao CNPJ selecionado neste mês.</p>}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Maiores categorias de saída no banco</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {categoryTotals.length > 0 ? categoryTotals.map((item) => (
+                    <div key={item.category} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{item.category}</span>
+                      <span className="font-medium">R$ {fmt(item.amount)}</span>
+                    </div>
+                  )) : <p className="text-sm text-muted-foreground">Ainda não há saídas classificadas neste período.</p>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Movimentos recentes do banco</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-foreground">Entradas</p>
+                    <div className="space-y-2">
+                      {identifiedCredits.length > 0 ? identifiedCredits.map((item: any) => (
+                        <div key={item.id} className="rounded-lg border bg-emerald-50/40 px-3 py-2 text-sm">
+                          <div className="flex items-center justify-between gap-2"><span className="font-medium">{item.userDescription || item.originalDescription}</span><span className="text-emerald-700">R$ {fmt(item.amount)}</span></div>
+                          <p className="text-xs text-muted-foreground">{item.transactionDate} • {item.category || "Sem categoria"}</p>
+                        </div>
+                      )) : <p className="text-sm text-muted-foreground">Nenhuma entrada disponível.</p>}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-foreground">Saídas</p>
+                    <div className="space-y-2">
+                      {identifiedDebits.length > 0 ? identifiedDebits.map((item: any) => (
+                        <div key={item.id} className="rounded-lg border bg-rose-50/40 px-3 py-2 text-sm">
+                          <div className="flex items-center justify-between gap-2"><span className="font-medium">{item.userDescription || item.originalDescription}</span><span className="text-rose-700">R$ {fmt(item.amount)}</span></div>
+                          <p className="text-xs text-muted-foreground">{item.transactionDate} • {item.category || "Sem categoria"}</p>
+                        </div>
+                      )) : <p className="text-sm text-muted-foreground">Nenhuma saída disponível.</p>}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 
@@ -698,7 +724,7 @@ export default function Finance() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Contas a pagar operacionais</h2>
-                <p className="text-sm text-muted-foreground">Registre boletos, fornecedores, impostos, parcelas e investimentos com alerta de vencimento.</p>
+                <p className="text-sm text-muted-foreground">Registre boletos, fornecedores, impostos, parcelas e investimentos que precisam entrar no fechamento manual.</p>
               </div>
               <Button size="sm" onClick={() => { resetPayableForm(); setShowPayableForm(true); }}>
                 <Plus className="mr-1 h-4 w-4" /> Nova conta
@@ -715,60 +741,29 @@ export default function Finance() {
             {showPayableForm && (
               <Card className="border-primary/30">
                 <CardContent className="grid gap-3 pt-4 lg:grid-cols-3">
-                  <div>
-                    <Label className="text-xs">Título</Label>
-                    <Input value={payableTitle} onChange={(e) => setPayableTitle(e.target.value)} placeholder="Ex: Boleto transportadora" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Fornecedor</Label>
-                    <Input value={payableSupplier} onChange={(e) => setPayableSupplier(e.target.value)} placeholder="Opcional" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Categoria</Label>
-                    <Input value={payableCategory} onChange={(e) => setPayableCategory(e.target.value)} placeholder="Ex: logística" />
-                  </div>
+                  <div><Label className="text-xs">Título</Label><Input value={payableTitle} onChange={(e) => setPayableTitle(e.target.value)} placeholder="Ex: Boleto transportadora" /></div>
+                  <div><Label className="text-xs">Fornecedor</Label><Input value={payableSupplier} onChange={(e) => setPayableSupplier(e.target.value)} placeholder="Opcional" /></div>
+                  <div><Label className="text-xs">Categoria</Label><Input value={payableCategory} onChange={(e) => setPayableCategory(e.target.value)} placeholder="Ex: logística" /></div>
                   <div>
                     <Label className="text-xs">Tipo</Label>
                     <Select value={payableType} onValueChange={setPayableType}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {PAYABLE_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
-                      </SelectContent>
+                      <SelectContent>{PAYABLE_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label className="text-xs">Valor</Label>
-                    <Input type="number" step="0.01" value={payableAmount} onChange={(e) => setPayableAmount(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Vencimento</Label>
-                    <Input type="date" value={payableDueDate} onChange={(e) => setPayableDueDate(e.target.value)} />
-                  </div>
+                  <div><Label className="text-xs">Valor</Label><Input type="number" step="0.01" value={payableAmount} onChange={(e) => setPayableAmount(e.target.value)} /></div>
+                  <div><Label className="text-xs">Vencimento</Label><Input type="date" value={payableDueDate} onChange={(e) => setPayableDueDate(e.target.value)} /></div>
                   <div>
                     <Label className="text-xs">Status</Label>
                     <Select value={payableStatus} onValueChange={(value: PayableStatus) => setPayableStatus(value)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {PAYABLE_STATUSES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
-                      </SelectContent>
+                      <SelectContent>{PAYABLE_STATUSES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label className="text-xs">Valor pago</Label>
-                    <Input type="number" step="0.01" value={payablePaidAmount} onChange={(e) => setPayablePaidAmount(e.target.value)} placeholder="Opcional" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Parcela</Label>
-                    <Input value={payableInstallmentLabel} onChange={(e) => setPayableInstallmentLabel(e.target.value)} placeholder="Ex: 2/6" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Lembrar antes (dias)</Label>
-                    <Input type="number" min="0" max="30" value={payableReminderDaysBefore} onChange={(e) => setPayableReminderDaysBefore(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Forma de pagamento</Label>
-                    <Input value={payablePaymentMethod} onChange={(e) => setPayablePaymentMethod(e.target.value)} placeholder="Pix, TED, cartão..." />
-                  </div>
+                  <div><Label className="text-xs">Valor pago</Label><Input type="number" step="0.01" value={payablePaidAmount} onChange={(e) => setPayablePaidAmount(e.target.value)} placeholder="Opcional" /></div>
+                  <div><Label className="text-xs">Parcela</Label><Input value={payableInstallmentLabel} onChange={(e) => setPayableInstallmentLabel(e.target.value)} placeholder="Ex: 2/6" /></div>
+                  <div><Label className="text-xs">Lembrar antes (dias)</Label><Input type="number" min="0" max="30" value={payableReminderDaysBefore} onChange={(e) => setPayableReminderDaysBefore(e.target.value)} /></div>
+                  <div><Label className="text-xs">Forma de pagamento</Label><Input value={payablePaymentMethod} onChange={(e) => setPayablePaymentMethod(e.target.value)} placeholder="Pix, TED, cartão..." /></div>
                   <div>
                     <Label className="text-xs">Classificar como investimento</Label>
                     <Select value={payableIsInvestment} onValueChange={setPayableIsInvestment}>
@@ -779,14 +774,8 @@ export default function Finance() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="lg:col-span-3">
-                    <Label className="text-xs">Descrição</Label>
-                    <Input value={payableDescription} onChange={(e) => setPayableDescription(e.target.value)} placeholder="Detalhes operacionais" />
-                  </div>
-                  <div className="lg:col-span-3">
-                    <Label className="text-xs">Observações</Label>
-                    <Input value={payableNotes} onChange={(e) => setPayableNotes(e.target.value)} placeholder="Observações e histórico" />
-                  </div>
+                  <div className="lg:col-span-3"><Label className="text-xs">Descrição</Label><Input value={payableDescription} onChange={(e) => setPayableDescription(e.target.value)} placeholder="Detalhes operacionais" /></div>
+                  <div className="lg:col-span-3"><Label className="text-xs">Observações</Label><Input value={payableNotes} onChange={(e) => setPayableNotes(e.target.value)} placeholder="Observações e histórico" /></div>
                   <div className="lg:col-span-3 flex gap-2">
                     <Button size="sm" onClick={() => {
                       if (!payableTitle || !payableAmount || !payableDueDate) {
@@ -812,12 +801,8 @@ export default function Finance() {
                       };
                       if (editingPayableId) updatePayableMutation.mutate({ id: editingPayableId, ...data });
                       else createPayableMutation.mutate(data);
-                    }}>
-                      <Check className="mr-1 h-4 w-4" /> {editingPayableId ? "Atualizar" : "Salvar"}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={resetPayableForm}>
-                      <X className="mr-1 h-4 w-4" /> Cancelar
-                    </Button>
+                    }}><Check className="mr-1 h-4 w-4" /> {editingPayableId ? "Atualizar" : "Salvar"}</Button>
+                    <Button variant="outline" size="sm" onClick={resetPayableForm}><X className="mr-1 h-4 w-4" /> Cancelar</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -835,29 +820,12 @@ export default function Finance() {
                           <Badge variant="outline">{PAYABLE_TYPES.find((type) => type.value === item.accountType)?.label || item.accountType}</Badge>
                           {(item.isInvestment === 1 || item.accountType === "investimento") && <Badge className="bg-sky-100 text-sky-700">Investimento</Badge>}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {item.supplier || "Sem fornecedor"} • Categoria: {item.category} • Vence em {item.dueDate}
-                          {item.installmentLabel ? ` • Parcela ${item.installmentLabel}` : ""}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Valor: R$ {fmt(item.amount)} {item.paidAmount ? `• Pago: R$ ${fmt(item.paidAmount)}` : ""}
-                          {item.paymentMethod ? ` • ${item.paymentMethod}` : ""}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{item.supplier || "Sem fornecedor"} • Categoria: {item.category} • Vence em {item.dueDate}{item.installmentLabel ? ` • Parcela ${item.installmentLabel}` : ""}</p>
+                        <p className="text-sm text-muted-foreground">Valor: R$ {fmt(item.amount)} {item.paidAmount ? `• Pago: R$ ${fmt(item.paidAmount)}` : ""}{item.paymentMethod ? ` • ${item.paymentMethod}` : ""}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {item.status !== "paid" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => registerPayablePaymentMutation.mutate({
-                              id: item.id,
-                              paidAmount: String(item.amount),
-                              paidAt: new Date(),
-                              paymentMethod: item.paymentMethod || null,
-                              notes: item.notes || null,
-                            })}
-                          >
+                          <Button variant="outline" size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => registerPayablePaymentMutation.mutate({ id: item.id, paidAmount: String(item.amount), paidAt: new Date(), paymentMethod: item.paymentMethod || null, notes: item.notes || null })}>
                             <Check className="mr-1 h-3 w-3" /> Marcar pago
                           </Button>
                         )}
@@ -878,20 +846,14 @@ export default function Finance() {
                           setPayableDescription(item.description || "");
                           setPayableNotes(item.notes || "");
                           setPayableIsInvestment(String(item.isInvestment || 0));
-                        }}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
-                          if (confirm("Remover esta conta a pagar?")) deletePayableMutation.mutate({ id: item.id });
-                        }}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        }}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { if (confirm("Remover esta conta a pagar?")) deletePayableMutation.mutate({ id: item.id }); }}><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-              {payables.length === 0 && <div className="py-10 text-center text-muted-foreground">Nenhuma conta a pagar cadastrada para este período.</div>}
+              {payables.length === 0 && <div className="py-10 text-center text-muted-foreground">Nenhuma conta a pagar cadastrada.</div>}
             </div>
           </div>
         )}
@@ -901,16 +863,14 @@ export default function Finance() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Custos fixos</h2>
-                <p className="text-sm text-muted-foreground">Mantenha a rotina mensal organizada e reflita os pagamentos no DRE.</p>
+                <p className="text-sm text-muted-foreground">Cadastre despesas recorrentes que impactam o fechamento manual do mês.</p>
               </div>
-              <Button size="sm" onClick={() => { resetCostForm(); setShowCostForm(true); }}>
-                <Plus className="mr-1 h-4 w-4" /> Novo custo
-              </Button>
+              <Button size="sm" onClick={() => { resetCostForm(); setShowCostForm(true); }}><Plus className="mr-1 h-4 w-4" /> Novo custo</Button>
             </div>
 
             {showCostForm && (
               <Card className="border-primary/30">
-                <CardContent className="grid gap-3 pt-4 md:grid-cols-2">
+                <CardContent className="grid gap-3 pt-4 md:grid-cols-2 lg:grid-cols-3">
                   <div><Label className="text-xs">Nome</Label><Input value={costName} onChange={(e) => setCostName(e.target.value)} /></div>
                   <div>
                     <Label className="text-xs">Categoria</Label>
@@ -919,13 +879,13 @@ export default function Finance() {
                       <SelectContent>{FIXED_COST_CATEGORIES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div><Label className="text-xs">Valor</Label><Input type="number" step="0.01" value={costAmount} onChange={(e) => setCostAmount(e.target.value)} /></div>
+                  <div><Label className="text-xs">Valor mensal</Label><Input type="number" step="0.01" value={costAmount} onChange={(e) => setCostAmount(e.target.value)} /></div>
                   <div><Label className="text-xs">Dia do vencimento</Label><Input type="number" min="1" max="31" value={costDueDay} onChange={(e) => setCostDueDay(e.target.value)} /></div>
-                  <div className="md:col-span-2"><Label className="text-xs">Observações</Label><Input value={costNotes} onChange={(e) => setCostNotes(e.target.value)} /></div>
-                  <div className="md:col-span-2 flex gap-2">
+                  <div className="md:col-span-2 lg:col-span-2"><Label className="text-xs">Observações</Label><Input value={costNotes} onChange={(e) => setCostNotes(e.target.value)} /></div>
+                  <div className="md:col-span-2 lg:col-span-3 flex gap-2">
                     <Button size="sm" onClick={() => {
                       if (!costName || !costAmount) {
-                        toast.error("Preencha nome e valor.");
+                        toast.error("Informe nome e valor do custo.");
                         return;
                       }
                       const data = { name: costName, category: costCategory, amount: costAmount, dueDay: parseInt(costDueDay, 10), notes: costNotes || null };
@@ -941,23 +901,20 @@ export default function Finance() {
             <div className="space-y-3">
               {fixedCosts.map((cost: any) => {
                 const payment = getPaymentForCost(cost.id);
-                const isPaid = payment?.status === "paid";
                 return (
-                  <Card key={cost.id} className={isPaid ? "border-emerald-200 bg-emerald-50/40" : ""}>
+                  <Card key={cost.id}>
                     <CardContent className="pt-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-2">
                             <span className="font-semibold">{cost.name}</span>
                             <Badge variant="outline">{FIXED_COST_CATEGORIES.find((item) => item.value === cost.category)?.label || cost.category}</Badge>
-                            {isPaid && <Badge className="bg-emerald-100 text-emerald-700">Pago no mês</Badge>}
                           </div>
-                          <p className="mt-1 text-sm text-muted-foreground">R$ {fmt(cost.amount)} • Vence dia {cost.dueDay} {cost.notes ? `• ${cost.notes}` : ""}</p>
+                          <p className="text-sm text-muted-foreground mt-1">R$ {fmt(cost.amount)} • vence dia {cost.dueDay}</p>
+                          {payment && <p className="text-sm text-muted-foreground mt-1">Mês atual: {payment.status === "paid" ? "Pago" : payment.status === "overdue" ? "Atrasado" : "Pendente"} • R$ {fmt(payment.amountPaid)}</p>}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => upsertPaymentMutation.mutate({ fixedCostId: cost.id, periodYear: selectedYear, periodMonth: selectedMonth, amountPaid: String(cost.amount), status: isPaid ? "pending" : "paid", paidAt: isPaid ? null : new Date(), notes: null })}>
-                            <Check className="mr-1 h-3 w-3" /> {isPaid ? "Desfazer" : "Marcar pago"}
-                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => upsertPaymentMutation.mutate({ fixedCostId: cost.id, periodYear: selectedYear, periodMonth: selectedMonth, amountPaid: cost.amount, status: "paid", paidAt: new Date(), notes: null })}><Check className="mr-1 h-3 w-3" /> Pagar mês</Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
                             setShowCostForm(true);
                             setEditingCostId(cost.id);
@@ -967,9 +924,7 @@ export default function Finance() {
                             setCostDueDay(String(cost.dueDay));
                             setCostNotes(cost.notes || "");
                           }}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
-                            if (confirm("Remover este custo fixo?")) deleteCostMutation.mutate({ id: cost.id });
-                          }}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { if (confirm("Remover este custo fixo?")) deleteCostMutation.mutate({ id: cost.id }); }}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                     </CardContent>
@@ -986,11 +941,9 @@ export default function Finance() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Cartões de crédito</h2>
-                <p className="text-sm text-muted-foreground">Controle cadastro, limite e fatura mensal para refletir no DRE.</p>
+                <p className="text-sm text-muted-foreground">Controle cadastro, limite e fatura mensal para refletir nas saídas manuais do fechamento.</p>
               </div>
-              <Button size="sm" onClick={() => { resetCardForm(); setShowCardForm(true); }}>
-                <Plus className="mr-1 h-4 w-4" /> Novo cartão
-              </Button>
+              <Button size="sm" onClick={() => { resetCardForm(); setShowCardForm(true); }}><Plus className="mr-1 h-4 w-4" /> Novo cartão</Button>
             </div>
 
             {showCardForm && (
@@ -1041,15 +994,7 @@ export default function Finance() {
                             {card.lastFourDigits && <span className="text-xs text-muted-foreground">****{card.lastFourDigits}</span>}
                           </div>
                           <p className="mt-1 text-sm text-muted-foreground">Fecha dia {card.closingDay} • Vence dia {card.dueDay} {card.creditLimit ? `• Limite: R$ ${fmt(card.creditLimit)}` : ""}</p>
-                          {invoice && !editingInvoice && (
-                            <div className="mt-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium">Fatura do mês: R$ {fmt(invoice.totalAmount)}</span>
-                                <Badge variant="outline" className={statusBadgeClass(invoice.status)}>{invoice.status === "paid" ? "Pago" : invoice.status === "partial" ? "Parcial" : "Pendente"}</Badge>
-                                {invoice.amountPaid && <span className="text-muted-foreground">Pago: R$ {fmt(invoice.amountPaid)}</span>}
-                              </div>
-                            </div>
-                          )}
+                          {invoice && !editingInvoice && <div className="mt-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm"><div className="flex flex-wrap items-center gap-2"><span className="font-medium">Fatura do mês: R$ {fmt(invoice.totalAmount)}</span><Badge variant="outline" className={statusBadgeClass(invoice.status)}>{invoice.status === "paid" ? "Pago" : invoice.status === "partial" ? "Parcial" : "Pendente"}</Badge>{invoice.amountPaid && <span className="text-muted-foreground">Pago: R$ {fmt(invoice.amountPaid)}</span>}</div></div>}
                           {editingInvoice && (
                             <div className="mt-3 grid gap-3 rounded-lg border bg-muted/40 p-3 md:grid-cols-3">
                               <div><Label className="text-xs">Valor da fatura</Label><Input type="number" step="0.01" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} /></div>
@@ -1058,11 +1003,7 @@ export default function Finance() {
                                 <Label className="text-xs">Status</Label>
                                 <Select value={invoiceStatus} onValueChange={(value: any) => setInvoiceStatus(value)}>
                                   <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="paid">Pago</SelectItem>
-                                    <SelectItem value="pending">Pendente</SelectItem>
-                                    <SelectItem value="partial">Parcial</SelectItem>
-                                  </SelectContent>
+                                  <SelectContent><SelectItem value="paid">Pago</SelectItem><SelectItem value="pending">Pendente</SelectItem><SelectItem value="partial">Parcial</SelectItem></SelectContent>
                                 </Select>
                               </div>
                               <div className="md:col-span-3 flex gap-2">
@@ -1079,26 +1020,9 @@ export default function Finance() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => {
-                            setEditingInvoiceCardId(card.id);
-                            setInvoiceAmount(invoice ? String(invoice.totalAmount) : "");
-                            setInvoiceAmountPaid(invoice?.amountPaid ? String(invoice.amountPaid) : "");
-                            setInvoiceStatus(invoice?.status || "pending");
-                          }}><Receipt className="mr-1 h-3 w-3" /> Fatura</Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                            setShowCardForm(true);
-                            setEditingCardId(card.id);
-                            setCardName(card.name);
-                            setCardBrand(card.brand);
-                            setCardLastFour(card.lastFourDigits || "");
-                            setCardClosingDay(String(card.closingDay));
-                            setCardDueDay(String(card.dueDay));
-                            setCardLimit(card.creditLimit ? String(card.creditLimit) : "");
-                            setCardNotes(card.notes || "");
-                          }}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
-                            if (confirm("Remover este cartão?")) deleteCardMutation.mutate({ id: card.id });
-                          }}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="sm" onClick={() => { setEditingInvoiceCardId(card.id); setInvoiceAmount(invoice ? String(invoice.totalAmount) : ""); setInvoiceAmountPaid(invoice?.amountPaid ? String(invoice.amountPaid) : ""); setInvoiceStatus(invoice?.status || "pending"); }}><Receipt className="mr-1 h-3 w-3" /> Fatura</Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setShowCardForm(true); setEditingCardId(card.id); setCardName(card.name); setCardBrand(card.brand); setCardLastFour(card.lastFourDigits || ""); setCardClosingDay(String(card.closingDay)); setCardDueDay(String(card.dueDay)); setCardLimit(card.creditLimit ? String(card.creditLimit) : ""); setCardNotes(card.notes || ""); }}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { if (confirm("Remover este cartão?")) deleteCardMutation.mutate({ id: card.id }); }}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                     </CardContent>
@@ -1115,11 +1039,9 @@ export default function Finance() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Empréstimos e retenções</h2>
-                <p className="text-sm text-muted-foreground">Cadastre empréstimos parcelados e contratos com retenção sobre vendas do Mercado Livre.</p>
+                <p className="text-sm text-muted-foreground">Cadastre empréstimos parcelados e contratos com retenção sobre vendas para fechar o financeiro sem depender dos pedidos.</p>
               </div>
-              <Button size="sm" onClick={() => { resetLoanForm(); setShowLoanForm(true); }}>
-                <Plus className="mr-1 h-4 w-4" /> Novo empréstimo
-              </Button>
+              <Button size="sm" onClick={() => { resetLoanForm(); setShowLoanForm(true); }}><Plus className="mr-1 h-4 w-4" /> Novo empréstimo</Button>
             </div>
 
             {showLoanForm && (
@@ -1131,10 +1053,7 @@ export default function Finance() {
                     <Label className="text-xs">Tipo</Label>
                     <Select value={loanType} onValueChange={(value: LoanType) => setLoanType(value)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="installment">Parcelado</SelectItem>
-                        <SelectItem value="sales_retention">Retenção sobre vendas</SelectItem>
-                      </SelectContent>
+                      <SelectContent><SelectItem value="installment">Parcelado</SelectItem><SelectItem value="sales_retention">Retenção sobre vendas</SelectItem></SelectContent>
                     </Select>
                   </div>
                   <div><Label className="text-xs">Valor total</Label><Input type="number" step="0.01" value={loanTotalAmount} onChange={(e) => setLoanTotalAmount(e.target.value)} /></div>
@@ -1149,15 +1068,15 @@ export default function Finance() {
                   ) : (
                     <>
                       <div><Label className="text-xs">Percentual de retenção (%)</Label><Input type="number" step="0.01" value={loanRetentionPercent} onChange={(e) => setLoanRetentionPercent(e.target.value)} /></div>
-                      <div><Label className="text-xs">Fonte da retenção</Label><Input value={loanRetentionSource} onChange={(e) => setLoanRetentionSource(e.target.value)} placeholder="mercado_livre" /></div>
-                      <div className="hidden lg:block" />
+                      <div><Label className="text-xs">Fonte da retenção</Label><Input value={loanRetentionSource} onChange={(e) => setLoanRetentionSource(e.target.value)} /></div>
+                      <div><Label className="text-xs">Observações</Label><Input value={loanNotes} onChange={(e) => setLoanNotes(e.target.value)} /></div>
                     </>
                   )}
-                  <div className="md:col-span-2 lg:col-span-3"><Label className="text-xs">Observações</Label><Input value={loanNotes} onChange={(e) => setLoanNotes(e.target.value)} /></div>
+                  {loanType === "installment" && <div className="md:col-span-2 lg:col-span-3"><Label className="text-xs">Observações</Label><Input value={loanNotes} onChange={(e) => setLoanNotes(e.target.value)} /></div>}
                   <div className="md:col-span-2 lg:col-span-3 flex gap-2">
                     <Button size="sm" onClick={() => {
                       if (!loanName || !loanInstitution || !loanTotalAmount || !loanStartDate) {
-                        toast.error("Preencha os campos obrigatórios do empréstimo.");
+                        toast.error("Preencha nome, instituição, valor e data.");
                         return;
                       }
                       const data = {
@@ -1165,7 +1084,7 @@ export default function Finance() {
                         institution: loanInstitution,
                         loanType,
                         totalAmount: loanTotalAmount,
-                        totalInstallments: loanType === "installment" ? parseInt(loanTotalInstallments || "0", 10) : null,
+                        totalInstallments: loanType === "installment" ? parseInt(loanTotalInstallments || "0", 10) || null : null,
                         installmentAmount: loanType === "installment" ? loanInstallmentAmount || null : null,
                         interestRate: loanInterestRate || null,
                         startDate: loanStartDate,
@@ -1183,38 +1102,23 @@ export default function Finance() {
               </Card>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {loans.map((loan: any) => {
                 const installment = getInstallmentForLoan(loan.id);
                 const loanRetentions = retentionByLoan[loan.id] ?? [];
                 return (
                   <Card key={loan.id}>
                     <CardContent className="pt-4 space-y-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Landmark className="h-4 w-4 text-primary" />
                             <span className="font-semibold">{loan.name}</span>
+                            <Badge variant="outline">{loan.loanType === "sales_retention" ? "Retenção sobre vendas" : "Parcelado"}</Badge>
                             <Badge variant="outline">{loan.institution}</Badge>
-                            <Badge className={loan.loanType === "sales_retention" ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}>
-                              {loan.loanType === "sales_retention" ? "Retenção" : "Parcelado"}
-                            </Badge>
                           </div>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Total: R$ {fmt(loan.totalAmount)} • Pago/abatido: R$ {fmt(loan.totalPaid)} • Saldo: R$ {fmt(parseFloat(String(loan.totalAmount || 0)) - parseFloat(String(loan.totalPaid || 0)))}
-                          </p>
-                          {loan.loanType === "installment" ? (
-                            <p className="text-sm text-muted-foreground">{loan.totalInstallments || 0}x de R$ {fmt(loan.installmentAmount)} • Vencimento dia {loan.dueDay || "-"}</p>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">Fonte: {loan.retentionSource || "mercado_livre"} • Retenção: {loan.retentionPercent ? `${loan.retentionPercent}%` : "-"}</p>
-                          )}
+                          <p className="mt-1 text-sm text-muted-foreground">Valor total: R$ {fmt(loan.totalAmount)} • Pago/abatido: R$ {fmt(loan.totalPaid)}</p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {loan.loanType === "installment" && (
-                            <Button variant="outline" size="sm" onClick={() => upsertInstallmentMutation.mutate({ loanId: loan.id, installmentNumber: selectedMonth, periodYear: selectedYear, periodMonth: selectedMonth, amount: String(loan.installmentAmount || 0), status: installment?.status === "paid" ? "pending" : "paid", paidAt: installment?.status === "paid" ? null : new Date(), notes: null })}>
-                              <Check className="mr-1 h-3 w-3" /> {installment?.status === "paid" ? "Desfazer parcela" : "Marcar parcela paga"}
-                            </Button>
-                          )}
+                        <div className="flex items-center gap-2">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
                             setShowLoanForm(true);
                             setEditingLoanId(loan.id);
@@ -1231,15 +1135,16 @@ export default function Finance() {
                             setLoanRetentionSource(loan.retentionSource || "mercado_livre");
                             setLoanNotes(loan.notes || "");
                           }}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
-                            if (confirm("Remover este empréstimo?")) deleteLoanMutation.mutate({ id: loan.id });
-                          }}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { if (confirm("Remover este empréstimo?")) deleteLoanMutation.mutate({ id: loan.id }); }}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
 
-                      {loan.loanType === "installment" && installment && (
+                      {loan.loanType === "installment" && (
                         <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-                          Parcela do mês: R$ {fmt(installment.amount)} • <span className="font-medium">{installment.status === "paid" ? "Paga" : "Pendente"}</span>
+                          Parcela do mês: R$ {fmt(installment?.amount || loan.installmentAmount)} • <span className="font-medium">{installment?.status === "paid" ? "Paga" : "Pendente"}</span>
+                          <div className="mt-2">
+                            <Button size="sm" variant="outline" onClick={() => upsertInstallmentMutation.mutate({ loanId: loan.id, installmentNumber: installment?.installmentNumber || 1, periodYear: selectedYear, periodMonth: selectedMonth, amount: installment?.amount || loan.installmentAmount || "0", status: "paid", paidAt: new Date(), notes: null })}><Check className="mr-1 h-3 w-3" /> Registrar parcela paga</Button>
+                          </div>
                         </div>
                       )}
 
@@ -1248,14 +1153,9 @@ export default function Finance() {
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="font-medium text-sky-900">Lançar retenção / movimento do marketplace</p>
-                              <p className="text-xs text-sky-700">Use para registrar vendas, taxas, devoluções, antecipações e abatimentos do empréstimo.</p>
+                              <p className="text-xs text-sky-700">Use este cadastro para refletir vendas, taxas, devoluções, antecipações e abatimentos diretamente no fechamento manual.</p>
                             </div>
-                            <Button size="sm" variant={editingRetentionLoanId === loan.id ? "secondary" : "outline"} onClick={() => {
-                              setEditingRetentionLoanId(editingRetentionLoanId === loan.id ? null : loan.id);
-                              setRetentionPercentApplied(loan.retentionPercent ? String(loan.retentionPercent) : "");
-                            }}>
-                              <Plus className="mr-1 h-3 w-3" /> {editingRetentionLoanId === loan.id ? "Fechar" : "Novo movimento"}
-                            </Button>
+                            <Button size="sm" variant={editingRetentionLoanId === loan.id ? "secondary" : "outline"} onClick={() => { setEditingRetentionLoanId(editingRetentionLoanId === loan.id ? null : loan.id); setRetentionPercentApplied(loan.retentionPercent ? String(loan.retentionPercent) : ""); }}><Plus className="mr-1 h-3 w-3" /> {editingRetentionLoanId === loan.id ? "Fechar" : "Novo movimento"}</Button>
                           </div>
 
                           {editingRetentionLoanId === loan.id && (
@@ -1272,7 +1172,7 @@ export default function Finance() {
                               <div><Label className="text-xs">Valor líquido</Label><Input type="number" step="0.01" value={retentionNet} onChange={(e) => setRetentionNet(e.target.value)} /></div>
                               <div><Label className="text-xs">Retido/abatido</Label><Input type="number" step="0.01" value={retentionAmount} onChange={(e) => setRetentionAmount(e.target.value)} /></div>
                               <div><Label className="text-xs">% aplicado</Label><Input type="number" step="0.01" value={retentionPercentApplied} onChange={(e) => setRetentionPercentApplied(e.target.value)} /></div>
-                              <div><Label className="text-xs">Referência</Label><Input value={retentionReference} onChange={(e) => setRetentionReference(e.target.value)} placeholder="Pedido, repasse, lote" /></div>
+                              <div><Label className="text-xs">Referência</Label><Input value={retentionReference} onChange={(e) => setRetentionReference(e.target.value)} placeholder="Repasse, lote, venda" /></div>
                               <div><Label className="text-xs">Observações</Label><Input value={retentionNotes} onChange={(e) => setRetentionNotes(e.target.value)} /></div>
                               <div className="lg:col-span-4 flex gap-2">
                                 <Button size="sm" onClick={() => {
@@ -1280,20 +1180,7 @@ export default function Finance() {
                                     toast.error("Informe data e valor retido.");
                                     return;
                                   }
-                                  createRetentionMutation.mutate({
-                                    loanId: loan.id,
-                                    entryDate: retentionDate,
-                                    periodYear: Number(retentionDate.slice(0, 4)),
-                                    periodMonth: Number(retentionDate.slice(5, 7)),
-                                    entryType: "manual",
-                                    eventCategory: retentionCategory as any,
-                                    grossAmount: retentionGross || null,
-                                    netAmount: retentionNet || null,
-                                    retentionPercentApplied: retentionPercentApplied || null,
-                                    retainedAmount: retentionAmount,
-                                    sourceReference: retentionReference || null,
-                                    notes: retentionNotes || null,
-                                  });
+                                  createRetentionMutation.mutate({ loanId: loan.id, entryDate: retentionDate, periodYear: Number(retentionDate.slice(0, 4)), periodMonth: Number(retentionDate.slice(5, 7)), entryType: "manual", eventCategory: retentionCategory as any, grossAmount: retentionGross || null, netAmount: retentionNet || null, retentionPercentApplied: retentionPercentApplied || null, retainedAmount: retentionAmount, sourceReference: retentionReference || null, notes: retentionNotes || null });
                                 }}><Check className="mr-1 h-4 w-4" /> Lançar movimento</Button>
                                 <Button variant="outline" size="sm" onClick={resetRetentionForm}><X className="mr-1 h-4 w-4" /> Limpar</Button>
                               </div>
@@ -1327,9 +1214,7 @@ export default function Finance() {
 
             {salesRetentionLoans.length > 0 && (
               <Card>
-                <CardHeader>
-                  <CardTitle>Resumo de empréstimos por retenção</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle>Resumo de empréstimos por retenção</CardTitle></CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {salesRetentionLoans.map((loan: any) => {
                     const saldo = parseFloat(String(loan.totalAmount || 0)) - parseFloat(String(loan.totalPaid || 0));

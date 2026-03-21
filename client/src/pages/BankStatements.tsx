@@ -77,6 +77,7 @@ export default function BankStatements() {
   const [uploadMonth, setUploadMonth] = useState(String(new Date().getMonth() + 1));
   const [uploadYear, setUploadYear] = useState(String(new Date().getFullYear()));
   const [uploadPassword, setUploadPassword] = useState("");
+  const [uploadCnpjId, setUploadCnpjId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state
@@ -95,6 +96,7 @@ export default function BankStatements() {
   const [txnCategoryFilter, setTxnCategoryFilter] = useState<string>("all");
 
   // Queries
+  const cnpjsQuery = trpc.myCnpjs.list.useQuery();
   const statementsQuery = trpc.bankStatements.list.useQuery();
   const detailQuery = trpc.bankStatements.get.useQuery(
     { id: detailId! },
@@ -132,6 +134,10 @@ export default function BankStatements() {
       toast.error("Informe o nome do banco.");
       return;
     }
+    if (!uploadCnpjId) {
+      toast.error("Selecione o CNPJ deste extrato.");
+      return;
+    }
 
     setUploading(true);
     try {
@@ -140,6 +146,7 @@ export default function BankStatements() {
       formData.append("bankName", uploadBankName.trim());
       formData.append("periodMonth", uploadMonth);
       formData.append("periodYear", uploadYear);
+      formData.append("cnpjId", uploadCnpjId);
       if (uploadPassword.trim()) {
         formData.append("pdfPassword", uploadPassword.trim());
       }
@@ -157,6 +164,7 @@ export default function BankStatements() {
       setShowUpload(false);
       setUploadBankName("");
       setUploadPassword("");
+      setUploadCnpjId("");
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       // Navigate to the new statement
@@ -168,7 +176,7 @@ export default function BankStatements() {
     } finally {
       setUploading(false);
     }
-  }, [uploadBankName, uploadMonth, uploadYear, utils, setLocation]);
+  }, [uploadBankName, uploadCnpjId, uploadMonth, uploadYear, utils, setLocation]);
 
   const handleSaveTxn = useCallback((txnId: number) => {
     if (!detailId) return;
@@ -747,7 +755,7 @@ export default function BankStatements() {
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
                 <div>
                   <Label className="text-xs">Banco</Label>
                   <Input
@@ -755,6 +763,22 @@ export default function BankStatements() {
                     onChange={e => setUploadBankName(e.target.value)}
                     placeholder="Ex: Nubank, Itaú..."
                   />
+                </div>
+                <div>
+                  <Label className="text-xs">CNPJ</Label>
+                  <Select value={uploadCnpjId} onValueChange={setUploadCnpjId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar CNPJ" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(cnpjsQuery.data ?? []).map((cnpj: any) => (
+                        <SelectItem key={cnpj.id} value={String(cnpj.id)}>{cnpj.nomeFantasia || cnpj.razaoSocial} - {cnpj.cnpj}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(cnpjsQuery.data ?? []).length === 0 && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">Cadastre um CNPJ na página de Clientes antes de enviar extratos.</p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs">Mês</Label>

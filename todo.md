@@ -216,3 +216,9 @@
 - [x] Criar visão de saúde financeira com entradas vs saídas, retenções do Mercado Livre, capital parado/investido e alertas.
 - [x] Separar dados do Mercado Livre em cards de vendas, taxas, antecipações, devoluções e abatimentos de empréstimo.
 - [x] Cobrir a nova lógica financeira com testes vitest e validar o ambiente.
+- [x] Fazer o Financeiro considerar entradas e saídas com base nos extratos bancários para maior precisão no fechamento
+- [x] Permitir selecionar o CNPJ ativo no módulo Financeiro para separar os cadastros e fechamentos entre as empresas
+- [x] Adaptar o fechamento financeiro para apuração individual por CNPJ sem misturar movimentações
+- [x] Vincular cada extrato bancário a um CNPJ selecionado no momento do upload
+- [x] Transformar o menu Financeiro em visão por subconta, com seletor de CNPJ para trocar o fechamento exibido
+- [x] Fazer o fechamento financeiro usar exclusivamente extratos bancários e lançamentos manuais de débitos, empréstimos e obrigações por CNPJ, sem puxar compras e vendas dos módulos de pedidos
