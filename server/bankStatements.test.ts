@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseExtractText } from "./bankStatementUpload";
 
 describe("Bank Statements Module", () => {
   it("should have bankStatements and bankTransactions tables in schema", async () => {
@@ -81,6 +82,43 @@ describe("Bank Statements Module", () => {
   it("should have bank statement upload route registered", async () => {
     const uploadModule = await import("./bankStatementUpload");
     expect(typeof uploadModule.registerBankStatementUploadRoute).toBe("function");
+  });
+
+  it("should parse Mercado Pago statement text blocks", () => {
+    const sample = `EXTRATO DE CONTA
+DETALHE DOS MOVIMENTOS
+Data
+Descrição
+ID da operação
+Valor
+Saldo
+01-02-2026
+Pagamento com Código QR
+Pix LEONICE GIANOTTI TOZZO
+2724130882
+R$ 38,60
+R$ 38,60
+01-02-2026
+Débito por dívida
+Reclamações no Mercado Livre
+143500896158
+R$ -13,47
+R$ 0,00`;
+
+    const transactions = parseExtractText(sample);
+
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0]).toMatchObject({
+      transactionDate: "01-02-2026",
+      transactionType: "credit",
+      amount: "38.60",
+    });
+    expect(transactions[0].originalDescription).toContain("Pagamento com Código QR");
+    expect(transactions[1]).toMatchObject({
+      transactionType: "debit",
+      amount: "13.47",
+    });
+    expect(transactions[1].originalDescription).toContain("Reclamações no Mercado Livre");
   });
 
   it("should have Extratos menu item in navigation", async () => {

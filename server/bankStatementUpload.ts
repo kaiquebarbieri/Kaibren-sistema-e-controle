@@ -11,8 +11,6 @@ import crypto from "crypto";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-/* ── PDF Parsing Logic ── */
-
 interface ParsedTransaction {
   transactionDate: string;
   accountingDate: string;
@@ -22,132 +20,164 @@ interface ParsedTransaction {
   transactionType: "credit" | "debit";
 }
 
-/**
- * Parse bank statement text (tab-separated C6 Bank format) into structured transactions.
- * 
- * Format per line:
- *   DD/MM \t DD/MM \t Tipo \t Descrição \t [-]R$ X.XXX,XX
- * 
- * Also handles "Saldo do dia" lines (skipped).
- */
-function parseExtractText(text: string): ParsedTransaction[] {
+const MONEY_REGEX = /R\$\s*(-?[\d.]+,\d{2})/;
+const DATE_SLASH_REGEX = /\b\d{2}\/\d{2}(?:\/\d{4})?\b/;
+const DATE_DASH_REGEX = /\b\d{2}-\d{2}-\d{4}\b/;
+const OPERATION_ID_REGEX = /^\d{6,}$/;
+
+function normalizeMoney(value: string): number {
+  return parseFloat(value.replace(/\./g, "").replace(",", "."));
+}
+
+function normalizeDate(value: string): string {
+  if (value.includes("-")) return value;
+  const [day, month, year] = value.split("/");
+  return `${day}/${month}${year ? `/${year}` : ""}`;
+}
+
+function parseTabularExtract(text: string): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = [];
   const lines = text.split("\n");
-
-  // Date pattern at start of line: DD/MM
-  const dateRegex = /^(\d{2}\/\d{2})\s/;
-  // Value pattern: optional minus, R$, then number with dots and comma
-  const valueRegex = /(-?)R\$\s*([\d.]+,\d{2})/;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-
-    // Skip "Saldo do dia" lines and header lines
-    if (trimmed.startsWith("Saldo do dia")) continue;
-    if (trimmed.startsWith("Data")) continue;
-    if (trimmed.startsWith("lançamento")) continue;
-    if (trimmed.startsWith("contábil")) continue;
-
-    // Check if line starts with a date
-    if (!dateRegex.test(trimmed)) continue;
-
-    // Split by tabs
-    const parts = trimmed.split("\t").map(p => p.trim());
-
-    // Expected: [date_lancamento, date_contabil, tipo, descricao, valor]
-    if (parts.length < 4) continue;
-
-    let dateLancamento = parts[0]; // DD/MM
-    let dateContabil = "";
-    let tipo = "";
-    let description = "";
-    let valueStr = "";
-
-    if (parts.length >= 5) {
-      // Standard format: date_lancamento, date_contabil, tipo, descricao, valor
-      dateContabil = parts[1];
-      tipo = parts[2];
-      description = parts[3];
-      valueStr = parts[4];
-    } else if (parts.length === 4) {
-      // Might be: date_lancamento, date_contabil, tipo, descricao (no value inline)
-      dateContabil = parts[1];
-      tipo = parts[2];
-      description = parts[3];
-    }
-
-    // Extract monetary value
-    const valMatch = valueStr.match(valueRegex);
-    if (!valMatch) {
-      // Try to find value in description
-      const descValMatch = description.match(valueRegex);
-      if (descValMatch) {
-        const rawValue = descValMatch[2].replace(/\./g, "").replace(",", ".");
-        const numVal = parseFloat(rawValue);
-        if (!isNaN(numVal) && numVal > 0) {
-          const isNegative = descValMatch[1] === "-";
-          const cleanDesc = description.replace(valueRegex, "").trim();
-          transactions.push({
-            transactionDate: dateLancamento,
-            accountingDate: dateContabil,
-            bankType: tipo,
-            originalDescription: cleanDesc || tipo || "Transação sem descrição",
-            amount: numVal.toFixed(2),
-            transactionType: isNegative ? "debit" : "credit",
-          });
-        }
-      }
+    if (trimmed.startsWith("Saldo do dia") || trimmed.startsWith("Data") || trimmed.startsWith("lançamento") || trimmed.startsWith("contábil")) {
       continue;
     }
 
-    const rawValue = valMatch[2].replace(/\./g, "").replace(",", ".");
-    const numVal = parseFloat(rawValue);
-    if (isNaN(numVal) || numVal === 0) continue;
+    if (!/^\d{2}\/\d{2}/.test(trimmed)) continue;
 
-    const isNegative = valMatch[1] === "-";
+    const parts = trimmed.split("\t").map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 4) continue;
+
+    const transactionDate = parts[0];
+    const accountingDate = parts[1] || "";
+    const bankType = parts[2] || "";
+    const originalDescription = parts[3] || "Transação sem descrição";
+    const amountSource = parts.slice(4).join(" ") || originalDescription;
+    const valueMatch = amountSource.match(/(-?)R\$\s*([\d.]+,\d{2})/);
+
+    if (!valueMatch) continue;
+
+    const amount = normalizeMoney(valueMatch[2]);
+    if (!Number.isFinite(amount) || amount === 0) continue;
 
     transactions.push({
-      transactionDate: dateLancamento,
-      accountingDate: dateContabil,
-      bankType: tipo,
-      originalDescription: description || "Transação sem descrição",
-      amount: numVal.toFixed(2),
-      transactionType: isNegative ? "debit" : "credit",
+      transactionDate,
+      accountingDate,
+      bankType,
+      originalDescription: originalDescription.replace(/(-?)R\$\s*[\d.]+,\d{2}/, "").trim() || "Transação sem descrição",
+      amount: amount.toFixed(2),
+      transactionType: valueMatch[1] === "-" ? "debit" : "credit",
     });
   }
 
   return transactions;
 }
 
-/**
- * Extract text from PDF buffer, with optional password support.
- * Uses pdf-parse v2 PDFParse class.
- */
-async function extractPdfText(buffer: Buffer, password?: string): Promise<string> {
+function parseMercadoPagoExtract(text: string): ParsedTransaction[] {
+  const lines = text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const transactions: ParsedTransaction[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const dateMatch = line.match(DATE_DASH_REGEX);
+    if (!dateMatch) continue;
+
+    const date = dateMatch[0];
+    const collected: string[] = [];
+    let operationId = "";
+    let amountText = "";
+
+    for (let cursor = index + 1; cursor < Math.min(lines.length, index + 8); cursor += 1) {
+      const candidate = lines[cursor];
+      if (DATE_DASH_REGEX.test(candidate)) break;
+      if (!operationId && OPERATION_ID_REGEX.test(candidate)) {
+        operationId = candidate;
+        continue;
+      }
+      if (!amountText && MONEY_REGEX.test(candidate)) {
+        amountText = candidate.match(MONEY_REGEX)?.[1] ?? "";
+        continue;
+      }
+      if (!["Data", "Descrição", "ID da operação", "Valor", "Saldo", "DETALHE DOS MOVIMENTOS"].includes(candidate)) {
+        collected.push(candidate);
+      }
+    }
+
+    if (!amountText) continue;
+
+    const amount = normalizeMoney(amountText.replace(/^-/, ""));
+    if (!Number.isFinite(amount) || amount === 0) continue;
+
+    const description = collected.join(" ").replace(/\s+/g, " ").trim() || "Transação Mercado Pago";
+    const isDebit = amountText.trim().startsWith("-");
+
+    transactions.push({
+      transactionDate: date,
+      accountingDate: date,
+      bankType: operationId ? `Mercado Pago ${operationId}` : "Mercado Pago",
+      originalDescription: description,
+      amount: amount.toFixed(2),
+      transactionType: isDebit ? "debit" : "credit",
+    });
+  }
+
+  return dedupeTransactions(transactions);
+}
+
+function dedupeTransactions(transactions: ParsedTransaction[]): ParsedTransaction[] {
+  const seen = new Set<string>();
+  return transactions.filter((transaction) => {
+    const key = [
+      transaction.transactionDate,
+      transaction.accountingDate,
+      transaction.bankType,
+      transaction.originalDescription,
+      transaction.amount,
+      transaction.transactionType,
+    ].join("|");
+
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function parseExtractText(text: string): ParsedTransaction[] {
+  const tabular = parseTabularExtract(text);
+  if (tabular.length > 0) return dedupeTransactions(tabular);
+
+  const mercadoPago = parseMercadoPagoExtract(text);
+  if (mercadoPago.length > 0) return mercadoPago;
+
+  return [];
+}
+
+export async function extractPdfText(buffer: Buffer, password?: string): Promise<string> {
   const options: any = {
     verbosity: 0,
     data: new Uint8Array(buffer),
+    password: password || undefined,
   };
-  if (password) {
-    options.password = password;
-  }
 
   const parser = new PDFParse(options);
   await (parser as any).load();
   const result = await (parser as any).getText();
 
-  // result is { pages: [{ text: string }] }
   if (result && typeof result === "object" && "pages" in result) {
-    return (result as any).pages.map((p: any) => p.text).join("\n");
+    return (result as any).pages.map((page: any) => page.text).join("\n");
   }
   if (typeof result === "string") {
     return result;
   }
   return JSON.stringify(result);
 }
-
-/* ── Express Route ── */
 
 export function registerBankStatementUploadRoute(app: Express) {
   app.post("/api/bank-statement/upload", upload.single("file"), async (req: Request, res: Response) => {
@@ -167,12 +197,10 @@ export function registerBankStatementUploadRoute(app: Express) {
         return res.status(400).json({ error: "Selecione o CNPJ vinculado a este extrato." });
       }
 
-      // Upload PDF to S3
       const suffix = crypto.randomBytes(4).toString("hex");
       const fileKey = `bank-statements/${periodYear}-${String(periodMonth).padStart(2, "0")}/${file.originalname.replace(/\s+/g, "_")}-${suffix}.pdf`;
       const { url: fileUrl } = await storagePut(fileKey, file.buffer, "application/pdf");
 
-      // Parse PDF (with optional password for protected PDFs)
       let parsedTransactions: ParsedTransaction[] = [];
       try {
         const text = await extractPdfText(file.buffer, pdfPassword);
@@ -181,14 +209,16 @@ export function registerBankStatementUploadRoute(app: Express) {
         console.error("PDF parse error:", parseError);
         const errMsg = String(parseError?.message || "").toLowerCase();
         if (errMsg.includes("password") || errMsg.includes("encrypted") || errMsg.includes("need a password")) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: "O PDF é protegido por senha. Informe a senha correta no campo 'Senha do PDF'.",
             needsPassword: true,
           });
         }
+        return res.status(400).json({
+          error: "Não foi possível interpretar o PDF enviado. Verifique se o arquivo é um extrato válido do banco/carteira e tente novamente.",
+        });
       }
 
-      // Create statement record
       const { id: statementId } = await createBankStatement({
         cnpjId,
         bankName,
@@ -199,20 +229,19 @@ export function registerBankStatementUploadRoute(app: Express) {
         fileUrl,
         totalTransactions: parsedTransactions.length,
         totalIdentified: 0,
-        status: "pending",
+        status: parsedTransactions.length > 0 ? "pending" : "pending",
       });
 
-      // Create transaction records with all parsed fields
       if (parsedTransactions.length > 0) {
         await createBankTransactions(
-          parsedTransactions.map(t => ({
+          parsedTransactions.map((transaction) => ({
             statementId,
-            transactionDate: t.transactionDate,
-            accountingDate: t.accountingDate || null,
-            bankType: t.bankType || null,
-            originalDescription: t.originalDescription,
-            amount: t.amount,
-            transactionType: t.transactionType,
+            transactionDate: normalizeDate(transaction.transactionDate),
+            accountingDate: transaction.accountingDate ? normalizeDate(transaction.accountingDate) : null,
+            bankType: transaction.bankType || null,
+            originalDescription: transaction.originalDescription,
+            amount: transaction.amount,
+            transactionType: transaction.transactionType,
             isIdentified: 0,
           }))
         );
