@@ -1653,11 +1653,6 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const data = await getDREData(input.year, input.month);
 
-        const totalVendasClientes = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalCliente || "0")), 0);
-        const totalCustoMondialVendas = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalMondial || "0")), 0);
-        const totalComissaoEverton = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalComissaoEvertonMondial || "0")), 0);
-        const totalLucroVendas = data.salesOrders.reduce((sum, o) => sum + parseFloat(String(o.totalLucro || "0")), 0);
-        const totalComprasPessoais = data.personalOrders.reduce((sum, o) => sum + parseFloat(String(o.totalMondial || "0")), 0);
         const totalCustosFixos = data.fixedCostPayments.reduce((sum, p) => sum + parseFloat(String(p.payment.amountPaid || "0")), 0);
         const totalCartoes = data.cardInvoices.reduce((sum, i) => sum + parseFloat(String(i.invoice.totalAmount || "0")), 0);
         const totalEmprestimosMensais = data.loanInstallments.reduce((sum, i) => sum + parseFloat(String(i.installment.amount || "0")), 0);
@@ -1672,47 +1667,64 @@ export const appRouter = router({
         });
         const totalLIS = lisTransactions.reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
 
-        const impostoVendas = totalComissaoEverton;
-        const receitaBruta = totalVendasClientes + data.marketplaceSummary.totalVendas;
-        const custoMercadoriaVendida = totalCustoMondialVendas;
-        const lucroBruto = receitaBruta - custoMercadoriaVendida;
-        const totalTaxasMarketplace = data.marketplaceSummary.totalTaxas + data.marketplaceSummary.totalAntecipacoes + data.marketplaceSummary.totalDevolucoes;
-        const totalEmprestimos = totalEmprestimosMensais + totalRetencaoEmprestimos;
-        const despesasOperacionais = totalCustosFixos + totalCartoes + totalEmprestimos + totalLIS + totalTaxasMarketplace + totalContasPagas;
-        const resultadoOperacional = lucroBruto - despesasOperacionais;
-        const resultadoLiquido = resultadoOperacional - totalComprasPessoais;
-        const margemLiquida = receitaBruta > 0 ? (resultadoLiquido / receitaBruta) * 100 : 0;
-
-        const entradasTotais = data.healthBase.cashInBank + totalVendasClientes + data.marketplaceSummary.totalVendas;
-        const saidasTotais = data.healthBase.cashOutBank + totalContasPagas + totalTaxasMarketplace + totalRetencaoEmprestimos;
+        const creditTransactions = data.bankTransactions.filter((t: any) => t.transactionType === "credit");
+        const debitTransactions = data.bankTransactions.filter((t: any) => t.transactionType === "debit");
+        const entradasTotais = creditTransactions.reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
+        const saidasTotais = debitTransactions.reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
         const saldoOperacional = entradasTotais - saidasTotais;
         const dinheiroParado = data.healthBase.investedCapital;
 
-        const alerts: { type: "danger" | "warning" | "info"; message: string }[] = [];
-        if (resultadoLiquido < 0) alerts.push({ type: "danger", message: `Resultado líquido negativo de R$ ${Math.abs(resultadoLiquido).toFixed(2)}.` });
-        if (data.healthBase.overduePayables > 0) alerts.push({ type: "danger", message: `Há R$ ${data.healthBase.overduePayables.toFixed(2)} em contas atrasadas.` });
-        if (totalLIS > 0) alerts.push({ type: "danger", message: `Você gastou R$ ${totalLIS.toFixed(2)} com LIS/Cheque Especial.` });
-        if (totalRetencaoEmprestimos > 0) alerts.push({ type: "warning", message: `O Mercado Livre reteve R$ ${totalRetencaoEmprestimos.toFixed(2)} para abatimento de empréstimos no período.` });
-        if (totalTaxasMarketplace > receitaBruta * 0.12 && receitaBruta > 0) alerts.push({ type: "warning", message: `Taxas, antecipações e devoluções do marketplace consumiram ${((totalTaxasMarketplace / receitaBruta) * 100).toFixed(1)}% da receita.` });
-        if (saldoOperacional < 0) alerts.push({ type: "warning", message: `As saídas superaram as entradas em R$ ${Math.abs(saldoOperacional).toFixed(2)}.` });
-        if (dinheiroParado > 0) alerts.push({ type: "info", message: `Existem R$ ${dinheiroParado.toFixed(2)} classificados como investimento/capital parado.` });
-        if (data.salesOrders.length === 0 && data.marketplaceSummary.totalVendas <= 0) alerts.push({ type: "info", message: "Nenhuma venda registrada neste mês. Cadastre vendas e movimentos do marketplace para completar o DRE." });
+        const categoryMap = new Map<string, number>();
+        for (const txn of debitTransactions) {
+          const key = String(txn.category || txn.userDescription || "Sem categoria").trim() || "Sem categoria";
+          const amount = Math.abs(parseFloat(String(txn.amount || "0")));
+          categoryMap.set(key, (categoryMap.get(key) || 0) + amount);
+        }
 
-        const dailyAverageRevenue = receitaBruta / 30;
-        const dailyAverageExpenses = despesasOperacionais / 30;
+        const topExpenseCategories = Array.from(categoryMap.entries())
+          .map(([category, amount]) => ({ category, amount }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 8);
+
+        const totalSaidasClassificadas = debitTransactions
+          .filter((t: any) => (String(t.category || "").trim().length > 0) || t.isIdentified === 1)
+          .reduce((sum: number, t: any) => sum + Math.abs(parseFloat(String(t.amount || "0"))), 0);
+        const totalSaidasNaoClassificadas = Math.max(saidasTotais - totalSaidasClassificadas, 0);
+        const percentualSaidasClassificadas = saidasTotais > 0 ? (totalSaidasClassificadas / saidasTotais) * 100 : 0;
+
+        const totalTaxasMarketplace = data.marketplaceSummary.totalTaxas + data.marketplaceSummary.totalAntecipacoes + data.marketplaceSummary.totalDevolucoes;
+        const totalEmprestimos = totalEmprestimosMensais + totalRetencaoEmprestimos;
+        const obrigacoesGerenciais = totalCustosFixos + totalCartoes + totalEmprestimos + totalContasPagas + totalLIS;
+        const resultadoLiquido = saldoOperacional;
+        const resultadoOperacional = saldoOperacional;
+        const receitaBruta = entradasTotais;
+        const custoMercadoriaVendida = 0;
+        const lucroBruto = entradasTotais;
+        const margemLiquida = entradasTotais > 0 ? (resultadoLiquido / entradasTotais) * 100 : 0;
+
+        const alerts: { type: "danger" | "warning" | "info"; message: string }[] = [];
+        if (saldoOperacional < 0) alerts.push({ type: "danger", message: `No caixa realizado, as saídas superaram as entradas em R$ ${Math.abs(saldoOperacional).toFixed(2)}.` });
+        if (data.healthBase.overduePayables > 0) alerts.push({ type: "warning", message: `Há R$ ${data.healthBase.overduePayables.toFixed(2)} em contas atrasadas no controle gerencial.` });
+        if (totalLIS > 0) alerts.push({ type: "warning", message: `Foram identificados R$ ${totalLIS.toFixed(2)} em custos de LIS/Cheque Especial.` });
+        if (totalRetencaoEmprestimos > 0) alerts.push({ type: "info", message: `O Mercado Pago/Mercado Livre reteve R$ ${totalRetencaoEmprestimos.toFixed(2)} para abatimento de empréstimos no período.` });
+        if (totalSaidasNaoClassificadas > 0) alerts.push({ type: "warning", message: `Ainda existem R$ ${totalSaidasNaoClassificadas.toFixed(2)} em saídas sem classificação financeira concluída.` });
+        if (topExpenseCategories.length > 0) alerts.push({ type: "info", message: `A maior categoria de saída do período foi ${topExpenseCategories[0].category}, com R$ ${topExpenseCategories[0].amount.toFixed(2)}.` });
+
+        const dailyAverageRevenue = entradasTotais / 30;
+        const dailyAverageExpenses = saidasTotais / 30;
 
         return {
           receitaBruta,
           custoMercadoriaVendida,
           lucroBruto,
-          impostoVendas,
-          totalVendasClientes,
-          totalCustoMondialVendas,
-          totalComissaoEverton,
-          totalLucroVendas,
-          qtdPedidosClientes: data.salesOrders.length,
-          totalComprasPessoais,
-          qtdPedidosPessoais: data.personalOrders.length,
+          impostoVendas: 0,
+          totalVendasClientes: 0,
+          totalCustoMondialVendas: 0,
+          totalComissaoEverton: 0,
+          totalLucroVendas: 0,
+          qtdPedidosClientes: 0,
+          totalComprasPessoais: 0,
+          qtdPedidosPessoais: 0,
           totalCustosFixos,
           totalCartoes,
           totalEmprestimos,
@@ -1721,7 +1733,7 @@ export const appRouter = router({
           totalContasPagas,
           totalLIS,
           totalTaxasMarketplace,
-          despesasOperacionais,
+          despesasOperacionais: saidasTotais,
           resultadoOperacional,
           resultadoLiquido,
           margemLiquida,
@@ -1729,6 +1741,11 @@ export const appRouter = router({
           saidasTotais,
           saldoOperacional,
           dinheiroParado,
+          totalSaidasClassificadas,
+          totalSaidasNaoClassificadas,
+          percentualSaidasClassificadas,
+          topExpenseCategories,
+          obrigacoesGerenciais,
           dailyDre: {
             entradas: dailyAverageRevenue,
             saidas: dailyAverageExpenses,
@@ -1754,7 +1771,10 @@ export const appRouter = router({
             capitalParado: dinheiroParado,
             pendencias: data.healthBase.pendingPayables,
             atrasados: data.healthBase.overduePayables,
-            status: resultadoLiquido >= 0 && saldoOperacional >= 0 ? "saudavel" : resultadoLiquido >= 0 ? "atencao" : "critico",
+            saidasClassificadas: totalSaidasClassificadas,
+            saidasNaoClassificadas: totalSaidasNaoClassificadas,
+            percentualSaidasClassificadas,
+            status: saldoOperacional >= 0 ? "saudavel" : percentualSaidasClassificadas >= 70 ? "atencao" : "critico",
           },
           alerts,
           snapshot: data.snapshot,

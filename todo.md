@@ -236,3 +236,11 @@
 - [x] Preencher automaticamente o DRE e finalizar o fechamento financeiro após o upload de extratos bancários
 - [ ] Corrigir o botão "+ Novo custo" no módulo Financeiro
 - [ ] Remover a simulação inicial dos valores fixos e excluir o texto "Simulação inicial informada por você" da tela Financeiro
+- [x] Fechar automaticamente o mês selecionado usando apenas as entradas e saídas do extrato enviado, sem depender de outros lançamentos para o cálculo mensal básico
+- [ ] Remover definitivamente do DRE qualquer dependência de vendas, lucro ou indicadores do dashboard comercial da distribuidora
+- [ ] Reestruturar o Financeiro com menu principal e submenus separados para DRE, Contas a Pagar, Cartões e Empréstimos
+- [ ] Construir um DRE profissional baseado em extratos bancários e classificações financeiras manuais por transação
+- [ ] Permitir classificação manual clara das transações dos bancos como C6 Bank, Bradesco e Santander, mantendo identificação automática apenas no Mercado Pago
+- [ ] Criar gráficos no painel financeiro para explicar entradas, saídas, categorias de gasto e fluxo do dinheiro
+- [ ] Implementar o modelo financeiro em duas camadas: Caixa Realizado baseado no extrato e Painel de Obrigações separado para cartões, contas a pagar, custos fixos e empréstimos
+- [ ] Criar análise financeira por categoria para mostrar onde o dinheiro mais saiu e apoiar decisões de corte de gastos
