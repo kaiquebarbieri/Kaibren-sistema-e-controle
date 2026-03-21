@@ -85,12 +85,6 @@ const RETENTION_CATEGORIES = [
   { value: "ajuste", label: "Ajuste" },
 ];
 
-const SIMULATED_FIXED_COSTS = [
-  { name: "Aluguel", amount: 5000 },
-  { name: "Funcionário", amount: 5000 },
-  { name: "Carro alugado", amount: 3000 },
-  { name: "Água e luz", amount: 500 },
-];
 
 function fmt(v: number | string | null | undefined): string {
   const n = parseFloat(String(v || "0"));
@@ -336,24 +330,22 @@ export default function Finance() {
     };
   }, [mercadoPagoStatements]);
 
-  const simulatedFixedCostTotal = SIMULATED_FIXED_COSTS.reduce((sum, item) => sum + item.amount, 0);
   const manualOutflows = Number(dre?.totalCartoes || 0) + Number(dre?.totalEmprestimosMensais || 0) + Number(dre?.totalRetencaoEmprestimos || 0) + Number(dre?.totalContasPagas || 0) + Number(dre?.totalLIS || 0);
-  const simulatedClosing = useMemo(() => {
+  const closingSnapshot = useMemo(() => {
     const entradas = bankSummary.entradas;
     const saidasBancarias = bankSummary.saidas;
     const saldoBancario = entradas - saidasBancarias;
-    const projectedResult = saldoBancario - simulatedFixedCostTotal - manualOutflows;
+    const projectedResult = saldoBancario - manualOutflows;
     return {
       bankCount: allBankNames.length,
       banks: allBankNames,
       entradas,
       saidasBancarias,
       saldoBancario,
-      simulatedFixedCostTotal,
       manualOutflows,
       projectedResult,
     };
-  }, [bankSummary, allBankNames, simulatedFixedCostTotal, manualOutflows]);
+  }, [bankSummary, allBankNames, manualOutflows]);
 
   function prevMonth() {
     const date = new Date(selectedYear, selectedMonth - 2, 1);
@@ -437,12 +429,45 @@ export default function Finance() {
     setPayableIsInvestment("0");
   }
 
-  function submitCost() { toast.info("Use os cadastros para alimentar os valores reais depois da simulação inicial."); }
-  function submitCard() { toast.info("A simulação atual usa apenas os dados já cadastrados no Financeiro."); }
+  function submitCost() {
+    const amount = Number(costAmount);
+    const dueDay = Number(costDueDay);
+
+    if (!costName.trim()) {
+      toast.error("Informe o nome do custo.");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Informe um valor válido para o custo.");
+      return;
+    }
+
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
+      toast.error("Informe um dia de vencimento entre 1 e 31.");
+      return;
+    }
+
+    const payload = {
+      name: costName.trim(),
+      category: costCategory,
+      amount: amount.toFixed(2),
+      dueDay,
+      notes: costNotes.trim() || null,
+    };
+
+    if (editingCostId) {
+      updateCostMutation.mutate({ id: editingCostId, ...payload });
+      return;
+    }
+
+    createCostMutation.mutate(payload);
+  }
+  function submitCard() { toast.info("Cadastre e mantenha os cartões reais para compor o fechamento."); }
   function submitInvoice(cardId: number) { void cardId; toast.info("Mantenha as faturas reais cadastradas para compor o fechamento."); }
   function submitLoan() { toast.info("Cadastre os empréstimos reais para refletir no fechamento consolidado."); }
   function submitRetention(loanId: number) { void loanId; toast.info("Os movimentos do marketplace continuam entrando pelo módulo de empréstimos/retenções."); }
-  function submitPayable() { toast.info("Cadastre as contas reais para substituir a simulação quando desejar."); }
+  function submitPayable() { toast.info("Cadastre as contas reais para compor o fechamento do período."); }
 
   return (
     <DashboardLayout activeSection="financeiro" onNavigate={(section) => navigate(`/${section}`)}>
@@ -488,7 +513,7 @@ export default function Finance() {
           <Card className="border-emerald-200 bg-emerald-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Entradas bancárias</p><p className="mt-2 text-2xl font-bold text-emerald-700">R$ {fmt(bankSummary.entradas)}</p><p className="mt-1 text-xs text-emerald-700/80">{cnpjLabel}</p></div><TrendingUp className="h-8 w-8 text-emerald-500" /></div></CardContent></Card>
           <Card className="border-rose-200 bg-rose-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Saídas bancárias</p><p className="mt-2 text-2xl font-bold text-rose-700">R$ {fmt(bankSummary.saidas)}</p><p className="mt-1 text-xs text-rose-700/80">Débitos lidos dos extratos</p></div><TrendingDown className="h-8 w-8 text-rose-500" /></div></CardContent></Card>
           <Card className="border-sky-200 bg-sky-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Repasses Mercado Pago → C6</p><p className="mt-2 text-2xl font-bold text-sky-700">{mercadoPagoSummary.repassesParaC6}</p><p className="mt-1 text-xs text-sky-700/80">Só o Mercado Pago é identificado automaticamente</p></div><Target className="h-8 w-8 text-sky-500" /></div></CardContent></Card>
-          <Card className="border-violet-200 bg-violet-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Bancos na simulação</p><p className="mt-2 text-2xl font-bold text-violet-700">{simulatedClosing.bankCount}</p><p className="mt-1 text-xs text-violet-700/80">{simulatedClosing.banks.length > 0 ? simulatedClosing.banks.join(" • ") : "Nenhum extrato no período"}</p></div><Building2 className="h-8 w-8 text-violet-500" /></div></CardContent></Card>
+          <Card className="border-violet-200 bg-violet-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Bancos com extrato</p><p className="mt-2 text-2xl font-bold text-violet-700">{closingSnapshot.bankCount}</p><p className="mt-1 text-xs text-violet-700/80">{closingSnapshot.banks.length > 0 ? closingSnapshot.banks.join(" • ") : "Nenhum extrato no período"}</p></div><Building2 className="h-8 w-8 text-violet-500" /></div></CardContent></Card>
         </div>
 
         <div className="flex gap-1 overflow-x-auto rounded-xl bg-muted/60 p-1">
@@ -527,31 +552,26 @@ export default function Finance() {
             )}
 
             <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-              <Card>
-                <CardHeader><CardTitle>Fechamento financeiro com simulação atual</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="border-b pb-2 font-semibold">Movimento bancário considerado</div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Entradas confirmadas nos extratos</span><span className="font-medium text-emerald-600">R$ {fmt(simulatedClosing.entradas)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Saídas confirmadas nos extratos</span><span className="font-medium text-red-500">- R$ {fmt(simulatedClosing.saidasBancarias)}</span></div>
-                  <div className="flex justify-between border-t py-2 font-semibold"><span>Saldo apurado pelos bancos</span><span className={simulatedClosing.saldoBancario >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(simulatedClosing.saldoBancario)}</span></div>
+                <Card>
+                  <CardHeader><CardTitle>Fechamento financeiro atual</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="border-b pb-2 font-semibold">Movimento bancário considerado</div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Entradas confirmadas nos extratos</span><span className="font-medium text-emerald-600">R$ {fmt(closingSnapshot.entradas)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Saídas confirmadas nos extratos</span><span className="font-medium text-red-500">- R$ {fmt(closingSnapshot.saidasBancarias)}</span></div>
+                    <div className="flex justify-between border-t py-2 font-semibold"><span>Saldo apurado pelos bancos</span><span className={closingSnapshot.saldoBancario >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(closingSnapshot.saldoBancario)}</span></div>
 
-                  <div className="border-b pb-2 pt-4 font-semibold">Custos fixos simulados desta fase</div>
-                  {SIMULATED_FIXED_COSTS.map((item) => (
-                    <div key={item.name} className="flex justify-between"><span className="text-muted-foreground">{item.name}</span><span>- R$ {fmt(item.amount)}</span></div>
-                  ))}
-                  <div className="flex justify-between border-t py-2 font-semibold"><span>Total fixo simulado</span><span>- R$ {fmt(simulatedClosing.simulatedFixedCostTotal)}</span></div>
+                    <div className="border-b pb-2 pt-4 font-semibold">Lançamentos manuais já cadastrados</div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Faturas de cartão</span><span>- R$ {fmt(dre?.totalCartoes)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Parcelas de empréstimos</span><span>- R$ {fmt(dre?.totalEmprestimosMensais)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Retenção sobre vendas</span><span>- R$ {fmt(dre?.totalRetencaoEmprestimos)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Contas operacionais pagas</span><span>- R$ {fmt(dre?.totalContasPagas)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">LIS / cheque especial</span><span>- R$ {fmt(dre?.totalLIS)}</span></div>
+                    <div className="flex justify-between border-t py-2 font-semibold"><span>Saídas manuais acumuladas</span><span>- R$ {fmt(closingSnapshot.manualOutflows)}</span></div>
 
-                  <div className="border-b pb-2 pt-4 font-semibold">Lançamentos manuais já cadastrados</div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Faturas de cartão</span><span>- R$ {fmt(dre?.totalCartoes)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Parcelas de empréstimos</span><span>- R$ {fmt(dre?.totalEmprestimosMensais)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Retenção sobre vendas</span><span>- R$ {fmt(dre?.totalRetencaoEmprestimos)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Contas operacionais pagas</span><span>- R$ {fmt(dre?.totalContasPagas)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">LIS / cheque especial</span><span>- R$ {fmt(dre?.totalLIS)}</span></div>
-                  <div className="flex justify-between border-t py-2 font-semibold"><span>Saídas manuais acumuladas</span><span>- R$ {fmt(simulatedClosing.manualOutflows)}</span></div>
+                    <div className="flex justify-between rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 text-base font-semibold"><span>Resultado parcial do fechamento</span><span className={closingSnapshot.projectedResult >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(closingSnapshot.projectedResult)}</span></div>
+                  </CardContent>
+                </Card>
 
-                  <div className="flex justify-between rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 text-base font-semibold"><span>Resultado simulado do fechamento</span><span className={simulatedClosing.projectedResult >= 0 ? "text-emerald-600" : "text-red-600"}>R$ {fmt(simulatedClosing.projectedResult)}</span></div>
-                </CardContent>
-              </Card>
 
               <div className="space-y-6">
                 <Card>
@@ -662,25 +682,16 @@ export default function Finance() {
         )}
 
         {activeTab === "custos" && (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Custos fixos</h2>
-                <p className="text-sm text-muted-foreground">Cadastre despesas recorrentes que impactam o fechamento manual do mês.</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Custos fixos</h2>
+                  <p className="text-sm text-muted-foreground">Cadastre despesas recorrentes que impactam o fechamento manual do mês.</p>
+                </div>
+                <Button size="sm" onClick={() => { resetCostForm(); setShowCostForm(true); }}><Plus className="mr-1 h-4 w-4" /> Novo custo</Button>
               </div>
-              <Button size="sm" onClick={() => { resetCostForm(); setShowCostForm(true); }}><Plus className="mr-1 h-4 w-4" /> Novo custo</Button>
-            </div>
-            <Card>
-              <CardHeader><CardTitle>Simulação inicial informada por você</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {SIMULATED_FIXED_COSTS.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between text-sm"><span className="text-muted-foreground">{item.name}</span><span className="font-medium">R$ {fmt(item.amount)}</span></div>
-                ))}
-                <div className="flex items-center justify-between border-t pt-3 text-sm font-semibold"><span>Total fixo simulado</span><span>R$ {fmt(simulatedFixedCostTotal)}</span></div>
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">Esta é uma base de simulação. Depois você pode substituir pelos valores corretos nos cadastros reais do Financeiro.</p>
-              </CardContent>
-            </Card>
-            <div className="space-y-3">
+              <div className="space-y-3">
+
               {fixedCosts.map((cost: any) => (
                 <div key={cost.id} className="rounded-xl border bg-card px-4 py-3 shadow-sm"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">{cost.name}</p><p className="text-xs text-muted-foreground">Categoria: {cost.category || "outros"} • Vence dia {cost.dueDay}</p></div><div className="text-right"><p className="font-semibold">R$ {fmt(cost.amount)}</p><p className="text-xs text-muted-foreground">Cadastro real</p></div></div></div>
               ))}

@@ -234,3 +234,5 @@
 - [x] Restringir a identificação automática apenas ao layout específico do arquivo do Mercado Pago/Mercado Livre, sem classificar automaticamente extratos da C6 Bank
 - [x] Substituir o campo livre de banco por opções fixas: C6 Bank, Mercado Pago, Bradesco e Santander
 - [x] Preencher automaticamente o DRE e finalizar o fechamento financeiro após o upload de extratos bancários
+- [ ] Corrigir o botão "+ Novo custo" no módulo Financeiro
+- [ ] Remover a simulação inicial dos valores fixos e excluir o texto "Simulação inicial informada por você" da tela Financeiro
