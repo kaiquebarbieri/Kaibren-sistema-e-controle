@@ -73,12 +73,18 @@ describe("ui.navigation contract", () => {
       obligationTabs: "grid no mobile e 3 colunas a partir de sm",
       ctaButtons: "largura total no mobile e automática em telas maiores",
       desktopContent: "overflow-x-hidden com padding progressivo até 2xl",
+      notebookHeader: "grid com duas colunas no md e largura fixa controlada no xl",
+      notebookMonthControl: "flex-1 no rótulo do mês com botões shrink-0",
+      spotlightActions: "grid full width até 2xl e wrap controlado depois",
     };
 
     expect(responsiveRules.mobileMenu).toContain("grid-cols-4");
     expect(responsiveRules.obligationTabs).toContain("3 colunas");
     expect(responsiveRules.ctaButtons).toContain("mobile");
     expect(responsiveRules.desktopContent).toContain("2xl");
+    expect(responsiveRules.notebookHeader).toContain("md");
+    expect(responsiveRules.notebookMonthControl).toContain("flex-1");
+    expect(responsiveRules.spotlightActions).toContain("2xl");
   });
 
   it("usa as transações retornadas no DRE para preencher movimentos recentes e painel Mercado Pago", () => {

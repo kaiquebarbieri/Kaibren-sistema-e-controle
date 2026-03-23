@@ -142,7 +142,7 @@ function FinanceHeader({
 }) {
   return (
     <div className="rounded-3xl border bg-card p-6 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="space-y-2">
           <Badge variant="outline" className="w-fit">{badge}</Badge>
           <div>
@@ -150,8 +150,8 @@ function FinanceHeader({
             <p className="text-sm text-muted-foreground">{description}</p>
           </div>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="min-w-[260px] rounded-xl border bg-card px-3 py-2 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-2 xl:w-auto xl:flex xl:flex-none xl:items-center">
+          <div className="min-w-0 w-full rounded-xl border bg-card px-3 py-2 shadow-sm md:min-w-[260px] xl:w-[320px]">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">CNPJ / subconta</Label>
             <Select value={selectedCnpjId} onValueChange={setSelectedCnpjId}>
               <SelectTrigger className="mt-1 border-0 px-0 shadow-none focus:ring-0">
@@ -167,10 +167,10 @@ function FinanceHeader({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-sm">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
-            <span className="min-w-[150px] text-center text-sm font-semibold">{MONTHS[selectedMonth - 1]} {selectedYear}</span>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={nextMonth}><ChevronRight className="h-4 w-4" /></Button>
+          <div className="flex w-full items-center justify-between gap-2 rounded-xl border bg-card px-2 py-2 shadow-sm md:min-w-[260px] md:px-3 xl:w-[280px]">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
+            <span className="min-w-0 flex-1 text-center text-sm font-semibold leading-tight">{MONTHS[selectedMonth - 1]} {selectedYear}</span>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={nextMonth}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
       </div>
@@ -180,7 +180,7 @@ function FinanceHeader({
 
 function QuickActionButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <Button onClick={onClick} className="rounded-xl">
+    <Button onClick={onClick} className="w-full min-w-0 rounded-xl sm:w-auto">
       <Plus className="mr-2 h-4 w-4" />
       {label}
     </Button>
@@ -204,13 +204,13 @@ function ObligationSpotlight({
     <Card className={`overflow-hidden rounded-3xl border-0 text-white shadow-lg ${accentClass}`}>
       <CardContent className="relative pt-6">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.18),transparent_30%)]" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">{eyebrow}</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight">{title}</h2>
             <p className="mt-3 text-sm leading-6 text-white/80">{description}</p>
           </div>
-          <div className="flex flex-wrap gap-3">{children}</div>
+          <div className="grid w-full gap-3 sm:flex sm:flex-wrap 2xl:w-auto">{children}</div>
         </div>
       </CardContent>
     </Card>
