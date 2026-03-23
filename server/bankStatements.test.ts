@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExtractText, autoIdentifyTransactions } from "./bankStatementUpload";
+import { parseExtractText, autoIdentifyTransactions, isPasswordProtectedPdfError } from "./bankStatementUpload";
 
 describe("Bank Statements Module", () => {
   it("should have bankStatements and bankTransactions tables in schema", async () => {
@@ -82,6 +82,13 @@ describe("Bank Statements Module", () => {
   it("should have bank statement upload route registered", async () => {
     const uploadModule = await import("./bankStatementUpload");
     expect(typeof uploadModule.registerBankStatementUploadRoute).toBe("function");
+  });
+
+  it("should detect password-protected PDF errors from different parser messages", () => {
+    expect(isPasswordProtectedPdfError(new Error("PasswordException: No password given"))).toBe(true);
+    expect(isPasswordProtectedPdfError(new Error("Encrypted PDF detected"))).toBe(true);
+    expect(isPasswordProtectedPdfError(new Error("Incorrect Password"))).toBe(true);
+    expect(isPasswordProtectedPdfError(new Error("Unexpected parsing failure"))).toBe(false);
   });
 
   it("should parse Mercado Pago statement text blocks", () => {

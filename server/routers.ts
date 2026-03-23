@@ -1761,6 +1761,8 @@ export const appRouter = router({
           loanInstallments: data.loanInstallments,
           loanRetentionEntries: data.loanRetentionEntries,
           payableAccounts: data.payableAccounts,
+          bankStatements: data.bankStatements,
+          bankTransactions: data.bankTransactions,
           marketplaceBreakdown: data.marketplaceBreakdown,
           marketplaceSummary: data.marketplaceSummary,
           lisTransactions,

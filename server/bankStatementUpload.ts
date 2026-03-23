@@ -228,6 +228,17 @@ export function parseExtractText(text: string): ParsedTransaction[] {
   return [];
 }
 
+export function isPasswordProtectedPdfError(error: unknown): boolean {
+  const errMsg = String((error as any)?.message || error || "").toLowerCase();
+  return errMsg.includes("password")
+    || errMsg.includes("encrypted")
+    || errMsg.includes("need a password")
+    || errMsg.includes("no password given")
+    || errMsg.includes("incorrect password")
+    || errMsg.includes("invalid password")
+    || errMsg.includes("senha");
+}
+
 export async function extractPdfText(buffer: Buffer, password?: string): Promise<string> {
   const options: any = {
     verbosity: 0,
@@ -276,10 +287,9 @@ export function registerBankStatementUploadRoute(app: Express) {
         parsedTransactions = autoIdentifyTransactions(parseExtractText(text), bankName, text);
       } catch (parseError: any) {
         console.error("PDF parse error:", parseError);
-        const errMsg = String(parseError?.message || "").toLowerCase();
-        if (errMsg.includes("password") || errMsg.includes("encrypted") || errMsg.includes("need a password")) {
+        if (isPasswordProtectedPdfError(parseError)) {
           return res.status(400).json({
-            error: "O PDF é protegido por senha. Informe a senha correta no campo 'Senha do PDF'.",
+            error: "O PDF é protegido por senha ou a senha informada está incorreta. Revise o campo 'Senha do PDF' e tente novamente.",
             needsPassword: true,
           });
         }

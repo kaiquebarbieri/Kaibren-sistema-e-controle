@@ -249,3 +249,11 @@
 - [ ] Corrigir a divergência entre a interface atual do Financeiro e o comportamento esperado, garantindo que o novo menu operacional e os dados do extrato apareçam de fato no painel
 - [ ] Criar menus próprios e separados no Financeiro para Contas a Pagar, Cartões de Crédito e Empréstimos, em vez de mantê-los como um agrupamento que parece igual ao layout anterior
 - [ ] Criar um menu totalmente separado do Financeiro para Obrigações, contendo Contas a Pagar, Cartões de Crédito e Empréstimos fora do menu Financeiro principal
+- [ ] Restaurar os botões de cadastro no menu Obrigações para permitir lançar boletos, pagamentos, contas fixas, cartões e empréstimos
+- [ ] Criar um dashboard próprio para cada área de Obrigações com controle, análise e visual mais elaborado
+- [x] Restaurar dashboards separados no menu Obrigações com CTAs visíveis para contas a pagar, cartões e empréstimos
+- [x] Reforçar no Financeiro que o DRE usa apenas extratos bancários e apontar os atalhos para as áreas de Obrigações
+- [x] Corrigir a inconsistência do painel Financeiro que mostra totais do mês, mas não lista movimentos recentes nem métricas do Mercado Pago por usar fonte diferente da API DRE
+- [x] Validar e corrigir definitivamente o fluxo do extrato de fevereiro no Financeiro após alinhar a fonte dos movimentos do mês
+- [x] Retomar a correção do upload de PDF protegido por senha que ainda apresenta falhas em alguns arquivos
+- [x] Refinar o design dos dashboards de Obrigações com visual mais bonito, hierarquia melhor e leitura analítica por seção

@@ -169,9 +169,6 @@ importers:
       multer:
         specifier: ^2.1.1
         version: 2.1.1
-      mysql2:
-        specifier: ^3.15.0
-        version: 3.15.1
       nanoid:
         specifier: ^5.1.5
         version: 5.1.6
@@ -266,6 +263,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.10
+      mysql2:
+        specifier: ^3.15.1
+        version: 3.15.1
       pnpm:
         specifier: ^10.15.1
         version: 10.18.0
