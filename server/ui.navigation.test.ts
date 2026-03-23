@@ -22,15 +22,17 @@ describe("ui.navigation contract", () => {
 
   it("mantém as subtelas de Obrigações para contas, cartões e empréstimos", () => {
     const tabs = [
-      { key: "contas", href: "/obrigacoes/contas", cta: "Nova conta a pagar", insight: "Radar executivo" },
-      { key: "cartoes", href: "/obrigacoes/cartoes", cta: "Novo cartão", insight: "Resumo do uso" },
-      { key: "emprestimos", href: "/obrigacoes/emprestimos", cta: "Novo empréstimo", insight: "Indicadores principais" },
+      { key: "contas", href: "/obrigacoes/contas", primaryCtaTarget: "/obrigacoes/contas", secondaryCtaTarget: "/extratos", insight: "Radar executivo" },
+      { key: "cartoes", href: "/obrigacoes/cartoes", primaryCtaTarget: "/obrigacoes/cartoes", secondaryCtaTarget: "/obrigacoes/cartoes", insight: "Resumo do uso" },
+      { key: "emprestimos", href: "/obrigacoes/emprestimos", primaryCtaTarget: "/obrigacoes/emprestimos", secondaryCtaTarget: "/obrigacoes/emprestimos", insight: "Indicadores principais" },
     ];
 
     expect(tabs).toHaveLength(3);
     expect(tabs.map((item) => item.key)).toEqual(["contas", "cartoes", "emprestimos"]);
     expect(tabs.every((item) => item.href.startsWith("/obrigacoes/"))).toBe(true);
-    expect(tabs.every((item) => item.cta.includes("Novo") || item.cta.includes("Nova"))).toBe(true);
+    expect(tabs.every((item) => item.primaryCtaTarget === item.href)).toBe(true);
+    expect(tabs.find((item) => item.key === "contas")?.secondaryCtaTarget).toBe("/extratos");
+    expect(tabs.filter((item) => item.key !== "contas").every((item) => item.secondaryCtaTarget === item.href)).toBe(true);
     expect(tabs.map((item) => item.insight)).toEqual(["Radar executivo", "Resumo do uso", "Indicadores principais"]);
   });
 

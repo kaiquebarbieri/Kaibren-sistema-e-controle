@@ -435,7 +435,7 @@ export default function Finance() {
                   description="Esta área foi redesenhada para separar urgência, compromisso do mês e rotina de pagamento. Assim você enxerga o que precisa de baixa agora e o que ainda é planejamento financeiro."
                   accentClass="bg-gradient-to-br from-rose-500 via-rose-600 to-orange-500"
                 >
-                  <QuickActionButton label="Nova conta a pagar" onClick={goToExtratos} />
+                  <QuickActionButton label="Nova conta a pagar" onClick={goToContas} />
                   <Button variant="secondary" onClick={goToExtratos}>Classificar saídas no extrato</Button>
                 </ObligationSpotlight>
 
@@ -477,7 +477,7 @@ export default function Finance() {
                         <CardTitle>Lista de contas a pagar</CardTitle>
                         <CardDescription>Visualize vencimento, status e impacto financeiro de cada obrigação com leitura rápida.</CardDescription>
                       </div>
-                      <QuickActionButton label="Nova conta a pagar" onClick={goToExtratos} />
+                      <QuickActionButton label="Nova conta a pagar" onClick={goToContas} />
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {payables.slice(0, 12).map((item: any) => (
@@ -493,7 +493,7 @@ export default function Finance() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <EmptyState title="Nenhuma conta a pagar cadastrada" description="Comece por boletos, fornecedores e despesas previstas para montar seu controle operacional." actionLabel="Cadastrar conta a pagar" onAction={goToExtratos} />
+                  <EmptyState title="Nenhuma conta a pagar cadastrada" description="Comece por boletos, fornecedores e despesas previstas para montar seu controle operacional." actionLabel="Cadastrar conta a pagar" onAction={goToContas} />
                 )}
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">

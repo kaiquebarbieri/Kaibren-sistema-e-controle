@@ -257,3 +257,4 @@
 - [x] Validar e corrigir definitivamente o fluxo do extrato de fevereiro no Financeiro após alinhar a fonte dos movimentos do mês
 - [x] Retomar a correção do upload de PDF protegido por senha que ainda apresenta falhas em alguns arquivos
 - [x] Refinar o design dos dashboards de Obrigações com visual mais bonito, hierarquia melhor e leitura analítica por seção
+- [x] Corrigir os botões de cadastro do menu Obrigações para que cada CTA abra sua área correta e não redirecione indevidamente para Extratos
