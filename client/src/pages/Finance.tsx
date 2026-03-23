@@ -3,9 +3,13 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import {
@@ -30,6 +34,34 @@ import {
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 type ObligationsTab = "contas" | "cartoes" | "emprestimos";
+type ObligationDialogMode = "conta" | "custoFixo" | "cartao" | "fatura" | "emprestimo" | "retencao";
+
+const obligationDialogMeta: Record<ObligationDialogMode, { title: string; description: string }> = {
+  conta: {
+    title: "Cadastrar conta a pagar",
+    description: "Lance boletos, fornecedores e despesas previstas para manter o controle operacional do mês.",
+  },
+  custoFixo: {
+    title: "Cadastrar custo fixo",
+    description: "Registre uma despesa recorrente para acompanhar o impacto mensal no caixa e nas obrigações.",
+  },
+  cartao: {
+    title: "Cadastrar cartão",
+    description: "Adicione um cartão de crédito com limite, banco emissor e dia de vencimento para acompanhar exposição futura.",
+  },
+  fatura: {
+    title: "Cadastrar fatura",
+    description: "Lance a fatura do cartão já existente para acompanhar vencimento, fechamento e valor do período.",
+  },
+  emprestimo: {
+    title: "Cadastrar empréstimo",
+    description: "Cadastre empréstimos e passivos para acompanhar saldo contratado, amortização e pressão sobre o caixa.",
+  },
+  retencao: {
+    title: "Cadastrar retenção",
+    description: "Registre retenções ou abatimentos ligados a empréstimos para enxergar o avanço real dos descontos.",
+  },
+};
 
 function fmt(v: number | string | null | undefined): string {
   const n = parseFloat(String(v || "0"));
@@ -250,6 +282,353 @@ function ObligationListItem({
   );
 }
 
+function ObligationDialog({
+  open,
+  mode,
+  onOpenChange,
+  cnpjs,
+  creditCards,
+  loans,
+  selectedYear,
+  selectedMonth,
+  onSaved,
+}: {
+  open: boolean;
+  mode: ObligationDialogMode | null;
+  onOpenChange: (open: boolean) => void;
+  cnpjs: any[];
+  creditCards: any[];
+  loans: any[];
+  selectedYear: number;
+  selectedMonth: number;
+  onSaved: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [selectedCnpjId, setSelectedCnpjId] = useState<string>(cnpjs[0] ? String(cnpjs[0].id) : "none");
+  const [description, setDescription] = useState("");
+  const [counterparty, setCounterparty] = useState("");
+  const [amount, setAmount] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [category, setCategory] = useState("financeiro");
+  const [notes, setNotes] = useState("");
+  const [recurrence, setRecurrence] = useState("monthly");
+  const [selectedCardId, setSelectedCardId] = useState<string>(creditCards[0] ? String(creditCards[0].id) : "none");
+  const [cardName, setCardName] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [limitAmount, setLimitAmount] = useState("");
+  const [closingDay, setClosingDay] = useState("");
+  const [dueDay, setDueDay] = useState("");
+  const [invoiceLabel, setInvoiceLabel] = useState("");
+  const [loanName, setLoanName] = useState("");
+  const [loanType, setLoanType] = useState<"installment" | "sales_retention">("installment");
+  const [institutionName, setInstitutionName] = useState("");
+  const [totalInstallments, setTotalInstallments] = useState("");
+  const [remainingAmount, setRemainingAmount] = useState("");
+  const [selectedLoanId, setSelectedLoanId] = useState<string>(loans[0] ? String(loans[0].id) : "none");
+  const [entryDate, setEntryDate] = useState("");
+  const today = new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedCnpjId(cnpjs[0] ? String(cnpjs[0].id) : "none");
+    setDescription("");
+    setCounterparty("");
+    setAmount("");
+    setDueDate("");
+    setCategory("financeiro");
+    setNotes("");
+    setRecurrence("monthly");
+    setSelectedCardId(creditCards[0] ? String(creditCards[0].id) : "none");
+    setCardName("");
+    setBankName("");
+    setLimitAmount("");
+    setClosingDay("");
+    setDueDay("");
+    setInvoiceLabel("");
+    setLoanName("");
+    setLoanType("installment");
+    setInstitutionName("");
+    setTotalInstallments("");
+    setRemainingAmount("");
+    setSelectedLoanId(loans[0] ? String(loans[0].id) : "none");
+    setEntryDate("");
+  }, [open, cnpjs, creditCards, loans]);
+
+  const createPayableMutation = trpc.finance.payables.create.useMutation();
+  const createFixedCostMutation = trpc.finance.fixedCosts.create.useMutation();
+  const createCreditCardMutation = trpc.finance.creditCards.create.useMutation();
+  const createCreditCardInvoiceMutation = trpc.finance.creditCards.upsertInvoice.useMutation();
+  const createLoanMutation = trpc.finance.loans.create.useMutation();
+  const createRetentionMutation = trpc.finance.loans.createRetentionEntry.useMutation();
+
+  async function refreshAfterSave() {
+    await Promise.all([
+      utils.finance.payables.list.invalidate(),
+      utils.finance.payables.dashboard.invalidate(),
+      utils.finance.fixedCosts.list.invalidate(),
+      utils.finance.fixedCosts.payments.invalidate(),
+      utils.finance.creditCards.list.invalidate(),
+      utils.finance.creditCards.invoices.invalidate(),
+      utils.finance.loans.list.invalidate(),
+      utils.finance.loans.retentionEntries.invalidate(),
+      utils.finance.loans.installments.invalidate(),
+      utils.finance.dre.invalidate(),
+    ]);
+    onSaved();
+    onOpenChange(false);
+  }
+
+  async function handleSubmit() {
+    if (!mode) return;
+    if (selectedCnpjId === "none") {
+      toast.error("Cadastre um CNPJ antes de lançar obrigações.");
+      return;
+    }
+
+    if (mode === "conta") {
+      if (!description || !amount || !dueDate) {
+        toast.error("Preencha descrição, valor e vencimento da conta.");
+        return;
+      }
+      await createPayableMutation.mutateAsync({
+        title: description,
+        supplier: counterparty || null,
+        category,
+        accountType: "boleto",
+        amount,
+        dueDate,
+        status: "pending",
+        paidAmount: null,
+        paidAt: null,
+        installmentLabel: recurrence === "monthly" ? "Recorrente" : null,
+        reminderDaysBefore: 1,
+        description: counterparty || null,
+        notes: notes || null,
+      });
+      toast.success("Conta a pagar cadastrada.");
+      await refreshAfterSave();
+      return;
+    }
+
+    if (mode === "custoFixo") {
+      if (!description || !amount) {
+        toast.error("Preencha nome e valor padrão do custo fixo.");
+        return;
+      }
+      await createFixedCostMutation.mutateAsync({
+        name: description,
+        category,
+        amount,
+        dueDay: Number((dueDate || "").slice(8, 10) || 1),
+        notes: notes || null,
+      });
+      toast.success("Custo fixo cadastrado.");
+      await refreshAfterSave();
+      return;
+    }
+
+    if (mode === "cartao") {
+      if (!cardName || !bankName || !dueDay) {
+        toast.error("Preencha nome do cartão, banco e dia de vencimento.");
+        return;
+      }
+      await createCreditCardMutation.mutateAsync({
+        name: cardName,
+        brand: bankName || "outros",
+        lastFourDigits: null,
+        closingDay: Number(closingDay || 1),
+        dueDay: Number(dueDay),
+        creditLimit: limitAmount || null,
+        notes: notes || null,
+      });
+      toast.success("Cartão cadastrado.");
+      await refreshAfterSave();
+      return;
+    }
+
+    if (mode === "fatura") {
+      if (selectedCardId === "none" || !amount) {
+        toast.error("Selecione um cartão e informe o valor da fatura.");
+        return;
+      }
+      await createCreditCardInvoiceMutation.mutateAsync({
+        cardId: Number(selectedCardId),
+        periodYear: selectedYear,
+        periodMonth: selectedMonth,
+        totalAmount: amount,
+        minimumAmount: null,
+        amountPaid: null,
+        status: "pending",
+        paidAt: null,
+        notes: [invoiceLabel || null, dueDate ? `Vencimento: ${dueDate}` : null, entryDate ? `Fechamento: ${entryDate}` : null, notes || null].filter(Boolean).join(" | ") || null,
+      });
+      toast.success("Fatura cadastrada.");
+      await refreshAfterSave();
+      return;
+    }
+
+    if (mode === "emprestimo") {
+      if (!loanName || !institutionName || !amount) {
+        toast.error("Preencha nome, instituição e valor contratado do empréstimo.");
+        return;
+      }
+      await createLoanMutation.mutateAsync({
+        name: loanName,
+        institution: institutionName,
+        loanType,
+        totalAmount: amount,
+        installmentAmount: loanType === "installment" ? amount : null,
+        totalInstallments: loanType === "installment" ? Number(totalInstallments || 1) : null,
+        interestRate: null,
+        startDate: dueDate || today,
+        dueDay: dueDate ? Number(dueDate.slice(8, 10)) : null,
+        notes: [remainingAmount ? `Saldo em aberto informado: R$ ${remainingAmount}` : null, notes || null].filter(Boolean).join(" | ") || null,
+      });
+      toast.success("Empréstimo cadastrado.");
+      await refreshAfterSave();
+      return;
+    }
+
+    if (mode === "retencao") {
+      if (selectedLoanId === "none" || !amount) {
+        toast.error("Selecione um empréstimo e informe o valor da retenção.");
+        return;
+      }
+      await createRetentionMutation.mutateAsync({
+        loanId: Number(selectedLoanId),
+        entryDate: entryDate || today,
+        periodYear: selectedYear,
+        periodMonth: selectedMonth,
+        entryType: "manual",
+        eventCategory: "abatimento_emprestimo",
+        grossAmount: null,
+        netAmount: null,
+        retentionPercentApplied: null,
+        retainedAmount: amount,
+        sourceReference: description || "Retenção operacional",
+        notes: notes || null,
+      });
+      toast.success("Retenção cadastrada.");
+      await refreshAfterSave();
+    }
+  }
+
+  const meta = mode ? obligationDialogMeta[mode] : null;
+  const loading = createPayableMutation.isPending || createFixedCostMutation.isPending || createCreditCardMutation.isPending || createCreditCardInvoiceMutation.isPending || createLoanMutation.isPending || createRetentionMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{meta?.title ?? "Cadastro"}</DialogTitle>
+          <DialogDescription>{meta?.description ?? "Preencha os dados para seguir."}</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>CNPJ</Label>
+            <Select value={selectedCnpjId} onValueChange={setSelectedCnpjId}>
+              <SelectTrigger><SelectValue placeholder="Selecione o CNPJ" /></SelectTrigger>
+              <SelectContent>
+                {cnpjs.map((cnpj: any) => (
+                  <SelectItem key={cnpj.id} value={String(cnpj.id)}>{cnpj.nomeFantasia || cnpj.razaoSocial}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(mode === "conta" || mode === "custoFixo") && (
+            <>
+              <div className="space-y-2">
+                <Label>{mode === "conta" ? "Descrição" : "Nome do custo"}</Label>
+                <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={mode === "conta" ? "Ex.: Boleto fornecedor" : "Ex.: Aluguel do galpão"} />
+              </div>
+              {mode === "conta" && <div className="space-y-2"><Label>Fornecedor / favorecido</Label><Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder="Opcional" /></div>}
+              <div className="space-y-2"><Label>Valor</Label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" /></div>
+              {mode === "conta" ? <div className="space-y-2"><Label>Vencimento</Label><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div> : <div className="space-y-2"><Label>Recorrência</Label><Select value={recurrence} onValueChange={setRecurrence}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="weekly">Semanal</SelectItem><SelectItem value="yearly">Anual</SelectItem></SelectContent></Select></div>}
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="financeiro, aluguel, energia..." />
+              </div>
+            </>
+          )}
+
+          {mode === "cartao" && (
+            <>
+              <div className="space-y-2"><Label>Nome do cartão</Label><Input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="Ex.: Visa Empresarial" /></div>
+              <div className="space-y-2"><Label>Banco emissor</Label><Input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Ex.: Nubank" /></div>
+              <div className="space-y-2"><Label>Limite</Label><Input type="number" value={limitAmount} onChange={(e) => setLimitAmount(e.target.value)} placeholder="0,00" /></div>
+              <div className="space-y-2"><Label>Dia de fechamento</Label><Input type="number" value={closingDay} onChange={(e) => setClosingDay(e.target.value)} placeholder="Ex.: 25" /></div>
+              <div className="space-y-2"><Label>Dia de vencimento</Label><Input type="number" value={dueDay} onChange={(e) => setDueDay(e.target.value)} placeholder="Ex.: 5" /></div>
+            </>
+          )}
+
+          {mode === "fatura" && (
+            <>
+              <div className="space-y-2">
+                <Label>Cartão</Label>
+                <Select value={selectedCardId} onValueChange={setSelectedCardId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o cartão" /></SelectTrigger>
+                  <SelectContent>
+                    {creditCards.map((card: any) => (
+                      <SelectItem key={card.id} value={String(card.id)}>{card.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label>Descrição da fatura</Label><Input value={invoiceLabel} onChange={(e) => setInvoiceLabel(e.target.value)} placeholder="Ex.: Fatura principal do mês" /></div>
+              <div className="space-y-2"><Label>Valor</Label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" /></div>
+              <div className="space-y-2"><Label>Data de fechamento</Label><Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Data de vencimento</Label><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+            </>
+          )}
+
+          {mode === "emprestimo" && (
+            <>
+              <div className="space-y-2"><Label>Nome do empréstimo</Label><Input value={loanName} onChange={(e) => setLoanName(e.target.value)} placeholder="Ex.: Capital de giro março" /></div>
+              <div className="space-y-2"><Label>Instituição</Label><Input value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} placeholder="Ex.: Mercado Pago" /></div>
+              <div className="space-y-2"><Label>Tipo</Label><Select value={loanType} onValueChange={(value: "installment" | "sales_retention") => setLoanType(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="installment">Parcelado</SelectItem><SelectItem value="sales_retention">Retenção de vendas</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Valor contratado</Label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" /></div>
+              <div className="space-y-2"><Label>Saldo em aberto</Label><Input type="number" value={remainingAmount} onChange={(e) => setRemainingAmount(e.target.value)} placeholder="0,00" /></div>
+              <div className="space-y-2"><Label>Início</Label><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+              {loanType === "installment" ? <div className="space-y-2"><Label>Total de parcelas</Label><Input type="number" value={totalInstallments} onChange={(e) => setTotalInstallments(e.target.value)} placeholder="Ex.: 12" /></div> : null}
+            </>
+          )}
+
+          {mode === "retencao" && (
+            <>
+              <div className="space-y-2">
+                <Label>Empréstimo</Label>
+                <Select value={selectedLoanId} onValueChange={setSelectedLoanId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o empréstimo" /></SelectTrigger>
+                  <SelectContent>
+                    {loans.map((loan: any) => (
+                      <SelectItem key={loan.id} value={String(loan.id)}>{loan.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label>Descrição</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Retenção Mercado Pago" /></div>
+              <div className="space-y-2"><Label>Valor</Label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" /></div>
+              <div className="space-y-2"><Label>Data</Label><Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} /></div>
+            </>
+          )}
+
+          <div className="space-y-2 md:col-span-2">
+            <Label>Observações</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anotações opcionais para facilitar o controle." rows={4} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={handleSubmit} disabled={loading}>{loading ? "Salvando..." : "Salvar cadastro"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Finance() {
   const { user } = useAuth();
   const [location, navigate] = useLocation();
@@ -265,6 +644,8 @@ export default function Finance() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedCnpjId, setSelectedCnpjId] = useState<string>("all");
+  const [obligationDialogMode, setObligationDialogMode] = useState<ObligationDialogMode | null>(null);
+  const [obligationDialogOpen, setObligationDialogOpen] = useState(false);
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
   const statementsQuery = trpc.bankStatements.list.useQuery();
@@ -382,6 +763,13 @@ export default function Finance() {
   }
 
   const goToExtratos = () => navigate("/extratos");
+  const openObligationDialog = (mode: ObligationDialogMode) => {
+    if (!isObligationsRoute) {
+      navigate(mode === "conta" || mode === "custoFixo" ? "/obrigacoes/contas" : mode === "cartao" || mode === "fatura" ? "/obrigacoes/cartoes" : "/obrigacoes/emprestimos");
+    }
+    setObligationDialogMode(mode);
+    setObligationDialogOpen(true);
+  };
   const goToContas = () => navigate("/obrigacoes/contas");
   const goToCartoes = () => navigate("/obrigacoes/cartoes");
   const goToEmprestimos = () => navigate("/obrigacoes/emprestimos");
@@ -435,8 +823,8 @@ export default function Finance() {
                   description="Esta área foi redesenhada para separar urgência, compromisso do mês e rotina de pagamento. Assim você enxerga o que precisa de baixa agora e o que ainda é planejamento financeiro."
                   accentClass="bg-gradient-to-br from-rose-500 via-rose-600 to-orange-500"
                 >
-                  <QuickActionButton label="Nova conta a pagar" onClick={goToContas} />
-                  <Button variant="secondary" onClick={goToExtratos}>Classificar saídas no extrato</Button>
+                  <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
+                  <Button variant="secondary" onClick={() => openObligationDialog("custoFixo")}>Novo custo fixo</Button>
                 </ObligationSpotlight>
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -477,7 +865,7 @@ export default function Finance() {
                         <CardTitle>Lista de contas a pagar</CardTitle>
                         <CardDescription>Visualize vencimento, status e impacto financeiro de cada obrigação com leitura rápida.</CardDescription>
                       </div>
-                      <QuickActionButton label="Nova conta a pagar" onClick={goToContas} />
+                      <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {payables.slice(0, 12).map((item: any) => (
@@ -493,7 +881,7 @@ export default function Finance() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <EmptyState title="Nenhuma conta a pagar cadastrada" description="Comece por boletos, fornecedores e despesas previstas para montar seu controle operacional." actionLabel="Cadastrar conta a pagar" onAction={goToContas} />
+                  <EmptyState title="Nenhuma conta a pagar cadastrada" description="Comece por boletos, fornecedores e despesas previstas para montar seu controle operacional." actionLabel="Cadastrar conta a pagar" onAction={() => openObligationDialog("conta")} />
                 )}
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -533,8 +921,8 @@ export default function Finance() {
                   description="Aqui o objetivo é mostrar concentração de compromissos por cartão e o tamanho da pressão futura no caixa, sem misturar isso com o caixa realizado dos extratos."
                   accentClass="bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-600"
                 >
-                  <QuickActionButton label="Novo cartão" onClick={goToCartoes} />
-                  <Button variant="secondary" onClick={goToCartoes}>Nova fatura</Button>
+                  <QuickActionButton label="Novo cartão" onClick={() => openObligationDialog("cartao")} />
+                  <Button variant="secondary" onClick={() => openObligationDialog("fatura")}>Nova fatura</Button>
                 </ObligationSpotlight>
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -565,7 +953,8 @@ export default function Finance() {
                       <CardTitle>Faturas registradas</CardTitle>
                       <CardDescription>Monitore fechamento, vencimento e o peso real das faturas futuras com leitura mais limpa.</CardDescription>
                     </div>
-                    <QuickActionButton label="Nova fatura" onClick={goToCartoes} />
+                      <QuickActionButton label="Nova fatura" onClick={() => openObligationDialog("fatura")} />
+
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {creditCardInvoices.slice(0, 12).map((invoice: any) => (
@@ -581,7 +970,7 @@ export default function Finance() {
                   </CardContent>
                 </Card>
               ) : (
-                <EmptyState title="Nenhuma fatura cadastrada" description="Cadastre cartões e faturas para acompanhar saldos devidos e pagamentos realizados sem bagunça no DRE." actionLabel="Cadastrar cartão ou fatura" onAction={goToCartoes} />
+                <EmptyState title="Nenhuma fatura cadastrada" description="Cadastre cartões e faturas para acompanhar saldos devidos e pagamentos realizados sem bagunça no DRE." actionLabel="Cadastrar cartão ou fatura" onAction={() => openObligationDialog("fatura")} />
               )}
             </div>
           )}
@@ -595,8 +984,8 @@ export default function Finance() {
                   description="Este quadro destaca passivos ativos, parcelas do mês e retenções operacionais para você entender pressão de médio prazo e o avanço real do abatimento sobre vendas."
                   accentClass="bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600"
                 >
-                  <QuickActionButton label="Novo empréstimo" onClick={goToEmprestimos} />
-                  <Button variant="secondary" onClick={goToEmprestimos}>Nova retenção</Button>
+                  <QuickActionButton label="Novo empréstimo" onClick={() => openObligationDialog("emprestimo")} />
+                  <Button variant="secondary" onClick={() => openObligationDialog("retencao")}>Nova retenção</Button>
                 </ObligationSpotlight>
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -627,7 +1016,8 @@ export default function Finance() {
                       <CardTitle>Empréstimos cadastrados</CardTitle>
                       <CardDescription>Registre saldos, retenções e parcelas com uma visão mais elegante do passivo em andamento.</CardDescription>
                     </div>
-                    <QuickActionButton label="Novo empréstimo" onClick={goToEmprestimos} />
+                      <QuickActionButton label="Novo empréstimo" onClick={() => openObligationDialog("emprestimo")} />
+
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {loans.slice(0, 12).map((loan: any) => (
@@ -643,12 +1033,23 @@ export default function Finance() {
                   </CardContent>
                 </Card>
               ) : (
-                <EmptyState title="Nenhum empréstimo cadastrado" description="Cadastre retenções e empréstimos nesta área para controle do passivo e pagamentos." actionLabel="Cadastrar empréstimo" onAction={goToEmprestimos} />
+                <EmptyState title="Nenhum empréstimo cadastrado" description="Cadastre retenções e empréstimos nesta área para controle do passivo e pagamentos." actionLabel="Cadastrar empréstimo" onAction={() => openObligationDialog("emprestimo")} />
               )}
             </div>
           )}
 
         </div>
+        <ObligationDialog
+          open={obligationDialogOpen}
+          mode={obligationDialogMode}
+          onOpenChange={setObligationDialogOpen}
+          cnpjs={cnpjs}
+          creditCards={creditCards}
+          loans={loans}
+          selectedYear={selectedYear}
+          selectedMonth={selectedMonth}
+          onSaved={() => setObligationDialogMode(null)}
+        />
       </DashboardLayout>
     );
   }

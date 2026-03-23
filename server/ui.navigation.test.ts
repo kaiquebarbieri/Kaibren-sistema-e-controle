@@ -20,23 +20,22 @@ describe("ui.navigation contract", () => {
     expect(sections.find((item) => item.section === "obrigacoes")?.href).toBe("/obrigacoes");
   });
 
-  it("mantém as subtelas de Obrigações para contas, cartões e empréstimos", () => {
+  it("mantém as subtelas de Obrigações para contas, cartões e empréstimos com CTAs que abrem fluxos reais de cadastro", () => {
     const tabs = [
-      { key: "contas", href: "/obrigacoes/contas", primaryCtaTarget: "/obrigacoes/contas", secondaryCtaTarget: "/extratos", insight: "Radar executivo" },
-      { key: "cartoes", href: "/obrigacoes/cartoes", primaryCtaTarget: "/obrigacoes/cartoes", secondaryCtaTarget: "/obrigacoes/cartoes", insight: "Resumo do uso" },
-      { key: "emprestimos", href: "/obrigacoes/emprestimos", primaryCtaTarget: "/obrigacoes/emprestimos", secondaryCtaTarget: "/obrigacoes/emprestimos", insight: "Indicadores principais" },
+      { key: "contas", href: "/obrigacoes/contas", primaryDialog: "conta", secondaryDialog: "custoFixo", insight: "Radar executivo" },
+      { key: "cartoes", href: "/obrigacoes/cartoes", primaryDialog: "cartao", secondaryDialog: "fatura", insight: "Resumo do uso" },
+      { key: "emprestimos", href: "/obrigacoes/emprestimos", primaryDialog: "emprestimo", secondaryDialog: "retencao", insight: "Indicadores principais" },
     ];
 
     expect(tabs).toHaveLength(3);
     expect(tabs.map((item) => item.key)).toEqual(["contas", "cartoes", "emprestimos"]);
     expect(tabs.every((item) => item.href.startsWith("/obrigacoes/"))).toBe(true);
-    expect(tabs.every((item) => item.primaryCtaTarget === item.href)).toBe(true);
-    expect(tabs.find((item) => item.key === "contas")?.secondaryCtaTarget).toBe("/extratos");
-    expect(tabs.filter((item) => item.key !== "contas").every((item) => item.secondaryCtaTarget === item.href)).toBe(true);
+    expect(tabs.map((item) => item.primaryDialog)).toEqual(["conta", "cartao", "emprestimo"]);
+    expect(tabs.map((item) => item.secondaryDialog)).toEqual(["custoFixo", "fatura", "retencao"]);
     expect(tabs.map((item) => item.insight)).toEqual(["Radar executivo", "Resumo do uso", "Indicadores principais"]);
   });
 
-  it("preserva o princípio de que o DRE usa extratos e que as ações de cadastro ficam em Obrigações", () => {
+  it("preserva o princípio de que o DRE usa extratos e que as ações de cadastro em Obrigações abrem diálogos próprios", () => {
     const financeiro = {
       fonteDoDre: "extratos_bancarios",
       acoesPrincipais: [
@@ -45,6 +44,7 @@ describe("ui.navigation contract", () => {
         "Abrir cartões",
         "Abrir empréstimos",
       ],
+      dialogosObrigacoes: ["conta", "custoFixo", "cartao", "fatura", "emprestimo", "retencao"],
     };
 
     expect(financeiro.fonteDoDre).toBe("extratos_bancarios");
@@ -52,6 +52,7 @@ describe("ui.navigation contract", () => {
     expect(financeiro.acoesPrincipais).toContain("Abrir contas a pagar");
     expect(financeiro.acoesPrincipais).toContain("Abrir cartões");
     expect(financeiro.acoesPrincipais).toContain("Abrir empréstimos");
+    expect(financeiro.dialogosObrigacoes).toEqual(["conta", "custoFixo", "cartao", "fatura", "emprestimo", "retencao"]);
   });
 
   it("preserva a intenção de dashboards analíticos e visuais dedicados dentro de Obrigações", () => {
