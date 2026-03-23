@@ -390,10 +390,44 @@ function ObligationDialog({
   const createLoanMutation = trpc.finance.loans.create.useMutation();
   const createRetentionMutation = trpc.finance.loans.createRetentionEntry.useMutation();
 
+  const payablesListInput = {
+    year: selectedYear,
+    month: selectedMonth,
+    cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId),
+  };
+  const payablesDashboardInput = {
+    referenceDate: today,
+    year: selectedYear,
+    month: selectedMonth,
+    cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId),
+  };
+
+  function upsertPayableInCache(payable: Record<string, any>) {
+    utils.finance.payables.list.setData(payablesListInput, (current) => {
+      const items = Array.isArray(current) ? [...current] : [];
+      const index = items.findIndex((item: any) => item.id === payable.id);
+      if (index >= 0) {
+        items[index] = { ...items[index], ...payable };
+      } else {
+        items.unshift(payable as any);
+      }
+      return items;
+    });
+  }
+
+  function removePayableFromCache(payableId: number) {
+    utils.finance.payables.list.setData(payablesListInput, (current) => {
+      const items = Array.isArray(current) ? current : [];
+      return items.filter((item: any) => item.id !== payableId);
+    });
+  }
+
   async function refreshAfterSave() {
+    onSaved();
+    onOpenChange(false);
     await Promise.all([
-      utils.finance.payables.list.invalidate(),
-      utils.finance.payables.dashboard.invalidate(),
+      utils.finance.payables.list.invalidate(payablesListInput),
+      utils.finance.payables.dashboard.invalidate(payablesDashboardInput),
       utils.finance.fixedCosts.list.invalidate(),
       utils.finance.fixedCosts.payments.invalidate(),
       utils.finance.creditCards.list.invalidate(),
@@ -403,8 +437,6 @@ function ObligationDialog({
       utils.finance.loans.installments.invalidate(),
       utils.finance.dre.invalidate(),
     ]);
-    onSaved();
-    onOpenChange(false);
   }
 
   async function handleSubmit() {
@@ -436,10 +468,12 @@ function ObligationDialog({
         notes: notes || null,
       };
       if (editingPayable?.id) {
-        await updatePayableMutation.mutateAsync({ id: editingPayable.id, ...payload });
+        const updatedPayable = await updatePayableMutation.mutateAsync({ id: editingPayable.id, ...payload });
+        upsertPayableInCache(updatedPayable as Record<string, any>);
         toast.success("Conta a pagar atualizada.");
       } else {
-        await createPayableMutation.mutateAsync(payload);
+        const createdPayable = await createPayableMutation.mutateAsync(payload);
+        upsertPayableInCache(createdPayable as Record<string, any>);
         toast.success("Conta a pagar cadastrada.");
       }
       await refreshAfterSave();

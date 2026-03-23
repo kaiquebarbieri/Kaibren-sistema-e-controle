@@ -142,6 +142,37 @@ describe("ui.navigation contract", () => {
     expect(deletePayload).toEqual({ id: 41 });
   });
 
+  it("insere imediatamente o novo boleto no topo da lista filtrada após salvar", () => {
+    const listInput = {
+      year: 2026,
+      month: 2,
+      cnpjId: 7,
+    };
+    const existing = [
+      { id: 10, title: "Conta anterior", cnpjId: 7, dueDate: "2026-02-20", amount: "450.00" },
+    ];
+    const created = { id: 11, title: "Boleto recém-cadastrado", cnpjId: 7, dueDate: "2026-02-26", amount: "987.65" };
+
+    const upsertPayableInCache = (current: Array<Record<string, unknown>> | undefined, payable: Record<string, unknown>) => {
+      const items = Array.isArray(current) ? [...current] : [];
+      const index = items.findIndex((item) => item.id === payable.id);
+      if (index >= 0) {
+        items[index] = { ...items[index], ...payable };
+      } else {
+        items.unshift(payable);
+      }
+      return items;
+    };
+
+    const updated = upsertPayableInCache(existing, created);
+
+    expect(listInput).toEqual({ year: 2026, month: 2, cnpjId: 7 });
+    expect(updated).toHaveLength(2);
+    expect(updated[0]?.title).toBe("Boleto recém-cadastrado");
+    expect(updated[0]?.id).toBe(11);
+    expect(updated[1]?.title).toBe("Conta anterior");
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",

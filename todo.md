@@ -267,3 +267,7 @@
 - [x] Corrigir o cadastro de contas em Contas a Pagar para que os dados salvos apareçam corretamente no painel de Obrigações
 - [x] Investigar e corrigir o caso em que contas a pagar são cadastradas, mas ainda não refletem no painel de Obrigações após salvar
 - [ ] Adicionar botões de editar e excluir nas contas do painel de Obrigações com fluxo claro e seguro
+- [ ] Revisar e corrigir todos os erros restantes de cadastro em Obrigações para garantir que salvar, editar e excluir reflitam corretamente nos painéis
+- [ ] Reproduzir e corrigir a recorrência do cadastro que voltou a não refletir no painel de Obrigações no uso real do usuário
+- [ ] Corrigir o caso em que novo boleto confirma salvamento, mas não aparece na lista de Contas a Pagar no painel de Obrigações
+- [ ] Fazer novos registros de Contas a Pagar aparecerem imediatamente na tela após salvar, sem atraso perceptível de atualização
