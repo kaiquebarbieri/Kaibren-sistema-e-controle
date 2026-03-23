@@ -52,7 +52,7 @@ const menuItems = [
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
 const MIN_WIDTH = 220;
-const MAX_WIDTH = 420;
+const MAX_WIDTH = 360;
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -187,10 +187,10 @@ function DashboardLayoutContent({
     return (
       <div className="flex min-h-screen flex-col bg-background">
         {/* Mobile top header */}
-        <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
-          <div className="flex items-center gap-3">
-            <activeMenuItem.icon className="h-5 w-5 text-primary" />
-            <span className="text-base font-semibold tracking-tight text-foreground">{activeMenuItem.label}</span>
+        <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sm:px-4">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <activeMenuItem.icon className="h-5 w-5 shrink-0 text-primary" />
+            <span className="truncate text-sm font-semibold tracking-tight text-foreground sm:text-base">{activeMenuItem.label}</span>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -219,13 +219,13 @@ function DashboardLayoutContent({
         </header>
 
         {/* Main content with bottom padding for nav bar */}
-        <main className="flex-1 overflow-y-auto px-3 py-4 pb-20">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-24 sm:px-4">
           {children}
         </main>
 
         {/* Bottom navigation bar - fixed */}
-        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur safe-area-bottom">
-          <div className="flex h-16 items-center justify-around px-2">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 px-1 backdrop-blur supports-[backdrop-filter]:backdrop-blur safe-area-bottom">
+          <div className="mx-auto grid h-auto max-w-screen-sm grid-cols-4 gap-1 py-2">
             {menuItems.map(item => {
               const isActive = item.section === activeSection;
               return (
@@ -235,14 +235,14 @@ function DashboardLayoutContent({
                     setLocation(item.href);
                     onNavigate?.(item.section);
                   }}
-                  className={`flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-1.5 transition-colors min-w-[64px] ${
+                  className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center transition-colors sm:px-2 ${
                     isActive
                       ? "text-primary"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <item.icon className={`h-5 w-5 ${isActive ? "text-primary" : ""}`} />
-                  <span className={`text-[11px] font-medium leading-none ${isActive ? "text-primary" : ""}`}>
+                  <item.icon className={`h-5 w-5 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                  <span className={`line-clamp-2 text-[10px] font-medium leading-tight sm:text-[11px] ${isActive ? "text-primary" : ""}`}>
                     {item.label}
                   </span>
                 </button>
@@ -345,7 +345,7 @@ function DashboardLayoutContent({
       </div>
 
       <SidebarInset>
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-6 2xl:p-8">{children}</main>
       </SidebarInset>
     </>
   );

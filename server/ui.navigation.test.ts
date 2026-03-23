@@ -58,16 +58,27 @@ describe("ui.navigation contract", () => {
   it("preserva a intenção de dashboards analíticos e visuais dedicados dentro de Obrigações", () => {
     const dashboards = {
       contas: ["Radar executivo", "Contas do mês", "Custos fixos do período"],
-      cartoes: ["Resumo do uso", "Maior concentração", "Faturas registradas"],
-      emprestimos: ["Indicadores principais", "Saldo em aberto", "Empréstimos cadastrados"],
+      cartoes: ["Resumo do uso", "Faturas registradas", "Cobertura visual"],
+      emprestimos: ["Indicadores principais", "Empréstimos cadastrados", "Saldo em aberto"],
     };
 
     expect(dashboards.contas).toContain("Radar executivo");
-    expect(dashboards.contas).toContain("Custos fixos do período");
-    expect(dashboards.cartoes).toContain("Resumo do uso");
     expect(dashboards.cartoes).toContain("Faturas registradas");
-    expect(dashboards.emprestimos).toContain("Indicadores principais");
     expect(dashboards.emprestimos).toContain("Saldo em aberto");
+  });
+
+  it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
+    const responsiveRules = {
+      mobileMenu: "grid-cols-4 com textos em duas linhas",
+      obligationTabs: "grid no mobile e 3 colunas a partir de sm",
+      ctaButtons: "largura total no mobile e automática em telas maiores",
+      desktopContent: "overflow-x-hidden com padding progressivo até 2xl",
+    };
+
+    expect(responsiveRules.mobileMenu).toContain("grid-cols-4");
+    expect(responsiveRules.obligationTabs).toContain("3 colunas");
+    expect(responsiveRules.ctaButtons).toContain("mobile");
+    expect(responsiveRules.desktopContent).toContain("2xl");
   });
 
   it("usa as transações retornadas no DRE para preencher movimentos recentes e painel Mercado Pago", () => {

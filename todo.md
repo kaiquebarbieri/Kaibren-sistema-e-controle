@@ -259,3 +259,4 @@
 - [x] Refinar o design dos dashboards de Obrigações com visual mais bonito, hierarquia melhor e leitura analítica por seção
 - [x] Corrigir os botões de cadastro do menu Obrigações para que cada CTA abra sua área correta e não redirecione indevidamente para Extratos
 - [x] Fazer os botões de cadastro em Obrigações abrirem um fluxo real de cadastro em vez de apenas manterem o usuário na mesma tela
+- [x] Ajustar menus e botões para celular, telas pequenas e telas grandes sem cortes visuais nem estouro de layout

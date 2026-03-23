@@ -801,12 +801,12 @@ export default function Finance() {
             description={currentTabMeta.description}
           />
 
-          <div className="flex gap-1 overflow-x-auto rounded-2xl bg-muted/60 p-1">
+          <div className="grid grid-cols-1 gap-2 rounded-2xl bg-muted/60 p-1 sm:grid-cols-3 sm:gap-1">
             {obligationTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => navigate(`/obrigacoes/${tab.key}`)}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all ${activeObligationTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-center text-sm font-medium transition-all sm:px-4 ${activeObligationTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <tab.icon className="h-4 w-4" />
                 {tab.label}
@@ -824,7 +824,7 @@ export default function Finance() {
                   accentClass="bg-gradient-to-br from-rose-500 via-rose-600 to-orange-500"
                 >
                   <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
-                  <Button variant="secondary" onClick={() => openObligationDialog("custoFixo")}>Novo custo fixo</Button>
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => openObligationDialog("custoFixo")}>Novo custo fixo</Button>
                 </ObligationSpotlight>
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -842,7 +842,7 @@ export default function Finance() {
                         <CalendarClock className="h-8 w-8 text-amber-500" />
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Em atraso" value={`R$ ${fmt(payablesDashboard?.totalOverdue || 0)}`} helper="Valor que continua pressionando o caixa até receber baixa." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
                       <InsightMetric label="Previsto no mês" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Compromissos futuros ainda não liquidados." tone="info" icon={<Target className="h-4 w-4" />} />
                     </div>
@@ -860,7 +860,7 @@ export default function Finance() {
               <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                 {payables.length > 0 ? (
                   <Card className="rounded-3xl border bg-card/95 shadow-sm">
-                    <CardHeader className="flex flex-row items-center justify-between gap-4">
+                    <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <CardTitle>Lista de contas a pagar</CardTitle>
                         <CardDescription>Visualize vencimento, status e impacto financeiro de cada obrigação com leitura rápida.</CardDescription>
@@ -890,7 +890,7 @@ export default function Finance() {
                     <CardDescription>Uma leitura separada para aluguel, folha, carro, água, luz e outros compromissos recorrentes.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Pagamentos lançados" value={String(fixedCostPayments.length)} helper="Quantidade de registros para o período selecionado." tone="success" icon={<Sparkles className="h-4 w-4" />} />
                       <InsightMetric label="Impacto mensal" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Quanto os custos fixos pesam no controle gerencial." tone="neutral" icon={<Wallet className="h-4 w-4" />} />
                     </div>
@@ -922,7 +922,7 @@ export default function Finance() {
                   accentClass="bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-600"
                 >
                   <QuickActionButton label="Novo cartão" onClick={() => openObligationDialog("cartao")} />
-                  <Button variant="secondary" onClick={() => openObligationDialog("fatura")}>Nova fatura</Button>
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => openObligationDialog("fatura")}>Nova fatura</Button>
                 </ObligationSpotlight>
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -932,7 +932,7 @@ export default function Finance() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <InsightMetric label="Cartões cadastrados" value={String(creditCards.length)} helper="Base de cartões atualmente monitorada." tone="info" icon={<CreditCard className="h-4 w-4" />} />
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Faturas do mês" value={String(creditCardInvoices.length)} helper="Competências com fechamento no período selecionado." tone="neutral" icon={<CalendarClock className="h-4 w-4" />} />
                       <InsightMetric label="Valor acompanhado" value={`R$ ${fmt(obligations.totalCartoes)}`} helper="Compromissos futuros que merecem atenção gerencial." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
                     </div>
@@ -940,7 +940,7 @@ export default function Finance() {
                 </Card>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <InsightMetric label="Maior concentração" value={`R$ ${fmt(creditCardInvoices.reduce((max: number, invoice: any) => Math.max(max, Number(invoice.amount || 0)), 0))}`} helper="Maior fatura individual do período." tone="warning" icon={<Target className="h-4 w-4" />} />
                 <InsightMetric label="Valor médio" value={`R$ ${fmt(creditCardInvoices.length > 0 ? creditCardInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0) / creditCardInvoices.length : 0)}`} helper="Leitura média para comparar comportamento das competências." tone="info" icon={<PieChart className="h-4 w-4" />} />
                 <InsightMetric label="Cobertura visual" value={creditCardInvoices.length > 0 ? "Ativa" : "Vazia"} helper="Se não houver faturas, o painel já indica necessidade de cadastro." tone={creditCardInvoices.length > 0 ? "success" : "neutral"} icon={<Sparkles className="h-4 w-4" />} />
@@ -948,7 +948,7 @@ export default function Finance() {
 
               {creditCardInvoices.length > 0 ? (
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Faturas registradas</CardTitle>
                       <CardDescription>Monitore fechamento, vencimento e o peso real das faturas futuras com leitura mais limpa.</CardDescription>
@@ -985,7 +985,7 @@ export default function Finance() {
                   accentClass="bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600"
                 >
                   <QuickActionButton label="Novo empréstimo" onClick={() => openObligationDialog("emprestimo")} />
-                  <Button variant="secondary" onClick={() => openObligationDialog("retencao")}>Nova retenção</Button>
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => openObligationDialog("retencao")}>Nova retenção</Button>
                 </ObligationSpotlight>
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
@@ -995,7 +995,7 @@ export default function Finance() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <InsightMetric label="Empréstimos ativos" value={String(loans.length)} helper="Quantidade de contratos hoje em acompanhamento." tone="success" icon={<Landmark className="h-4 w-4" />} />
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Parcelas do mês" value={String(loanInstallments.length)} helper="Compromissos periódicos com vencimento no período." tone="info" icon={<CalendarClock className="h-4 w-4" />} />
                       <InsightMetric label="Retenção do mês" value={`R$ ${fmt(obligations.totalEmprestimos)}`} helper="Volume que já apareceu como obrigação ligada a empréstimos." tone="warning" icon={<TrendingDown className="h-4 w-4" />} />
                     </div>
@@ -1003,7 +1003,7 @@ export default function Finance() {
                 </Card>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <InsightMetric label="Saldo em aberto" value={`R$ ${fmt(loans.reduce((sum: number, loan: any) => sum + Number(loan.remainingAmount || loan.balance || 0), 0))}`} helper="Estimativa somada do saldo restante informado nos contratos." tone="danger" icon={<Wallet className="h-4 w-4" />} />
                 <InsightMetric label="Retenções lançadas" value={String(retentionEntries.length)} helper="Quantidade de registros de abatimento/rastreamento no período." tone="neutral" icon={<Sparkles className="h-4 w-4" />} />
                 <InsightMetric label="Valor contratado" value={`R$ ${fmt(loans.reduce((sum: number, loan: any) => sum + Number(loan.totalAmount || loan.amount || 0), 0))}`} helper="Base total dos empréstimos monitorados nesta conta." tone="info" icon={<Target className="h-4 w-4" />} />
@@ -1011,7 +1011,7 @@ export default function Finance() {
 
               {loans.length > 0 ? (
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Empréstimos cadastrados</CardTitle>
                       <CardDescription>Registre saldos, retenções e parcelas com uma visão mais elegante do passivo em andamento.</CardDescription>
