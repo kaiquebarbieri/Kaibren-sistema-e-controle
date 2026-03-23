@@ -722,62 +722,80 @@ export default function BankStatements() {
                             </div>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div className="space-y-3">
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="space-y-2">
                                   <Label>Categoria</Label>
-                                  <span className="text-xs text-muted-foreground">Gerenciar categorias</span>
-                                </div>
-                                <Select value={editCategory} onValueChange={setEditCategory}>
-                                  <SelectTrigger className="h-11">
-                                    <SelectValue placeholder="Selecione a categoria" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {customCategories.map(cat => (
-                                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-                                  <Input
-                                    value={newCategoryName}
-                                    onChange={(e) => setNewCategoryName(e.target.value)}
-                                    placeholder="Nova categoria"
-                                  />
-                                  <Button type="button" variant="outline" onClick={handleAddCategory} className="w-full lg:w-auto">
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Nova categoria
-                                  </Button>
-                                </div>
-                                <div className="rounded-xl border border-dashed bg-muted/20 p-3 space-y-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <p className="text-sm font-medium">Categorias disponíveis</p>
-                                    <p className="text-xs text-muted-foreground">Clique em Renomear para ajustar um nome</p>
+                                  <div className="rounded-xl border bg-muted/10 p-3 space-y-3">
+                                    <Select value={editCategory} onValueChange={setEditCategory}>
+                                      <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue placeholder="Selecione a categoria" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {customCategories.map((cat) => (
+                                          <div key={cat} className="flex items-center gap-2 px-2 py-1.5">
+                                            <button
+                                              type="button"
+                                              className="flex-1 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
+                                              onClick={() => setEditCategory(cat)}
+                                            >
+                                              {cat}
+                                            </button>
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8 shrink-0"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                startRenameCategory(cat);
+                                              }}
+                                            >
+                                              <Pencil className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        ))}
+                                        <div className="mt-2 border-t px-2 pt-3">
+                                          {categoryBeingEdited ? (
+                                            <div className="space-y-2">
+                                              <Input
+                                                value={editedCategoryName}
+                                                onChange={(e) => setEditedCategoryName(e.target.value)}
+                                                placeholder="Renomear categoria"
+                                                className="h-9"
+                                              />
+                                              <div className="flex gap-2 justify-end">
+                                                <Button type="button" size="sm" variant="ghost" onClick={() => { setCategoryBeingEdited(null); setEditedCategoryName(""); }}>
+                                                  Cancelar
+                                                </Button>
+                                                <Button type="button" size="sm" onClick={handleRenameCategory}>
+                                                  Salvar nome
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="space-y-2">
+                                              <Input
+                                                value={newCategoryName}
+                                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                                placeholder="Adicionar mais categoria"
+                                                className="h-9"
+                                              />
+                                              <Button type="button" variant="outline" onClick={handleAddCategory} className="w-full justify-center">
+                                                <Plus className="mr-2 h-4 w-4" />
+                                                Adicionar categoria
+                                              </Button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                      Use o lápis dentro da lista para editar nomes e, no final, adicione novas categorias se precisar.
+                                    </p>
                                   </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    {customCategories.map((cat) => (
-                                      <div key={cat} className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm">
-                                        <span className="max-w-[180px] truncate">{cat}</span>
-                                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => startRenameCategory(cat)}>
-                                          Renomear
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  {categoryBeingEdited && (
-                                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-                                      <Input
-                                        value={editedCategoryName}
-                                        onChange={(e) => setEditedCategoryName(e.target.value)}
-                                        placeholder="Renomear categoria"
-                                      />
-                                      <Button type="button" onClick={handleRenameCategory}>Salvar nome</Button>
-                                      <Button type="button" variant="ghost" onClick={() => { setCategoryBeingEdited(null); setEditedCategoryName(""); }}>
-                                        Cancelar
-                                      </Button>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
-                      <div>
+                              <div>
                                 <Label className="text-xs">Identificação (do que se trata)</Label>
                                 <Input
                                   value={editDescription}
@@ -787,6 +805,7 @@ export default function BankStatements() {
                                 />
                               </div>
                             </div>
+
                             <div>
                               <Label className="text-xs">Observações</Label>
                               <Input

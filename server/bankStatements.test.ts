@@ -77,9 +77,9 @@ describe("Bank Statements Module", () => {
     expect(content).toContain("Imposto / Tributo");
     expect(content).toContain("Pix Enviado");
     expect(content).toContain("Pix Recebido");
-    expect(content).toContain("Gerenciar categorias");
-    expect(content).toContain("Nova categoria");
-    expect(content).toContain("Renomear");
+    expect(content).toContain("Adicionar mais categoria");
+    expect(content).toContain("Adicionar categoria");
+    expect(content).toContain("Pencil");
   });
 
   it("should have bank statement upload route registered", async () => {

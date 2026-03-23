@@ -262,3 +262,4 @@
 - [x] Ajustar menus e botões para celular, telas pequenas e telas grandes sem cortes visuais nem estouro de layout
 - [x] Corrigir na tela de notebook o botão cortado e o campo de mês que está saindo para fora do contêiner na área de Obrigações
 - [x] Permitir adicionar novas categorias e editar nomes existentes no módulo de Extratos durante a classificação das transações
+- [x] Simplificar o seletor de categoria em Extratos para editar com lápis dentro da lista e adicionar nova categoria no final do menu
