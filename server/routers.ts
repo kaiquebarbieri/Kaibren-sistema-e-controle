@@ -1567,14 +1567,15 @@ export const appRouter = router({
     }),
     payables: router({
       list: protectedProcedure
-        .input(z.object({ year: z.number().optional(), month: z.number().optional(), status: z.string().optional() }).optional())
-        .query(async ({ input }) => listPayableAccounts(input?.year, input?.month, input?.status)),
+        .input(z.object({ year: z.number().optional(), month: z.number().optional(), status: z.string().optional(), cnpjId: z.number().int().positive().optional().nullable() }).optional())
+        .query(async ({ input }) => listPayableAccounts(input?.year, input?.month, input?.status, input?.cnpjId ?? undefined)),
       dashboard: protectedProcedure
-        .input(z.object({ referenceDate: z.string(), year: z.number().optional(), month: z.number().optional() }))
-        .query(async ({ input }) => getPayablesDashboard(input.referenceDate, input.year, input.month)),
+        .input(z.object({ referenceDate: z.string(), year: z.number().optional(), month: z.number().optional(), cnpjId: z.number().int().positive().optional().nullable() }))
+        .query(async ({ input }) => getPayablesDashboard(input.referenceDate, input.year, input.month, input.cnpjId ?? undefined)),
       create: protectedProcedure
         .input(z.object({
           title: z.string().min(1),
+          cnpjId: z.number().int().positive().optional().nullable(),
           supplier: z.string().optional().nullable(),
           category: z.string().default("outros"),
           accountType: z.enum(["boleto", "fornecedor", "cartao", "emprestimo", "imposto", "investimento", "outros"]).default("boleto"),

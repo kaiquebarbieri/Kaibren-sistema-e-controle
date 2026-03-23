@@ -265,3 +265,4 @@
 - [x] Simplificar o seletor de categoria em Extratos para editar com lápis dentro da lista e adicionar nova categoria no final do menu
 - [x] Corrigir a edição de categorias em Extratos para renomear a categoria existente sem criar uma duplicada
 - [x] Corrigir o cadastro de contas em Contas a Pagar para que os dados salvos apareçam corretamente no painel de Obrigações
+- [x] Investigar e corrigir o caso em que contas a pagar são cadastradas, mas ainda não refletem no painel de Obrigações após salvar

@@ -391,6 +391,7 @@ function ObligationDialog({
         return;
       }
       await createPayableMutation.mutateAsync({
+        cnpjId: Number(selectedCnpjId),
         title: description,
         supplier: counterparty || null,
         category,
@@ -649,8 +650,8 @@ export default function Finance() {
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
   const statementsQuery = trpc.bankStatements.list.useQuery();
-  const payablesQuery = trpc.finance.payables.list.useQuery({ year: selectedYear, month: selectedMonth });
-  const payablesDashboardQuery = trpc.finance.payables.dashboard.useQuery({ referenceDate: today, year: selectedYear, month: selectedMonth });
+  const payablesQuery = trpc.finance.payables.list.useQuery({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId) });
+  const payablesDashboardQuery = trpc.finance.payables.dashboard.useQuery({ referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId) });
   const fixedCostPaymentsQuery = trpc.finance.fixedCosts.payments.useQuery({ year: selectedYear, month: selectedMonth });
   const creditCardsQuery = trpc.finance.creditCards.list.useQuery();
   const creditCardInvoicesQuery = trpc.finance.creditCards.invoices.useQuery({ year: selectedYear, month: selectedMonth });

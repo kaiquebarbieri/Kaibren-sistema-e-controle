@@ -492,6 +492,7 @@ export const loanRetentionEntries = mysqlTable("loan_retention_entries", {
 /** Contas a pagar: boletos, fornecedores, parcelas e compromissos manuais */
 export const payableAccounts = mysqlTable("payable_accounts", {
   id: int("id").autoincrement().primaryKey(),
+  cnpjId: int("cnpjId"),
   title: varchar("title", { length: 255 }).notNull(),
   supplier: varchar("supplier", { length: 255 }),
   category: varchar("category", { length: 128 }).notNull().default("outros"),

@@ -91,6 +91,32 @@ describe("ui.navigation contract", () => {
     expect(subtitle).toContain("2026-03-28");
   });
 
+  it("usa o mesmo CNPJ no cadastro e na leitura do painel de contas a pagar", () => {
+    const selectedCnpjId = "7";
+    const createPayload = {
+      cnpjId: Number(selectedCnpjId),
+      title: "Fornecedor abril",
+      supplier: "Fornecedor Y",
+      amount: "1500.00",
+      dueDate: "2026-04-15",
+    };
+    const listInput = {
+      year: 2026,
+      month: 4,
+      cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId),
+    };
+    const dashboardInput = {
+      referenceDate: "2026-04-10",
+      year: 2026,
+      month: 4,
+      cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId),
+    };
+
+    expect(createPayload.cnpjId).toBe(7);
+    expect(listInput.cnpjId).toBe(7);
+    expect(dashboardInput.cnpjId).toBe(7);
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",

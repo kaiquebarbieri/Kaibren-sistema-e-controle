@@ -933,7 +933,7 @@ export async function syncLoanRetentionTotals(loanId: number) {
   }).where(eq(loans.id, loanId));
 }
 
-export async function listPayableAccounts(year?: number, month?: number, status?: string) {
+export async function listPayableAccounts(year?: number, month?: number, status?: string, cnpjId?: number) {
   const db = await getDb();
   const conditions = [];
   if (status && status !== "all") conditions.push(eq(payableAccounts.status, status as any));
@@ -941,6 +941,7 @@ export async function listPayableAccounts(year?: number, month?: number, status?
     const prefix = `${year}-${String(month).padStart(2, "0")}`;
     conditions.push(like(payableAccounts.dueDate, `${prefix}%`));
   }
+  if (cnpjId) conditions.push(eq(payableAccounts.cnpjId, cnpjId));
   return db!.select().from(payableAccounts)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(payableAccounts.dueDate, payableAccounts.title);
@@ -962,9 +963,9 @@ export async function deletePayableAccount(id: number) {
   await db!.delete(payableAccounts).where(eq(payableAccounts.id, id));
 }
 
-export async function getPayablesDashboard(referenceDate: string, year?: number, month?: number) {
+export async function getPayablesDashboard(referenceDate: string, year?: number, month?: number, cnpjId?: number) {
   const db = await getDb();
-  const allAccounts = await listPayableAccounts(year, month);
+  const allAccounts = await listPayableAccounts(year, month, undefined, cnpjId);
   const pendingCount = allAccounts.filter(a => a.status === "pending").length;
   const overdue = allAccounts.filter(a => a.status !== "paid" && a.dueDate < referenceDate);
   const dueTomorrow = allAccounts.filter(a => a.status !== "paid" && a.dueDate >= referenceDate && a.dueDate <= addDays(referenceDate, 1));

@@ -1,0 +1,1 @@
+ALTER TABLE `payable_accounts` ADD `cnpjId` int;
