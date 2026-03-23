@@ -80,6 +80,8 @@ describe("Bank Statements Module", () => {
     expect(content).toContain("Adicionar mais categoria");
     expect(content).toContain("Adicionar categoria");
     expect(content).toContain("Pencil");
+    expect(content).toContain("const originalNormalized = categoryBeingEdited.trim().toLowerCase();");
+    expect(content).toContain("item.trim().toLowerCase() === originalNormalized ? normalized : item");
   });
 
   it("should have bank statement upload route registered", async () => {

@@ -275,12 +275,13 @@ export default function BankStatements() {
       toast.error("Informe o novo nome da categoria.");
       return;
     }
-    const duplicate = customCategories.some((item) => item.toLowerCase() === normalized.toLowerCase() && item !== categoryBeingEdited);
+    const originalNormalized = categoryBeingEdited.trim().toLowerCase();
+    const duplicate = customCategories.some((item) => item.trim().toLowerCase() === normalized.toLowerCase() && item.trim().toLowerCase() !== originalNormalized);
     if (duplicate) {
       toast.error("Já existe outra categoria com esse nome.");
       return;
     }
-    setCustomCategories((current) => mergeCategoryList(current.map((item) => item === categoryBeingEdited ? normalized : item)));
+    setCustomCategories((current) => mergeCategoryList(current.map((item) => item.trim().toLowerCase() === originalNormalized ? normalized : item)));
     if (editCategory === categoryBeingEdited) {
       setEditCategory(normalized);
     }
