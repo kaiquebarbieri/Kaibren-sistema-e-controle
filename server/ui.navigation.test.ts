@@ -67,6 +67,30 @@ describe("ui.navigation contract", () => {
     expect(dashboards.emprestimos).toContain("Saldo em aberto");
   });
 
+  it("mostra no painel de contas a pagar o título salvo e os detalhes complementares do cadastro", () => {
+    const payable = {
+      title: "Boleto fornecedor março",
+      description: "Compra de embalagens",
+      supplier: "Fornecedor X",
+      category: "embalagem",
+      dueDate: "2026-03-28",
+    };
+
+    const mainTitle = payable.title || payable.description || payable.supplier || "Conta a pagar";
+    const detailParts = [payable.supplier, payable.description].filter((value, index, array) => {
+      if (!value) return false;
+      return array.indexOf(value) === index;
+    });
+    const detailLabel = detailParts.length > 0 ? detailParts.join(" • ") : "Sem detalhes adicionais";
+    const subtitle = `${detailLabel} • ${payable.category || "Sem categoria"} • vencimento ${payable.dueDate}`;
+
+    expect(mainTitle).toBe("Boleto fornecedor março");
+    expect(subtitle).toContain("Fornecedor X");
+    expect(subtitle).toContain("Compra de embalagens");
+    expect(subtitle).toContain("embalagem");
+    expect(subtitle).toContain("2026-03-28");
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",

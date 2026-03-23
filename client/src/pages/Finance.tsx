@@ -868,16 +868,25 @@ export default function Finance() {
                       <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {payables.slice(0, 12).map((item: any) => (
-                        <ObligationListItem
-                          key={item.id}
-                          title={item.description}
-                          subtitle={`${item.category || "Sem categoria"} • vencimento ${item.dueDate}`}
-                          badge={<Badge variant={item.status === "paid" ? "default" : item.status === "overdue" ? "destructive" : "outline"}>{item.status}</Badge>}
-                          amount={`R$ ${fmt(item.amount)}`}
-                          accentClass={item.status === "paid" ? "bg-emerald-500" : item.status === "overdue" ? "bg-rose-500" : "bg-amber-500"}
-                        />
-                      ))}
+                      {payables.slice(0, 12).map((item: any) => {
+                        const mainTitle = item.title || item.description || item.supplier || "Conta a pagar";
+                        const detailParts = [item.supplier, item.description].filter((value, index, array) => {
+                          if (!value) return false;
+                          return array.indexOf(value) === index;
+                        });
+                        const detailLabel = detailParts.length > 0 ? detailParts.join(" • ") : "Sem detalhes adicionais";
+
+                        return (
+                          <ObligationListItem
+                            key={item.id}
+                            title={mainTitle}
+                            subtitle={`${detailLabel} • ${item.category || "Sem categoria"} • vencimento ${item.dueDate}`}
+                            badge={<Badge variant={item.status === "paid" ? "default" : item.status === "overdue" ? "destructive" : "outline"}>{item.status}</Badge>}
+                            amount={`R$ ${fmt(item.amount)}`}
+                            accentClass={item.status === "paid" ? "bg-emerald-500" : item.status === "overdue" ? "bg-rose-500" : "bg-amber-500"}
+                          />
+                        );
+                      })}
                     </CardContent>
                   </Card>
                 ) : (
