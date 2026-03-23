@@ -29,7 +29,7 @@ import {
   Building2,
   Filter,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useRoute, useLocation } from "wouter";
 
@@ -40,7 +40,7 @@ const MONTHS = [
 
 const BANK_OPTIONS = ["C6 Bank", "Mercado Pago", "Bradesco", "Santander"];
 
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   "Fornecedor",
   "Imposto / Tributo",
   "LIS / Cheque Especial",
@@ -61,6 +61,8 @@ const CATEGORIES = [
   "Empréstimo",
   "Outros",
 ];
+
+const CATEGORY_STORAGE_KEY = "ck-extratos-categorias";
 
 function formatCurrency(value: number | string | null | undefined): string {
   const num = typeof value === "string" ? parseFloat(value) : (value ?? 0);
@@ -91,6 +93,10 @@ export default function BankStatements() {
   const [editCategory, setEditCategory] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [customCategories, setCustomCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryBeingEdited, setCategoryBeingEdited] = useState<string | null>(null);
+  const [editedCategoryName, setEditedCategoryName] = useState("");
 
   // Search in transactions
   const [txnSearch, setTxnSearch] = useState("");
@@ -107,6 +113,30 @@ export default function BankStatements() {
   const isMercadoPagoDetail = String(detailQuery.data?.statement?.bankName || "").toLowerCase().includes("mercado pago");
 
   const utils = trpc.useUtils();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .map((item) => String(item || "").trim())
+          .filter(Boolean);
+        if (normalized.length > 0) {
+          setCustomCategories(Array.from(new Set([...DEFAULT_CATEGORIES, ...normalized])));
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(CATEGORY_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(customCategories));
+  }, [customCategories]);
 
   const deleteMutation = trpc.bankStatements.delete.useMutation({
     onSuccess: () => {
@@ -208,6 +238,56 @@ export default function BankStatements() {
     setEditDescription(txn.userDescription || "");
     setEditNotes(txn.notes || "");
   }, []);
+
+  const mergeCategoryList = useCallback((incoming: string[]) => {
+    const normalized = incoming
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    return Array.from(new Set([...DEFAULT_CATEGORIES, ...normalized]));
+  }, []);
+
+  const handleAddCategory = useCallback(() => {
+    const normalized = newCategoryName.trim();
+    if (!normalized) {
+      toast.error("Informe o nome da nova categoria.");
+      return;
+    }
+    const alreadyExists = customCategories.some((item) => item.toLowerCase() === normalized.toLowerCase());
+    if (alreadyExists) {
+      toast.error("Essa categoria já existe.");
+      return;
+    }
+    setCustomCategories((current) => mergeCategoryList([...current, normalized]));
+    setEditCategory(normalized);
+    setNewCategoryName("");
+    toast.success("Nova categoria adicionada!");
+  }, [customCategories, mergeCategoryList, newCategoryName]);
+
+  const startRenameCategory = useCallback((category: string) => {
+    setCategoryBeingEdited(category);
+    setEditedCategoryName(category);
+  }, []);
+
+  const handleRenameCategory = useCallback(() => {
+    if (!categoryBeingEdited) return;
+    const normalized = editedCategoryName.trim();
+    if (!normalized) {
+      toast.error("Informe o novo nome da categoria.");
+      return;
+    }
+    const duplicate = customCategories.some((item) => item.toLowerCase() === normalized.toLowerCase() && item !== categoryBeingEdited);
+    if (duplicate) {
+      toast.error("Já existe outra categoria com esse nome.");
+      return;
+    }
+    setCustomCategories((current) => mergeCategoryList(current.map((item) => item === categoryBeingEdited ? normalized : item)));
+    if (editCategory === categoryBeingEdited) {
+      setEditCategory(normalized);
+    }
+    setCategoryBeingEdited(null);
+    setEditedCategoryName("");
+    toast.success("Categoria atualizada!");
+  }, [categoryBeingEdited, customCategories, editCategory, editedCategoryName, mergeCategoryList]);
 
   // Filtered statements
   const filteredStatements = useMemo(() => {
@@ -546,7 +626,7 @@ export default function BankStatements() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas categorias</SelectItem>
-                      {CATEGORIES.map(cat => (
+                      {customCategories.map(cat => (
                         <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                       ))}
                     </SelectContent>
@@ -640,21 +720,64 @@ export default function BankStatements() {
                                 {txn.transactionType === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
                               </span>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div>
-                                <Label className="text-xs">Categoria</Label>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="space-y-3">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <Label>Categoria</Label>
+                                  <span className="text-xs text-muted-foreground">Gerenciar categorias</span>
+                                </div>
                                 <Select value={editCategory} onValueChange={setEditCategory}>
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Selecione..." />
+                                  <SelectTrigger className="h-11">
+                                    <SelectValue placeholder="Selecione a categoria" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {CATEGORIES.map(cat => (
+                                    {customCategories.map(cat => (
                                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
+                                <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                                  <Input
+                                    value={newCategoryName}
+                                    onChange={(e) => setNewCategoryName(e.target.value)}
+                                    placeholder="Nova categoria"
+                                  />
+                                  <Button type="button" variant="outline" onClick={handleAddCategory} className="w-full lg:w-auto">
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Nova categoria
+                                  </Button>
+                                </div>
+                                <div className="rounded-xl border border-dashed bg-muted/20 p-3 space-y-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-medium">Categorias disponíveis</p>
+                                    <p className="text-xs text-muted-foreground">Clique em Renomear para ajustar um nome</p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {customCategories.map((cat) => (
+                                      <div key={cat} className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm">
+                                        <span className="max-w-[180px] truncate">{cat}</span>
+                                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => startRenameCategory(cat)}>
+                                          Renomear
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {categoryBeingEdited && (
+                                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                                      <Input
+                                        value={editedCategoryName}
+                                        onChange={(e) => setEditedCategoryName(e.target.value)}
+                                        placeholder="Renomear categoria"
+                                      />
+                                      <Button type="button" onClick={handleRenameCategory}>Salvar nome</Button>
+                                      <Button type="button" variant="ghost" onClick={() => { setCategoryBeingEdited(null); setEditedCategoryName(""); }}>
+                                        Cancelar
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                              <div>
+                      <div>
                                 <Label className="text-xs">Identificação (do que se trata)</Label>
                                 <Input
                                   value={editDescription}
