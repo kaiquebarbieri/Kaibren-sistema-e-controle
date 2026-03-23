@@ -291,6 +291,7 @@ function ObligationDialog({
   loans,
   selectedYear,
   selectedMonth,
+  editingPayable,
   onSaved,
 }: {
   open: boolean;
@@ -301,6 +302,7 @@ function ObligationDialog({
   loans: any[];
   selectedYear: number;
   selectedMonth: number;
+  editingPayable?: any | null;
   onSaved: () => void;
 }) {
   const utils = trpc.useUtils();
@@ -330,6 +332,31 @@ function ObligationDialog({
 
   useEffect(() => {
     if (!open) return;
+    if (mode === "conta" && editingPayable) {
+      setSelectedCnpjId(editingPayable.cnpjId ? String(editingPayable.cnpjId) : (cnpjs[0] ? String(cnpjs[0].id) : "none"));
+      setDescription(editingPayable.title || editingPayable.description || "");
+      setCounterparty(editingPayable.supplier || "");
+      setAmount(String(editingPayable.amount || ""));
+      setDueDate(editingPayable.dueDate || "");
+      setCategory(editingPayable.category || "financeiro");
+      setNotes(editingPayable.notes || "");
+      setRecurrence(editingPayable.installmentLabel ? "monthly" : "monthly");
+      setSelectedCardId(creditCards[0] ? String(creditCards[0].id) : "none");
+      setCardName("");
+      setBankName("");
+      setLimitAmount("");
+      setClosingDay("");
+      setDueDay("");
+      setInvoiceLabel("");
+      setLoanName("");
+      setLoanType("installment");
+      setInstitutionName("");
+      setTotalInstallments("");
+      setRemainingAmount("");
+      setSelectedLoanId(loans[0] ? String(loans[0].id) : "none");
+      setEntryDate("");
+      return;
+    }
     setSelectedCnpjId(cnpjs[0] ? String(cnpjs[0].id) : "none");
     setDescription("");
     setCounterparty("");
@@ -352,9 +379,11 @@ function ObligationDialog({
     setRemainingAmount("");
     setSelectedLoanId(loans[0] ? String(loans[0].id) : "none");
     setEntryDate("");
-  }, [open, cnpjs, creditCards, loans]);
+  }, [open, mode, editingPayable, cnpjs, creditCards, loans]);
 
   const createPayableMutation = trpc.finance.payables.create.useMutation();
+  const updatePayableMutation = trpc.finance.payables.update.useMutation();
+  const deletePayableMutation = trpc.finance.payables.delete.useMutation();
   const createFixedCostMutation = trpc.finance.fixedCosts.create.useMutation();
   const createCreditCardMutation = trpc.finance.creditCards.create.useMutation();
   const createCreditCardInvoiceMutation = trpc.finance.creditCards.upsertInvoice.useMutation();
@@ -390,23 +419,29 @@ function ObligationDialog({
         toast.error("Preencha descrição, valor e vencimento da conta.");
         return;
       }
-      await createPayableMutation.mutateAsync({
+      const payload = {
         cnpjId: Number(selectedCnpjId),
         title: description,
         supplier: counterparty || null,
         category,
-        accountType: "boleto",
+        accountType: "boleto" as const,
         amount,
         dueDate,
-        status: "pending",
+        status: "pending" as const,
         paidAmount: null,
         paidAt: null,
         installmentLabel: recurrence === "monthly" ? "Recorrente" : null,
         reminderDaysBefore: 1,
         description: counterparty || null,
         notes: notes || null,
-      });
-      toast.success("Conta a pagar cadastrada.");
+      };
+      if (editingPayable?.id) {
+        await updatePayableMutation.mutateAsync({ id: editingPayable.id, ...payload });
+        toast.success("Conta a pagar atualizada.");
+      } else {
+        await createPayableMutation.mutateAsync(payload);
+        toast.success("Conta a pagar cadastrada.");
+      }
       await refreshAfterSave();
       return;
     }
@@ -515,7 +550,7 @@ function ObligationDialog({
   }
 
   const meta = mode ? obligationDialogMeta[mode] : null;
-  const loading = createPayableMutation.isPending || createFixedCostMutation.isPending || createCreditCardMutation.isPending || createCreditCardInvoiceMutation.isPending || createLoanMutation.isPending || createRetentionMutation.isPending;
+  const loading = createPayableMutation.isPending || updatePayableMutation.isPending || deletePayableMutation.isPending || createFixedCostMutation.isPending || createCreditCardMutation.isPending || createCreditCardInvoiceMutation.isPending || createLoanMutation.isPending || createRetentionMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -623,7 +658,7 @@ function ObligationDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={loading}>{loading ? "Salvando..." : "Salvar cadastro"}</Button>
+          <Button onClick={handleSubmit} disabled={loading}>{loading ? "Salvando..." : editingPayable ? "Salvar edição" : "Salvar cadastro"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -647,6 +682,7 @@ export default function Finance() {
   const [selectedCnpjId, setSelectedCnpjId] = useState<string>("all");
   const [obligationDialogMode, setObligationDialogMode] = useState<ObligationDialogMode | null>(null);
   const [obligationDialogOpen, setObligationDialogOpen] = useState(false);
+  const [editingPayable, setEditingPayable] = useState<any | null>(null);
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
   const statementsQuery = trpc.bankStatements.list.useQuery();
@@ -764,10 +800,21 @@ export default function Finance() {
   }
 
   const goToExtratos = () => navigate("/extratos");
-  const openObligationDialog = (mode: ObligationDialogMode) => {
+  const deletePayableMutation = trpc.finance.payables.delete.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        payablesQuery.refetch(),
+        payablesDashboardQuery.refetch(),
+      ]);
+      toast.success("Conta a pagar excluída.");
+    },
+    onError: () => toast.error("Não foi possível excluir a conta a pagar."),
+  });
+  const openObligationDialog = (mode: ObligationDialogMode, payable?: any | null) => {
     if (!isObligationsRoute) {
       navigate(mode === "conta" || mode === "custoFixo" ? "/obrigacoes/contas" : mode === "cartao" || mode === "fatura" ? "/obrigacoes/cartoes" : "/obrigacoes/emprestimos");
     }
+    setEditingPayable(payable ?? null);
     setObligationDialogMode(mode);
     setObligationDialogOpen(true);
   };
@@ -878,14 +925,23 @@ export default function Finance() {
                         const detailLabel = detailParts.length > 0 ? detailParts.join(" • ") : "Sem detalhes adicionais";
 
                         return (
-                          <ObligationListItem
-                            key={item.id}
-                            title={mainTitle}
-                            subtitle={`${detailLabel} • ${item.category || "Sem categoria"} • vencimento ${item.dueDate}`}
-                            badge={<Badge variant={item.status === "paid" ? "default" : item.status === "overdue" ? "destructive" : "outline"}>{item.status}</Badge>}
-                            amount={`R$ ${fmt(item.amount)}`}
-                            accentClass={item.status === "paid" ? "bg-emerald-500" : item.status === "overdue" ? "bg-rose-500" : "bg-amber-500"}
-                          />
+                          <div key={item.id} className="space-y-2 rounded-2xl border border-border/60 bg-background/70 p-3">
+                            <ObligationListItem
+                              title={mainTitle}
+                              subtitle={`${detailLabel} • ${item.category || "Sem categoria"} • vencimento ${item.dueDate}`}
+                              badge={<Badge variant={item.status === "paid" ? "default" : item.status === "overdue" ? "destructive" : "outline"}>{item.status}</Badge>}
+                              amount={`R$ ${fmt(item.amount)}`}
+                              accentClass={item.status === "paid" ? "bg-emerald-500" : item.status === "overdue" ? "bg-rose-500" : "bg-amber-500"}
+                            />
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button type="button" variant="outline" size="sm" onClick={() => openObligationDialog("conta", item)}>Editar</Button>
+                              <Button type="button" variant="destructive" size="sm" onClick={async () => {
+                                const confirmed = window.confirm(`Excluir a conta \"${mainTitle}\"?`);
+                                if (!confirmed) return;
+                                await deletePayableMutation.mutateAsync({ id: item.id });
+                              }}>Excluir</Button>
+                            </div>
+                          </div>
                         );
                       })}
                     </CardContent>
@@ -1048,18 +1104,25 @@ export default function Finance() {
             </div>
           )}
 
+          <ObligationDialog
+            open={obligationDialogOpen}
+            mode={obligationDialogMode}
+            editingPayable={editingPayable}
+            onOpenChange={(open) => {
+              setObligationDialogOpen(open);
+              if (!open) setEditingPayable(null);
+            }}
+            cnpjs={cnpjs}
+            creditCards={creditCards}
+            loans={loans}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onSaved={() => {
+              payablesQuery.refetch();
+              payablesDashboardQuery.refetch();
+            }}
+          />
         </div>
-        <ObligationDialog
-          open={obligationDialogOpen}
-          mode={obligationDialogMode}
-          onOpenChange={setObligationDialogOpen}
-          cnpjs={cnpjs}
-          creditCards={creditCards}
-          loans={loans}
-          selectedYear={selectedYear}
-          selectedMonth={selectedMonth}
-          onSaved={() => setObligationDialogMode(null)}
-        />
       </DashboardLayout>
     );
   }

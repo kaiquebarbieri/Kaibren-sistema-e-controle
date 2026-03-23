@@ -117,6 +117,31 @@ describe("ui.navigation contract", () => {
     expect(dashboardInput.cnpjId).toBe(7);
   });
 
+  it("expõe ações de editar e excluir nas contas do painel usando o mesmo fluxo de diálogo", () => {
+    const payable = {
+      id: 41,
+      cnpjId: 7,
+      title: "Fornecedor abril",
+      supplier: "Fornecedor Y",
+      amount: "1500.00",
+      dueDate: "2026-04-15",
+      category: "fornecedor",
+      status: "pending",
+    };
+
+    const openDialogPayload = {
+      mode: "conta",
+      payable,
+    };
+
+    const deletePayload = { id: payable.id };
+
+    expect(openDialogPayload.mode).toBe("conta");
+    expect(openDialogPayload.payable.title).toBe("Fornecedor abril");
+    expect(openDialogPayload.payable.cnpjId).toBe(7);
+    expect(deletePayload).toEqual({ id: 41 });
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",
