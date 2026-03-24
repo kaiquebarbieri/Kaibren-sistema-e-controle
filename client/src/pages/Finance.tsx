@@ -291,6 +291,7 @@ function ObligationDialog({
   loans,
   selectedYear,
   selectedMonth,
+  activeCnpjId,
   editingPayable,
   onSaved,
 }: {
@@ -302,6 +303,7 @@ function ObligationDialog({
   loans: any[];
   selectedYear: number;
   selectedMonth: number;
+  activeCnpjId: string;
   editingPayable?: any | null;
   onSaved: (savedPayable?: Record<string, any> | null) => void;
 }) {
@@ -357,7 +359,12 @@ function ObligationDialog({
       setEntryDate("");
       return;
     }
-    setSelectedCnpjId(cnpjs[0] ? String(cnpjs[0].id) : "none");
+    const fallbackCnpjId = activeCnpjId !== "all" && activeCnpjId !== "none"
+      ? activeCnpjId
+      : cnpjs[0]
+        ? String(cnpjs[0].id)
+        : "none";
+    setSelectedCnpjId(fallbackCnpjId);
     setDescription("");
     setCounterparty("");
     setAmount("");
@@ -379,7 +386,7 @@ function ObligationDialog({
     setRemainingAmount("");
     setSelectedLoanId(loans[0] ? String(loans[0].id) : "none");
     setEntryDate("");
-  }, [open, mode, editingPayable, cnpjs, creditCards, loans]);
+  }, [open, mode, editingPayable, cnpjs, creditCards, loans, activeCnpjId]);
 
   const createPayableMutation = trpc.finance.payables.create.useMutation();
   const updatePayableMutation = trpc.finance.payables.update.useMutation();
@@ -1165,6 +1172,7 @@ export default function Finance() {
           <ObligationDialog
             open={obligationDialogOpen}
             mode={obligationDialogMode}
+            activeCnpjId={selectedCnpjId}
             editingPayable={editingPayable}
             onOpenChange={(open) => {
               setObligationDialogOpen(open);
@@ -1183,8 +1191,6 @@ export default function Finance() {
                 });
                 setHighlightedPayableId(Number(savedPayable.id));
               }
-              payablesQuery.refetch();
-              payablesDashboardQuery.refetch();
             }}
           />
         </div>

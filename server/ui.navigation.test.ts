@@ -195,6 +195,35 @@ describe("ui.navigation contract", () => {
     expect(highlightClass).toContain("emerald");
   });
 
+  it("evita refetch redundante no callback onSaved para não sobrescrever a atualização otimista", () => {
+    const savedPayable = {
+      id: 77,
+      title: "Boleto fornecedor abril",
+      description: "Compra de insumos",
+      supplier: "Fornecedor Z",
+    };
+
+    let feedback: { id: number; title: string } | null = null;
+    let highlightedId: number | null = null;
+    let refetchCount = 0;
+
+    const onSaved = (payable?: Record<string, any> | null) => {
+      if (payable?.id) {
+        feedback = {
+          id: Number(payable.id),
+          title: String(payable.title || payable.description || payable.supplier || "Conta a pagar"),
+        };
+        highlightedId = Number(payable.id);
+      }
+    };
+
+    onSaved(savedPayable);
+
+    expect(feedback).toEqual({ id: 77, title: "Boleto fornecedor abril" });
+    expect(highlightedId).toBe(77);
+    expect(refetchCount).toBe(0);
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",

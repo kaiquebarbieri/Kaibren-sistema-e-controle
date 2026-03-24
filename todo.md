@@ -274,3 +274,5 @@
 - [ ] Investigar e corrigir definitivamente a recorrência em que novas contas a pagar parecem não salvar no site no uso real do usuário
 - [ ] Corrigir o caso em que o cadastro de contas a pagar não mostra nenhum feedback e não atualiza a tela ao salvar no uso real do usuário
 - [ ] Exibir confirmação visual clara e destacar o item recém-criado após salvar uma conta a pagar
+- [ ] Retomar a investigação definitiva do cadastro em Contas a Pagar para corrigir o fluxo real que o usuário relata como ainda não funcionando
+- [x] Corrigir a divergência entre atualização imediata e recarga filtrada por CNPJ/mês que faz a conta aparecer e depois sumir no painel de Obrigações
