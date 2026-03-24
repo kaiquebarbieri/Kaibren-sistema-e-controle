@@ -1185,6 +1185,10 @@ export default function Finance() {
             selectedMonth={selectedMonth}
             onSaved={(savedPayable) => {
               if (savedPayable?.id) {
+                const savedCnpjId = savedPayable.cnpjId != null ? String(savedPayable.cnpjId) : null;
+                if (savedCnpjId && selectedCnpjId !== "all" && selectedCnpjId !== savedCnpjId) {
+                  setSelectedCnpjId(savedCnpjId);
+                }
                 setSavedPayableFeedback({
                   id: Number(savedPayable.id),
                   title: String(savedPayable.title || savedPayable.description || savedPayable.supplier || "Conta a pagar"),

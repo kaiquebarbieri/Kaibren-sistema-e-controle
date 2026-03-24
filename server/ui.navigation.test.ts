@@ -224,6 +224,25 @@ describe("ui.navigation contract", () => {
     expect(refetchCount).toBe(0);
   });
 
+  it("alinha o filtro principal ao CNPJ salvo quando a conta é criada em outra subconta", () => {
+    const selectedCnpjId = "3";
+    const savedPayable = {
+      id: 55,
+      cnpjId: 7,
+      title: "Fornecedor de outra subconta",
+    };
+
+    const nextSelectedCnpjId = (() => {
+      const savedCnpjId = savedPayable.cnpjId != null ? String(savedPayable.cnpjId) : null;
+      if (savedCnpjId && selectedCnpjId !== "all" && selectedCnpjId !== savedCnpjId) {
+        return savedCnpjId;
+      }
+      return selectedCnpjId;
+    })();
+
+    expect(nextSelectedCnpjId).toBe("7");
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",
