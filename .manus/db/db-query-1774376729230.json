@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE fixed_costs ADD COLUMN cnpj_id INT NULL; ALTER TABLE credit_cards ADD COLUMN cnpj_id INT NULL; ALTER TABLE loans ADD COLUMN cnpj_id INT NULL;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute ALTER TABLE fixed_costs ADD COLUMN cnpj_id INT NULL; ALTER TABLE credit_cards ADD COLUMN cnpj_id INT NULL; ALTER TABLE loans ADD COLUMN cnpj_id INT NULL;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 823
+}

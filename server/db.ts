@@ -720,9 +720,13 @@ export async function recalcStatementCounts(statementId: number) {
    FINANCEIRO: Custos Fixos
    ══════════════════════════════════════════════════════════════ */
 
-export async function listFixedCosts() {
+export async function listFixedCosts(cnpjId?: number) {
   const db = await getDb();
-  return db!.select().from(fixedCosts).where(eq(fixedCosts.isActive, 1)).orderBy(fixedCosts.name);
+  return db!
+    .select()
+    .from(fixedCosts)
+    .where(and(eq(fixedCosts.isActive, 1), cnpjId ? eq(fixedCosts.cnpjId, cnpjId) : undefined))
+    .orderBy(fixedCosts.name);
 }
 
 export async function createFixedCost(data: InsertFixedCost) {
@@ -741,10 +745,18 @@ export async function deleteFixedCost(id: number) {
   await db!.update(fixedCosts).set({ isActive: 0 }).where(eq(fixedCosts.id, id));
 }
 
-export async function listFixedCostPayments(year: number, month: number) {
+export async function listFixedCostPayments(year: number, month: number, cnpjId?: number) {
   const db = await getDb();
-  return db!.select().from(fixedCostPayments)
-    .where(and(eq(fixedCostPayments.periodYear, year), eq(fixedCostPayments.periodMonth, month)));
+  return db!.select({
+    payment: fixedCostPayments,
+    fixedCost: fixedCosts,
+  }).from(fixedCostPayments)
+    .innerJoin(fixedCosts, eq(fixedCostPayments.fixedCostId, fixedCosts.id))
+    .where(and(
+      eq(fixedCostPayments.periodYear, year),
+      eq(fixedCostPayments.periodMonth, month),
+      cnpjId ? eq(fixedCosts.cnpjId, cnpjId) : undefined,
+    ));
 }
 
 export async function upsertFixedCostPayment(data: InsertFixedCostPayment) {
@@ -773,9 +785,13 @@ export async function upsertFixedCostPayment(data: InsertFixedCostPayment) {
    FINANCEIRO: Cartões de Crédito
    ══════════════════════════════════════════════════════════════ */
 
-export async function listCreditCards() {
+export async function listCreditCards(cnpjId?: number) {
   const db = await getDb();
-  return db!.select().from(creditCards).where(eq(creditCards.isActive, 1)).orderBy(creditCards.name);
+  return db!
+    .select()
+    .from(creditCards)
+    .where(and(eq(creditCards.isActive, 1), cnpjId ? eq(creditCards.cnpjId, cnpjId) : undefined))
+    .orderBy(creditCards.name);
 }
 
 export async function createCreditCard(data: InsertCreditCard) {
@@ -794,13 +810,18 @@ export async function deleteCreditCard(id: number) {
   await db!.update(creditCards).set({ isActive: 0 }).where(eq(creditCards.id, id));
 }
 
-export async function listCreditCardInvoices(cardId?: number, year?: number, month?: number) {
+export async function listCreditCardInvoices(cardId?: number, year?: number, month?: number, cnpjId?: number) {
   const conditions = [];
   if (cardId) conditions.push(eq(creditCardInvoices.cardId, cardId));
   if (year) conditions.push(eq(creditCardInvoices.periodYear, year));
   if (month) conditions.push(eq(creditCardInvoices.periodMonth, month));
+  if (cnpjId) conditions.push(eq(creditCards.cnpjId, cnpjId));
   const db = await getDb();
-  return db!.select().from(creditCardInvoices)
+  return db!.select({
+    invoice: creditCardInvoices,
+    card: creditCards,
+  }).from(creditCardInvoices)
+    .innerJoin(creditCards, eq(creditCardInvoices.cardId, creditCards.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(creditCardInvoices.periodYear), desc(creditCardInvoices.periodMonth));
 }
@@ -832,9 +853,13 @@ export async function upsertCreditCardInvoice(data: InsertCreditCardInvoice) {
    FINANCEIRO: Empréstimos
    ══════════════════════════════════════════════════════════════ */
 
-export async function listLoans() {
+export async function listLoans(cnpjId?: number) {
   const db = await getDb();
-  return db!.select().from(loans).where(eq(loans.isActive, 1)).orderBy(loans.name);
+  return db!
+    .select()
+    .from(loans)
+    .where(and(eq(loans.isActive, 1), cnpjId ? eq(loans.cnpjId, cnpjId) : undefined))
+    .orderBy(loans.name);
 }
 
 export async function createLoan(data: InsertLoan) {
@@ -853,13 +878,18 @@ export async function deleteLoan(id: number) {
   await db!.update(loans).set({ isActive: 0 }).where(eq(loans.id, id));
 }
 
-export async function listLoanInstallments(loanId?: number, year?: number, month?: number) {
+export async function listLoanInstallments(loanId?: number, year?: number, month?: number, cnpjId?: number) {
   const conditions = [];
   if (loanId) conditions.push(eq(loanInstallments.loanId, loanId));
   if (year) conditions.push(eq(loanInstallments.periodYear, year));
   if (month) conditions.push(eq(loanInstallments.periodMonth, month));
+  if (cnpjId) conditions.push(eq(loans.cnpjId, cnpjId));
   const db = await getDb();
-  return db!.select().from(loanInstallments)
+  return db!.select({
+    installment: loanInstallments,
+    loan: loans,
+  }).from(loanInstallments)
+    .innerJoin(loans, eq(loanInstallments.loanId, loans.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(loanInstallments.installmentNumber);
 }
@@ -885,13 +915,18 @@ export async function upsertLoanInstallment(data: InsertLoanInstallment) {
   return result.insertId;
 }
 
-export async function listLoanRetentionEntries(loanId?: number, year?: number, month?: number) {
+export async function listLoanRetentionEntries(loanId?: number, year?: number, month?: number, cnpjId?: number) {
   const conditions = [];
   if (loanId) conditions.push(eq(loanRetentionEntries.loanId, loanId));
   if (year) conditions.push(eq(loanRetentionEntries.periodYear, year));
   if (month) conditions.push(eq(loanRetentionEntries.periodMonth, month));
+  if (cnpjId) conditions.push(eq(loans.cnpjId, cnpjId));
   const db = await getDb();
-  return db!.select().from(loanRetentionEntries)
+  return db!.select({
+    entry: loanRetentionEntries,
+    loan: loans,
+  }).from(loanRetentionEntries)
+    .innerJoin(loans, eq(loanRetentionEntries.loanId, loans.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(loanRetentionEntries.entryDate), desc(loanRetentionEntries.id));
 }
@@ -987,7 +1022,7 @@ function addDays(dateStr: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export async function getLoanInstallmentsByPeriod(year: number, month: number) {
+export async function getLoanInstallmentsByPeriod(year: number, month: number, cnpjId?: number) {
   const db = await getDb();
   return db!.select({
     installment: loanInstallments,
@@ -998,10 +1033,11 @@ export async function getLoanInstallmentsByPeriod(year: number, month: number) {
     .where(and(
       eq(loanInstallments.periodYear, year),
       eq(loanInstallments.periodMonth, month),
+      cnpjId ? eq(loans.cnpjId, cnpjId) : undefined,
     ));
 }
 
-export async function getDREData(year: number, month: number) {
+export async function getDREData(year: number, month: number, cnpjId?: number) {
   const db = await getDb();
 
   const salesOrders = await db!.select().from(orders)
@@ -1009,6 +1045,7 @@ export async function getDREData(year: number, month: number) {
       eq(orders.periodYear, year),
       eq(orders.periodMonth, month),
       eq(orders.orderType, "customer"),
+      cnpjId ? eq(orders.cnpjId, cnpjId) : undefined,
     ));
 
   const personalOrders = await db!.select().from(orders)
@@ -1016,6 +1053,7 @@ export async function getDREData(year: number, month: number) {
       eq(orders.periodYear, year),
       eq(orders.periodMonth, month),
       eq(orders.orderType, "personal"),
+      cnpjId ? eq(orders.cnpjId, cnpjId) : undefined,
     ));
 
   const fixedCostPaymentsList = await db!.select({
@@ -1027,6 +1065,7 @@ export async function getDREData(year: number, month: number) {
     .where(and(
       eq(fixedCostPayments.periodYear, year),
       eq(fixedCostPayments.periodMonth, month),
+      cnpjId ? eq(fixedCosts.cnpjId, cnpjId) : undefined,
     ));
 
   const cardInvoicesList = await db!.select({
@@ -1038,6 +1077,7 @@ export async function getDREData(year: number, month: number) {
     .where(and(
       eq(creditCardInvoices.periodYear, year),
       eq(creditCardInvoices.periodMonth, month),
+      cnpjId ? eq(creditCards.cnpjId, cnpjId) : undefined,
     ));
 
   const loanInstallmentsList = await db!.select({
@@ -1050,6 +1090,7 @@ export async function getDREData(year: number, month: number) {
     .where(and(
       eq(loanInstallments.periodYear, year),
       eq(loanInstallments.periodMonth, month),
+      cnpjId ? eq(loans.cnpjId, cnpjId) : undefined,
     ));
 
   const loanRetentionEntriesList = await db!.select({
@@ -1065,15 +1106,20 @@ export async function getDREData(year: number, month: number) {
     .where(and(
       eq(loanRetentionEntries.periodYear, year),
       eq(loanRetentionEntries.periodMonth, month),
+      cnpjId ? eq(loans.cnpjId, cnpjId) : undefined,
     ));
 
   const payableAccountsList = await db!.select().from(payableAccounts)
-    .where(like(payableAccounts.dueDate, `${year}-${String(month).padStart(2, "0")}%`));
+    .where(and(
+      like(payableAccounts.dueDate, `${year}-${String(month).padStart(2, "0")}%`),
+      cnpjId ? eq(payableAccounts.cnpjId, cnpjId) : undefined,
+    ));
 
   const bankStatementsData = await db!.select().from(bankStatements)
     .where(and(
       eq(bankStatements.periodYear, year),
       eq(bankStatements.periodMonth, month),
+      cnpjId ? eq(bankStatements.cnpjId, cnpjId) : undefined,
     ));
 
   let bankTransactionsData: any[] = [];

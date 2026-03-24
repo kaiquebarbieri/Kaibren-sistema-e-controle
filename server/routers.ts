@@ -1350,9 +1350,12 @@ export const appRouter = router({
   }),
   finance: router({
     fixedCosts: router({
-      list: protectedProcedure.query(async () => listFixedCosts()),
+      list: protectedProcedure
+        .input(z.object({ cnpjId: z.number().int().positive() }))
+        .query(async ({ input }) => listFixedCosts(input.cnpjId)),
       create: protectedProcedure
         .input(z.object({
+          cnpjId: z.number().int().positive(),
           name: z.string().min(1),
           category: z.string().default("outros"),
           amount: z.string(),
@@ -1381,8 +1384,8 @@ export const appRouter = router({
           return { success: true };
         }),
       payments: protectedProcedure
-        .input(z.object({ year: z.number(), month: z.number() }))
-        .query(async ({ input }) => listFixedCostPayments(input.year, input.month)),
+        .input(z.object({ year: z.number(), month: z.number(), cnpjId: z.number().int().positive() }))
+        .query(async ({ input }) => listFixedCostPayments(input.year, input.month, input.cnpjId)),
       upsertPayment: protectedProcedure
         .input(z.object({
           fixedCostId: z.number().int().positive(),
@@ -1396,9 +1399,12 @@ export const appRouter = router({
         .mutation(async ({ input }) => ({ id: await upsertFixedCostPayment(input) })),
     }),
     creditCards: router({
-      list: protectedProcedure.query(async () => listCreditCards()),
+      list: protectedProcedure
+        .input(z.object({ cnpjId: z.number().int().positive() }))
+        .query(async ({ input }) => listCreditCards(input.cnpjId)),
       create: protectedProcedure
         .input(z.object({
+          cnpjId: z.number().int().positive(),
           name: z.string().min(1),
           brand: z.string().default("outros"),
           lastFourDigits: z.string().max(4).optional().nullable(),
@@ -1431,8 +1437,8 @@ export const appRouter = router({
           return { success: true };
         }),
       invoices: protectedProcedure
-        .input(z.object({ cardId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }))
-        .query(async ({ input }) => listCreditCardInvoices(input.cardId, input.year, input.month)),
+        .input(z.object({ cardId: z.number().optional(), year: z.number().optional(), month: z.number().optional(), cnpjId: z.number().int().positive().optional() }))
+        .query(async ({ input }) => listCreditCardInvoices(input.cardId, input.year, input.month, input.cnpjId)),
       upsertInvoice: protectedProcedure
         .input(z.object({
           cardId: z.number().int().positive(),
@@ -1448,9 +1454,12 @@ export const appRouter = router({
         .mutation(async ({ input }) => ({ id: await upsertCreditCardInvoice(input) })),
     }),
     loans: router({
-      list: protectedProcedure.query(async () => listLoans()),
+      list: protectedProcedure
+        .input(z.object({ cnpjId: z.number().int().positive() }))
+        .query(async ({ input }) => listLoans(input.cnpjId)),
       create: protectedProcedure
         .input(z.object({
+          cnpjId: z.number().int().positive(),
           name: z.string().min(1),
           institution: z.string().min(1),
           loanType: z.enum(["installment", "sales_retention"]).default("installment"),
@@ -1505,8 +1514,8 @@ export const appRouter = router({
           return { success: true };
         }),
       installments: protectedProcedure
-        .input(z.object({ loanId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }))
-        .query(async ({ input }) => listLoanInstallments(input.loanId, input.year, input.month)),
+        .input(z.object({ loanId: z.number().optional(), year: z.number().optional(), month: z.number().optional(), cnpjId: z.number().int().positive().optional() }))
+        .query(async ({ input }) => listLoanInstallments(input.loanId, input.year, input.month, input.cnpjId)),
       upsertInstallment: protectedProcedure
         .input(z.object({
           loanId: z.number().int().positive(),
@@ -1520,8 +1529,8 @@ export const appRouter = router({
         }))
         .mutation(async ({ input }) => ({ id: await upsertLoanInstallment(input) })),
       retentionEntries: protectedProcedure
-        .input(z.object({ loanId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }))
-        .query(async ({ input }) => listLoanRetentionEntries(input.loanId, input.year, input.month)),
+        .input(z.object({ loanId: z.number().optional(), year: z.number().optional(), month: z.number().optional(), cnpjId: z.number().int().positive().optional() }))
+        .query(async ({ input }) => listLoanRetentionEntries(input.loanId, input.year, input.month, input.cnpjId)),
       createRetentionEntry: protectedProcedure
         .input(z.object({
           loanId: z.number().int().positive(),
@@ -1650,9 +1659,9 @@ export const appRouter = router({
         }),
     }),
     dre: protectedProcedure
-      .input(z.object({ year: z.number(), month: z.number() }))
+      .input(z.object({ year: z.number(), month: z.number(), cnpjId: z.number().int().positive() }))
       .query(async ({ input }) => {
-        const data = await getDREData(input.year, input.month);
+        const data = await getDREData(input.year, input.month, input.cnpjId);
 
         const totalCustosFixos = data.fixedCostPayments.reduce((sum, p) => sum + parseFloat(String(p.payment.amountPaid || "0")), 0);
         const totalCartoes = data.cardInvoices.reduce((sum, i) => sum + parseFloat(String(i.invoice.totalAmount || "0")), 0);

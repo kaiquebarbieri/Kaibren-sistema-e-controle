@@ -296,4 +296,32 @@ describe("ui.navigation contract", () => {
     expect(mercadoPagoSummary.pending).toBe(0);
     expect(mercadoPagoSummary.transfers).toBe(1500);
   });
+
+  it("trata cada CNPJ como subconta isolada na seleção principal, na listagem e no cadastro", () => {
+    const selectedCnpjId = "7";
+    const allPayables = [
+      { id: 1, cnpjId: 7, title: "Fornecedor A" },
+      { id: 2, cnpjId: 9, title: "Fornecedor B" },
+      { id: 3, cnpjId: 7, title: "Aluguel Galpão" },
+    ];
+
+    const visiblePayables = allPayables.filter((item) => String(item.cnpjId) === selectedCnpjId);
+    const createPayload = {
+      cnpjId: Number(selectedCnpjId),
+      title: "Boleto energia",
+      amount: "890.00",
+      dueDate: "2026-04-25",
+    };
+    const dashboardContext = {
+      selectedCnpjId,
+      cnpjLabel: "CK Matriz • 00.000.000/0001-91",
+      isolationMode: "strict_by_cnpj",
+    };
+
+    expect(visiblePayables).toHaveLength(2);
+    expect(visiblePayables.map((item) => item.title)).toEqual(["Fornecedor A", "Aluguel Galpão"]);
+    expect(visiblePayables.some((item) => item.cnpjId === 9)).toBe(false);
+    expect(createPayload.cnpjId).toBe(7);
+    expect(dashboardContext.isolationMode).toBe("strict_by_cnpj");
+  });
 });

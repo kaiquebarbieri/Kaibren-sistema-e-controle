@@ -337,6 +337,7 @@ export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
 
 export const fixedCosts = mysqlTable("fixed_costs", {
   id: int("id").autoincrement().primaryKey(),
+  cnpjId: int("cnpj_id"),
   /** Nome do custo fixo (ex: Aluguel, Internet, Contador) */
   name: varchar("name", { length: 255 }).notNull(),
   /** Categoria: aluguel, internet, telefone, contador, energia, agua, software, seguro, outros */
@@ -373,6 +374,7 @@ export const fixedCostPayments = mysqlTable("fixed_cost_payments", {
 
 export const creditCards = mysqlTable("credit_cards", {
   id: int("id").autoincrement().primaryKey(),
+  cnpjId: int("cnpj_id"),
   /** Nome/apelido do cartão (ex: Nubank, C6 Empresarial) */
   name: varchar("name", { length: 255 }).notNull(),
   /** Bandeira: visa, mastercard, elo, amex, outros */
@@ -416,6 +418,7 @@ export const creditCardInvoices = mysqlTable("credit_card_invoices", {
 
 export const loans = mysqlTable("loans", {
   id: int("id").autoincrement().primaryKey(),
+  cnpjId: int("cnpj_id"),
   /** Nome/descrição do empréstimo (ex: Empréstimo C6, Capital de Giro Itaú) */
   name: varchar("name", { length: 255 }).notNull(),
   /** Instituição financeira */

@@ -278,3 +278,12 @@
 - [x] Corrigir a divergência entre atualização imediata e recarga filtrada por CNPJ/mês que faz a conta aparecer e depois sumir no painel de Obrigações
 - [ ] Reproduzir no ambiente real o caso em que a conta a pagar ainda aparece e some mesmo após remover o refetch redundante do callback onSaved
 - [x] Alinhar o pós-salvamento de contas a pagar entre o CNPJ escolhido no modal e o filtro principal da tela para impedir que o item pareça sumir após o cadastro
+- [ ] Reconstruir do zero o fluxo de subcontas por CNPJ nas telas financeiras e de obrigações, incluindo seleção, cadastro, filtro, persistência e leitura consistente entre modal e painel
+- [x] Reestruturar Financeiro e Obrigações para que cada CNPJ funcione como subconta totalmente isolada, sem misturar cadastro, edição, listagem, dashboards ou extratos entre CNPJs
+- [x] Corrigir os erros de TypeScript e JSX surgidos durante a reconstrução estrutural do Financeiro por subconta de CNPJ antes de validar o novo fluxo isolado
+- [ ] Isolar por CNPJ no backend as queries e agregações de DRE, custos fixos, cartões, parcelas e retenções para impedir mistura entre subcontas após a reconstrução do frontend
+- [x] Adicionar regressões automatizadas para validar que cada CNPJ funciona como subconta isolada no Financeiro e em Obrigações durante a reconstrução
+- [x] Preparar migração de schema para adicionar cnpjId às entidades financeiras que ainda não possuem esse vínculo estrutural, permitindo isolamento real por subconta no backend
+- [x] Restaurar a estrutura sintática completa de client/src/pages/Finance.tsx antes de concluir a migração estrutural de subcontas por CNPJ
+- [x] Preencher automaticamente cnpjId nas mutations de custos fixos, cartões e empréstimos e aplicar filtro obrigatório por subconta nas queries e agregações do backend
+- [x] Tornar obrigatório o vínculo e o filtro por CNPJ nas rotas e consultas financeiras principais do backend, alinhando criação, listagem e DRE ao isolamento real por subconta

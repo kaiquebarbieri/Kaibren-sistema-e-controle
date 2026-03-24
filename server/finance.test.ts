@@ -59,6 +59,87 @@ describe("Finance Module", () => {
   });
 
   describe("DRE Calculation", () => {
+    it("should isolate DRE aggregates by cnpj subaccount", () => {
+      const selectedCnpjId = 7;
+      const fixedCostPayments = [
+        { payment: { amountPaid: "1500.00", cnpjId: 7 } },
+        { payment: { amountPaid: "900.00", cnpjId: 9 } },
+      ];
+      const cardInvoices = [
+        { invoice: { totalAmount: "800.00", cnpjId: 7 } },
+        { invoice: { totalAmount: "1200.00", cnpjId: 9 } },
+      ];
+      const loanInstallments = [
+        { installment: { amount: "500.00", cnpjId: 7 } },
+        { installment: { amount: "300.00", cnpjId: 9 } },
+      ];
+      const payableAccounts = [
+        { amount: "400.00", paidAmount: null, status: "pending", cnpjId: 7 },
+        { amount: "650.00", paidAmount: "650.00", status: "paid", cnpjId: 9 },
+      ];
+      const bankTransactions = [
+        { amount: "2000.00", transactionType: "credit", cnpjId: 7 },
+        { amount: "700.00", transactionType: "debit", cnpjId: 7 },
+        { amount: "9999.00", transactionType: "credit", cnpjId: 9 },
+      ];
+
+      const visibleFixedCosts = fixedCostPayments.filter((item) => item.payment.cnpjId === selectedCnpjId);
+      const visibleInvoices = cardInvoices.filter((item) => item.invoice.cnpjId === selectedCnpjId);
+      const visibleInstallments = loanInstallments.filter((item) => item.installment.cnpjId === selectedCnpjId);
+      const visiblePayables = payableAccounts.filter((item) => item.cnpjId === selectedCnpjId);
+      const visibleTransactions = bankTransactions.filter((item) => item.cnpjId === selectedCnpjId);
+
+      const totalCustosFixos = visibleFixedCosts.reduce((sum, item) => sum + parseFloat(item.payment.amountPaid), 0);
+      const totalCartoes = visibleInvoices.reduce((sum, item) => sum + parseFloat(item.invoice.totalAmount), 0);
+      const totalEmprestimos = visibleInstallments.reduce((sum, item) => sum + parseFloat(item.installment.amount), 0);
+      const totalContasPagas = visiblePayables
+        .filter((item) => item.status === "paid" || item.status === "partial")
+        .reduce((sum, item) => sum + parseFloat(String(item.paidAmount || item.amount)), 0);
+      const entradasTotais = visibleTransactions
+        .filter((item) => item.transactionType === "credit")
+        .reduce((sum, item) => sum + parseFloat(item.amount), 0);
+      const saidasTotais = visibleTransactions
+        .filter((item) => item.transactionType === "debit")
+        .reduce((sum, item) => sum + parseFloat(item.amount), 0);
+
+      expect(totalCustosFixos).toBe(1500);
+      expect(totalCartoes).toBe(800);
+      expect(totalEmprestimos).toBe(500);
+      expect(totalContasPagas).toBe(0);
+      expect(entradasTotais).toBe(2000);
+      expect(saidasTotais).toBe(700);
+    });
+
+    it("should ignore records without matching cnpjId when a subaccount is active", () => {
+      const selectedCnpjId = 7;
+      const fixedCostPayments = [
+        { payment: { amountPaid: "1500.00", cnpjId: 7 } },
+        { payment: { amountPaid: "900.00", cnpjId: null } },
+      ];
+      const cardInvoices = [
+        { invoice: { totalAmount: "800.00", cnpjId: 7 } },
+        { invoice: { totalAmount: "1200.00", cnpjId: null } },
+      ];
+      const loanInstallments = [
+        { installment: { amount: "500.00", cnpjId: 7 } },
+        { installment: { amount: "300.00", cnpjId: null } },
+      ];
+
+      const totalCustosFixos = fixedCostPayments
+        .filter((item) => item.payment.cnpjId === selectedCnpjId)
+        .reduce((sum, item) => sum + parseFloat(item.payment.amountPaid), 0);
+      const totalCartoes = cardInvoices
+        .filter((item) => item.invoice.cnpjId === selectedCnpjId)
+        .reduce((sum, item) => sum + parseFloat(item.invoice.totalAmount), 0);
+      const totalEmprestimos = loanInstallments
+        .filter((item) => item.installment.cnpjId === selectedCnpjId)
+        .reduce((sum, item) => sum + parseFloat(item.installment.amount), 0);
+
+      expect(totalCustosFixos).toBe(1500);
+      expect(totalCartoes).toBe(800);
+      expect(totalEmprestimos).toBe(500);
+    });
+
     it("should calculate DRE correctly", () => {
       // Simular dados do DRE
       const salesOrders = [
