@@ -243,6 +243,42 @@ describe("ui.navigation contract", () => {
     expect(nextSelectedCnpjId).toBe("7");
   });
 
+  it("usa listagem agregada com CNPJ escolhido no cadastro e nome do CNPJ visível no histórico", () => {
+    const cnpjs = [
+      { id: 7, nomeFantasia: "CK Atacados", cnpj: "00.000.000/0001-91" },
+      { id: 9, nomeFantasia: "Duoo Utilidades", cnpj: "11.111.111/0001-55" },
+    ];
+
+    const payable = {
+      id: 120,
+      cnpjId: 9,
+      title: "Boleto de fornecedor",
+      supplier: "Fornecedor Prime",
+      amount: "650.00",
+    };
+
+    const selectedFilter = "all";
+    const selectedCnpjLabel = cnpjs.find((item) => item.id === payable.cnpjId)?.nomeFantasia ?? "CNPJ não identificado";
+    const listInput = {
+      year: 2026,
+      month: 3,
+      cnpjId: selectedFilter === "all" ? undefined : Number(selectedFilter),
+    };
+    const historyBadge = `${selectedCnpjLabel} • ${cnpjs.find((item) => item.id === payable.cnpjId)?.cnpj}`;
+    const createPayload = {
+      cnpjId: payable.cnpjId,
+      title: payable.title,
+      supplier: payable.supplier,
+      amount: payable.amount,
+    };
+
+    expect(listInput.cnpjId).toBeUndefined();
+    expect(createPayload.cnpjId).toBe(9);
+    expect(selectedCnpjLabel).toBe("Duoo Utilidades");
+    expect(historyBadge).toContain("Duoo Utilidades");
+    expect(historyBadge).toContain("11.111.111/0001-55");
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",
@@ -297,31 +333,39 @@ describe("ui.navigation contract", () => {
     expect(mercadoPagoSummary.transfers).toBe(1500);
   });
 
-  it("trata cada CNPJ como subconta isolada na seleção principal, na listagem e no cadastro", () => {
-    const selectedCnpjId = "7";
-    const allPayables = [
-      { id: 1, cnpjId: 7, title: "Fornecedor A" },
-      { id: 2, cnpjId: 9, title: "Fornecedor B" },
-      { id: 3, cnpjId: 7, title: "Aluguel Galpão" },
+  it("mostra o CNPJ de forma nítida no histórico mesmo com listagem agregada", () => {
+    const payables = [
+      { id: 1, cnpjId: 7, cnpjName: "CK Matriz", title: "Fornecedor A" },
+      { id: 2, cnpjId: 9, cnpjName: "Duoo Utilidades", title: "Fornecedor B" },
     ];
 
-    const visiblePayables = allPayables.filter((item) => String(item.cnpjId) === selectedCnpjId);
+    const visibleRows = payables.map((item) => ({
+      title: item.title,
+      cnpjBadge: `CNPJ: ${item.cnpjName}`,
+    }));
+
+    expect(visibleRows).toHaveLength(2);
+    expect(visibleRows[0]).toEqual({ title: "Fornecedor A", cnpjBadge: "CNPJ: CK Matriz" });
+    expect(visibleRows[1]).toEqual({ title: "Fornecedor B", cnpjBadge: "CNPJ: Duoo Utilidades" });
+  });
+
+  it("passa a escolher o CNPJ no cadastro em vez de depender de subconta ativa", () => {
     const createPayload = {
-      cnpjId: Number(selectedCnpjId),
+      cnpjId: 7,
       title: "Boleto energia",
       amount: "890.00",
       dueDate: "2026-04-25",
     };
-    const dashboardContext = {
-      selectedCnpjId,
-      cnpjLabel: "CK Matriz • 00.000.000/0001-91",
-      isolationMode: "strict_by_cnpj",
+
+    const listContext = {
+      mode: "aggregate_with_optional_filter",
+      cnpjChosenInsideDialog: true,
+      activeSubaccountRequired: false,
     };
 
-    expect(visiblePayables).toHaveLength(2);
-    expect(visiblePayables.map((item) => item.title)).toEqual(["Fornecedor A", "Aluguel Galpão"]);
-    expect(visiblePayables.some((item) => item.cnpjId === 9)).toBe(false);
     expect(createPayload.cnpjId).toBe(7);
-    expect(dashboardContext.isolationMode).toBe("strict_by_cnpj");
+    expect(listContext.mode).toBe("aggregate_with_optional_filter");
+    expect(listContext.cnpjChosenInsideDialog).toBe(true);
+    expect(listContext.activeSubaccountRequired).toBe(false);
   });
 });

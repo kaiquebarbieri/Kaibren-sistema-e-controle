@@ -287,3 +287,34 @@
 - [x] Restaurar a estrutura sintática completa de client/src/pages/Finance.tsx antes de concluir a migração estrutural de subcontas por CNPJ
 - [x] Preencher automaticamente cnpjId nas mutations de custos fixos, cartões e empréstimos e aplicar filtro obrigatório por subconta nas queries e agregações do backend
 - [x] Tornar obrigatório o vínculo e o filtro por CNPJ nas rotas e consultas financeiras principais do backend, alinhando criação, listagem e DRE ao isolamento real por subconta
+- [ ] Reproduzir e corrigir a falha remanescente após a reconstrução das subcontas por CNPJ, incluindo verificação de dados antigos e comportamento real relatado pelo usuário
+- [ ] Investigar o fluxo específico em que a conta é cadastrada em um CNPJ e some logo depois, mesmo permanecendo na mesma subconta
+- [ ] Coletar o caso exato em que o lançamento ainda some após salvar, incluindo CNPJ, descrição, valor e momento preciso do desaparecimento no fluxo de Obrigações
+- [ ] Investigar falha dependente do mês: salvar em um mês funciona, mas repetir o cadastro no mesmo mês falha ou some imediatamente após salvar
+- [ ] Instrumentar o fluxo de salvamento de contas a pagar para registrar payload enviado, resposta da mutation, refetch mensal e lista final renderizada no caso intermitente de desaparecimento após salvar
+- [x] Avaliar substituir a subconta global por seleção de CNPJ diretamente no cadastro de contas, caso isso simplifique o fluxo e elimine o bug de desaparecimento ao salvar
+- [x] Remover a subconta ativa da tela de Obrigações/Financeiro e adotar seleção de CNPJ diretamente no cadastro, com listagem agregada e filtro opcional por CNPJ
+- [ ] Destacar de forma nítida no histórico de contas e boletos o nome do CNPJ escolhido no cadastro, após remover a subconta global e adotar seleção direta de CNPJ no modal
+- [ ] Exibir no histórico de contas e boletos uma identificação visual nítida do CNPJ selecionado no cadastro em cada lançamento salvo
+- [ ] Tornar o nome do CNPJ claramente visível no histórico de contas e boletos para cada lançamento salvo, conforme seleção feita no cadastro
+- [ ] Garantir que cada conta e boleto exibam no histórico o nome do CNPJ selecionado no cadastro com destaque visual claro e imediato
+- [ ] Mostrar no histórico de contas e boletos, com destaque visual nítido, o nome do CNPJ selecionado no cadastro para cada lançamento salvo
+- [x] Simplificar o fluxo de Obrigações removendo a subconta global da tela, escolhendo o CNPJ no cadastro e exibindo o nome do CNPJ com destaque em cada item do histórico
+- [x] Corrigir o erro sintático residual em Finance.tsx para conseguir validar a nova regra de seleção de CNPJ no cadastro e o destaque do CNPJ no histórico
+- [ ] Implementar a nova regra de produto: remover a subconta ativa como requisito do fluxo de contas e boletos, selecionar o CNPJ diretamente no cadastro e exibir o nome do CNPJ com destaque no histórico
+- [ ] Reescrever a tela de Obrigações/Financeiro para remover a subconta global, adotar CNPJ no cadastro e destacar o nome do CNPJ em cada item do histórico
+- [x] Adicionar regressões automatizadas para a nova regra de produto com CNPJ escolhido no cadastro e nome do CNPJ destacado no histórico
+- [ ] Implementar visualmente na tela a remoção da subconta global, a seleção de CNPJ dentro do cadastro e o destaque nítido do nome do CNPJ no histórico de contas e boletos
+- [ ] Aplicar na interface a listagem agregada com filtro opcional por CNPJ, seleção de CNPJ dentro do cadastro e destaque explícito do nome do CNPJ em contas e boletos do histórico
+- [ ] Reforçar visualmente no histórico de contas e boletos o nome do CNPJ selecionado em cada lançamento, para identificação imediata da empresa após salvar
+- [ ] Implementar na interface de Obrigações a nova regra com listagem agregada, escolha de CNPJ no cadastro e destaque visual explícito do nome do CNPJ em cada conta e boleto do histórico
+- [ ] Prosseguir com a simplificação visual de Obrigações: remover a subconta global da tela, escolher o CNPJ no cadastro e mostrar o nome do CNPJ com destaque em cada item do histórico
+- [ ] Implementar a refatoração principal de Obrigações: remover a subconta global da tela, selecionar o CNPJ no modal de cadastro e destacar claramente o nome do CNPJ em cada conta e boleto do histórico
+- [ ] Alinhar o cabeçalho e a listagem de Obrigações à nova regra de histórico agregado, filtro opcional por CNPJ e identificação nítida do CNPJ em cada lançamento salvo
+- [ ] Implementar de fato na interface de Obrigações a nova experiência sem subconta global, com seleção de CNPJ no cadastro e nome do CNPJ destacado com clareza no histórico
+- [ ] Aplicar na interface de Obrigações a nova experiência com listagem agregada, escolha de CNPJ no cadastro e destaque visual claro do CNPJ em cada lançamento do histórico
+- [ ] Implementar na interface de Obrigações a nova experiência: remover a dependência da subconta global, escolher o CNPJ no cadastro e destacar claramente o nome do CNPJ em cada lançamento do histórico
+- [ ] Eliminar o erro residual de parser em Finance.tsx na seção de movimentos recentes antes de continuar a simplificação visual do fluxo de CNPJ
+- [x] Estabilizar a sintaxe residual de Finance.tsx na seção de movimentos recentes para destravar a simplificação visual do fluxo de CNPJ em Obrigações
+- [x] Implementar visualmente a nova regra já validada em regressão: escolher o CNPJ no cadastro de Obrigações e mostrar com destaque o nome do CNPJ em cada lançamento do histórico agregado
+- [x] Concluir a implementação visual em Finance.tsx da nova experiência de Obrigações com listagem agregada, escolha de CNPJ no cadastro e destaque claro do nome do CNPJ em cada lançamento do histórico

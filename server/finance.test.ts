@@ -5,7 +5,7 @@ describe("Finance Module", () => {
     it("should validate fixed cost categories", () => {
       const validCategories = [
         "aluguel", "internet", "telefone", "contador", "energia",
-        "agua", "software", "seguro", "funcionario", "transporte", "outros"
+        "agua", "software", "seguro", "funcionario", "transporte", "outros",
       ];
       expect(validCategories).toHaveLength(11);
       expect(validCategories).toContain("aluguel");
@@ -19,7 +19,7 @@ describe("Finance Module", () => {
         { name: "Contador", amount: "800.00" },
       ];
       const total = costs.reduce((sum, c) => sum + parseFloat(c.amount), 0);
-      expect(total).toBe(2450.00);
+      expect(total).toBe(2450.0);
     });
   });
 
@@ -43,8 +43,8 @@ describe("Finance Module", () => {
   describe("Loans", () => {
     it("should calculate remaining installments", () => {
       const loan = { totalInstallments: 24, startDate: "2026-01-01" };
-      const currentMonth = 3; // March
-      const paidInstallments = currentMonth - 1; // Jan, Feb paid
+      const currentMonth = 3;
+      const paidInstallments = currentMonth - 1;
       const remaining = loan.totalInstallments - paidInstallments;
       expect(remaining).toBe(22);
     });
@@ -53,13 +53,13 @@ describe("Finance Module", () => {
       const loan = { totalAmount: "10000.00", installmentAmount: "500.00", totalInstallments: 24 };
       const totalPaid = parseFloat(loan.installmentAmount) * loan.totalInstallments;
       const totalInterest = totalPaid - parseFloat(loan.totalAmount);
-      expect(totalPaid).toBe(12000.00);
-      expect(totalInterest).toBe(2000.00);
+      expect(totalPaid).toBe(12000.0);
+      expect(totalInterest).toBe(2000.0);
     });
   });
 
   describe("DRE Calculation", () => {
-    it("should isolate DRE aggregates by cnpj subaccount", () => {
+    it("should isolate DRE aggregates by cnpj in backend queries", () => {
       const selectedCnpjId = 7;
       const fixedCostPayments = [
         { payment: { amountPaid: "1500.00", cnpjId: 7 } },
@@ -110,7 +110,7 @@ describe("Finance Module", () => {
       expect(saidasTotais).toBe(700);
     });
 
-    it("should ignore records without matching cnpjId when a subaccount is active", () => {
+    it("should ignore records without matching cnpjId when filtering backend results", () => {
       const selectedCnpjId = 7;
       const fixedCostPayments = [
         { payment: { amountPaid: "1500.00", cnpjId: 7 } },
@@ -140,8 +140,79 @@ describe("Finance Module", () => {
       expect(totalEmprestimos).toBe(500);
     });
 
+    it("should preserve cnpj identity in aggregated payable history rows", () => {
+      const payables = [
+        { id: 1, title: "Fornecedor A", cnpjId: 7, cnpjName: "CK Matriz", amount: "450.00" },
+        { id: 2, title: "Boleto energia", cnpjId: 9, cnpjName: "Duoo Utilidades", amount: "220.00" },
+      ];
+
+      const historyRows = payables.map((item) => ({
+        id: item.id,
+        title: item.title,
+        amount: Number(item.amount),
+        cnpjBadge: `${item.cnpjName}`,
+      }));
+
+      expect(historyRows).toEqual([
+        { id: 1, title: "Fornecedor A", amount: 450, cnpjBadge: "CK Matriz" },
+        { id: 2, title: "Boleto energia", amount: 220, cnpjBadge: "Duoo Utilidades" },
+      ]);
+    });
+
+    it("should allow choosing cnpj directly in payable creation payload", () => {
+      const createPayload = {
+        cnpjId: 9,
+        title: "Fornecedor B",
+        supplier: "Duoo",
+        amount: "780.00",
+        dueDate: "2026-04-10",
+      };
+
+      expect(createPayload.cnpjId).toBe(9);
+      expect(createPayload.title).toBe("Fornecedor B");
+      expect(createPayload.dueDate).toBe("2026-04-10");
+    });
+
+    it("should keep payable visible in aggregated history after saving when filter is all", () => {
+      const selectedFilter = "all";
+      const existingPayables = [
+        { id: 11, title: "Fornecedor atual", cnpjId: 7 },
+      ];
+      const savedPayable = { id: 12, title: "Novo boleto", cnpjId: 9 };
+
+      const history = [savedPayable, ...existingPayables].filter((item) => {
+        return selectedFilter === "all" ? true : String(item.cnpjId) === selectedFilter;
+      });
+
+      expect(history.map((item) => item.id)).toEqual([12, 11]);
+      expect(history[0].title).toBe("Novo boleto");
+    });
+
+    it("should keep cnpj filter optional while preserving visible company label", () => {
+      const selectedFilter = "all";
+      const cnpjs = new Map<number, string>([
+        [7, "CK Matriz • 11.111.111/0001-11"],
+        [9, "Duoo Utilidades • 22.222.222/0001-22"],
+      ]);
+      const payables = [
+        { id: 1, title: "Fornecedor A", cnpjId: 7 },
+        { id: 2, title: "Fornecedor B", cnpjId: 9 },
+      ];
+
+      const visibleRows = payables
+        .filter((item) => selectedFilter === "all" || String(item.cnpjId) === selectedFilter)
+        .map((item) => ({
+          id: item.id,
+          cnpjLabel: cnpjs.get(item.cnpjId),
+        }));
+
+      expect(visibleRows).toEqual([
+        { id: 1, cnpjLabel: "CK Matriz • 11.111.111/0001-11" },
+        { id: 2, cnpjLabel: "Duoo Utilidades • 22.222.222/0001-22" },
+      ]);
+    });
+
     it("should calculate DRE correctly", () => {
-      // Simular dados do DRE
       const salesOrders = [
         { totalCliente: "5000.00", totalMondial: "3000.00", totalComissaoEvertonMondial: "200.00", totalLucro: "1800.00" },
         { totalCliente: "3000.00", totalMondial: "1800.00", totalComissaoEvertonMondial: "120.00", totalLucro: "1080.00" },
@@ -161,34 +232,34 @@ describe("Finance Module", () => {
       ];
 
       const receitaBruta = salesOrders.reduce((sum, o) => sum + parseFloat(o.totalCliente), 0);
-      expect(receitaBruta).toBe(8000.00);
+      expect(receitaBruta).toBe(8000.0);
 
       const custoMercadoriaVendida = salesOrders.reduce((sum, o) => sum + parseFloat(o.totalMondial), 0);
-      expect(custoMercadoriaVendida).toBe(4800.00);
+      expect(custoMercadoriaVendida).toBe(4800.0);
 
       const lucroBruto = receitaBruta - custoMercadoriaVendida;
-      expect(lucroBruto).toBe(3200.00);
+      expect(lucroBruto).toBe(3200.0);
 
       const totalCustosFixos = fixedCostPayments.reduce((sum, p) => sum + parseFloat(p.amountPaid), 0);
-      expect(totalCustosFixos).toBe(1650.00);
+      expect(totalCustosFixos).toBe(1650.0);
 
       const totalCartoes = cardInvoices.reduce((sum, i) => sum + parseFloat(i.totalAmount), 0);
-      expect(totalCartoes).toBe(800.00);
+      expect(totalCartoes).toBe(800.0);
 
       const totalEmprestimos = loanInstallments.reduce((sum, i) => sum + parseFloat(i.amount), 0);
-      expect(totalEmprestimos).toBe(500.00);
+      expect(totalEmprestimos).toBe(500.0);
 
       const despesasOperacionais = totalCustosFixos + totalCartoes + totalEmprestimos;
-      expect(despesasOperacionais).toBe(2950.00);
+      expect(despesasOperacionais).toBe(2950.0);
 
       const resultadoOperacional = lucroBruto - despesasOperacionais;
-      expect(resultadoOperacional).toBe(250.00);
+      expect(resultadoOperacional).toBe(250.0);
 
       const totalComprasPessoais = personalOrders.reduce((sum, o) => sum + parseFloat(o.totalMondial), 0);
-      expect(totalComprasPessoais).toBe(500.00);
+      expect(totalComprasPessoais).toBe(500.0);
 
       const resultadoLiquido = resultadoOperacional - totalComprasPessoais;
-      expect(resultadoLiquido).toBe(-250.00);
+      expect(resultadoLiquido).toBe(-250.0);
 
       const margemLiquida = receitaBruta > 0 ? (resultadoLiquido / receitaBruta) * 100 : 0;
       expect(margemLiquida).toBeCloseTo(-3.125, 3);
@@ -200,10 +271,8 @@ describe("Finance Module", () => {
       const totalLIS = 150;
       const totalComprasPessoais = 2000;
       const lucroBruto = 3200;
-      const despesasOperacionais = 2950;
       const totalCartoes = 1500;
       const receitaBruta = 8000;
-      const margemLiquida = -3.125;
 
       if (resultadoLiquido < 0) {
         alerts.push({ type: "danger", message: "Resultado negativo" });

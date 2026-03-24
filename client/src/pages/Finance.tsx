@@ -13,9 +13,9 @@ import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import {
-  AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
+  Building2,
   CalendarClock,
   ChevronLeft,
   ChevronRight,
@@ -24,7 +24,6 @@ import {
   PieChart,
   Plus,
   Receipt,
-  ShieldAlert,
   Sparkles,
   Target,
   TrendingDown,
@@ -84,6 +83,11 @@ function toPercent(value: number): string {
   return `${value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
+function getCnpjLabel(item: any) {
+  if (!item) return "CNPJ não identificado";
+  return `${item.nomeFantasia || item.razaoSocial || "Empresa sem nome"} • ${item.cnpj || "Sem CNPJ"}`;
+}
+
 function BarRow({ label, amount, total, tone = "rose" }: { label: string; amount: number; total: number; tone?: "rose" | "emerald" | "sky" | "amber" }) {
   const percent = total > 0 ? Math.min((amount / total) * 100, 100) : 0;
   const toneClass = {
@@ -126,9 +130,6 @@ function EmptyState({ title, description, actionLabel, onAction }: { title: stri
 }
 
 function FinanceHeader({
-  selectedCnpjId,
-  setSelectedCnpjId,
-  cnpjs,
   selectedMonth,
   selectedYear,
   prevMonth,
@@ -137,9 +138,6 @@ function FinanceHeader({
   title,
   description,
 }: {
-  selectedCnpjId: string;
-  setSelectedCnpjId: (value: string) => void;
-  cnpjs: any[];
   selectedMonth: number;
   selectedYear: number;
   prevMonth: () => void;
@@ -158,27 +156,10 @@ function FinanceHeader({
             <p className="text-sm text-muted-foreground">{description}</p>
           </div>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:w-auto xl:flex xl:flex-none xl:items-center">
-          <div className="min-w-0 w-full rounded-xl border bg-card px-3 py-2 shadow-sm md:min-w-[300px] xl:w-[360px]">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Subconta por CNPJ</Label>
-            <Select value={selectedCnpjId} onValueChange={setSelectedCnpjId}>
-              <SelectTrigger className="mt-1 border-0 px-0 shadow-none focus:ring-0">
-                <SelectValue placeholder="Selecione a subconta" />
-              </SelectTrigger>
-              <SelectContent>
-                {cnpjs.map((item: any) => (
-                  <SelectItem key={item.id} value={String(item.id)}>
-                    {(item.nomeFantasia || item.razaoSocial)} • {item.cnpj}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex w-full items-center justify-between gap-2 rounded-xl border bg-card px-2 py-2 shadow-sm md:min-w-[260px] md:px-3 xl:w-[280px]">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
-            <span className="min-w-0 flex-1 text-center text-sm font-semibold leading-tight">{MONTHS[selectedMonth - 1]} {selectedYear}</span>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={nextMonth}><ChevronRight className="h-4 w-4" /></Button>
-          </div>
+        <div className="flex w-full items-center justify-between gap-2 rounded-xl border bg-card px-2 py-2 shadow-sm md:min-w-[260px] md:px-3 xl:w-[280px]">
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
+          <span className="min-w-0 flex-1 text-center text-sm font-semibold leading-tight">{MONTHS[selectedMonth - 1]} {selectedYear}</span>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={nextMonth}><ChevronRight className="h-4 w-4" /></Button>
         </div>
       </div>
     </div>
@@ -235,14 +216,22 @@ function InsightMetric({ label, value, helper, tone = "neutral", icon }: { label
   );
 }
 
-function ObligationListItem({ title, subtitle, badge, amount, accentClass }: { title: string; subtitle: string; badge: React.ReactNode; amount: string; accentClass: string }) {
+function ObligationListItem({ title, subtitle, badge, amount, accentClass, cnpjLabel }: { title: string; subtitle: string; badge: React.ReactNode; amount: string; accentClass: string; cnpjLabel?: string }) {
   return (
     <div className="group relative overflow-hidden rounded-3xl border bg-card/95 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
       <div className={`absolute inset-y-0 left-0 w-1.5 ${accentClass}`} />
       <div className="ml-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-1">
-          <p className="font-medium tracking-tight">{title}</p>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="space-y-2">
+          {cnpjLabel ? (
+            <Badge variant="secondary" className="w-fit border border-sky-200 bg-sky-50 text-sky-900">
+              <Building2 className="mr-1 h-3.5 w-3.5" />
+              {cnpjLabel}
+            </Badge>
+          ) : null}
+          <div className="space-y-1">
+            <p className="font-medium tracking-tight">{title}</p>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {badge}
@@ -262,7 +251,7 @@ function ObligationDialog({
   loans,
   selectedYear,
   selectedMonth,
-  activeCnpjId,
+  defaultCnpjId,
   editingPayable,
   onSaved,
 }: {
@@ -274,7 +263,7 @@ function ObligationDialog({
   loans: any[];
   selectedYear: number;
   selectedMonth: number;
-  activeCnpjId: string;
+  defaultCnpjId?: string;
   editingPayable?: any | null;
   onSaved: (savedPayable?: SavedPayable | null) => void;
 }) {
@@ -301,14 +290,18 @@ function ObligationDialog({
   const [totalInstallments, setTotalInstallments] = useState("1");
   const [selectedLoanId, setSelectedLoanId] = useState<string>("none");
   const [entryDate, setEntryDate] = useState("");
+  const [selectedCnpjId, setSelectedCnpjId] = useState<string>(defaultCnpjId || "none");
 
-  const activeCnpj = useMemo(
-    () => cnpjs.find((item: any) => String(item.id) === activeCnpjId) ?? null,
-    [cnpjs, activeCnpjId],
+  const selectedCnpj = useMemo(
+    () => cnpjs.find((item: any) => String(item.id) === selectedCnpjId) ?? null,
+    [cnpjs, selectedCnpjId],
   );
 
   useEffect(() => {
     if (!open) return;
+
+    const fallbackCnpjId = editingPayable?.cnpjId ? String(editingPayable.cnpjId) : defaultCnpjId || (cnpjs[0] ? String(cnpjs[0].id) : "none");
+    setSelectedCnpjId(fallbackCnpjId);
 
     if (editingPayable) {
       setDescription(editingPayable.title || editingPayable.description || "");
@@ -341,21 +334,14 @@ function ObligationDialog({
     setTotalInstallments("1");
     setSelectedLoanId(loans[0] ? String(loans[0].id) : "none");
     setEntryDate("");
-  }, [open, editingPayable, creditCards, loans]);
+  }, [open, editingPayable, defaultCnpjId, cnpjs, creditCards, loans]);
 
-  const listInput = {
-    year: selectedYear,
-    month: selectedMonth,
-    cnpjId: Number(activeCnpjId),
-  };
-  const dashboardInput = {
-    referenceDate: today,
-    year: selectedYear,
-    month: selectedMonth,
-    cnpjId: Number(activeCnpjId),
-  };
+  const selectedCnpjNumber = selectedCnpjId !== "none" ? Number(selectedCnpjId) : null;
+  const listInput = selectedCnpjNumber ? { year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber } : null;
+  const dashboardInput = selectedCnpjNumber ? { referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber } : null;
 
   function upsertPayableInCache(payable: Record<string, any>) {
+    if (!listInput) return;
     utils.finance.payables.list.setData(listInput, (current) => {
       const items = Array.isArray(current) ? [...current] as Array<Record<string, any>> : [];
       const index = items.findIndex((item) => item.id === payable.id);
@@ -369,24 +355,25 @@ function ObligationDialog({
   }
 
   async function refreshAfterSave(savedPayable?: SavedPayable | null) {
-    await Promise.all([
-      utils.finance.payables.list.invalidate(listInput),
-      utils.finance.payables.dashboard.invalidate(dashboardInput),
-      utils.finance.fixedCosts.payments.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: Number(activeCnpjId) }),
-      utils.finance.creditCards.list.invalidate({ cnpjId: Number(activeCnpjId) }),
-      utils.finance.creditCards.invoices.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: Number(activeCnpjId) }),
-      utils.finance.loans.list.invalidate({ cnpjId: Number(activeCnpjId) }),
-      utils.finance.loans.installments.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: Number(activeCnpjId) }),
-      utils.finance.loans.retentionEntries.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: Number(activeCnpjId) }),
-      utils.finance.dre.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: Number(activeCnpjId) }),
-    ]);
+    if (selectedCnpjNumber && listInput && dashboardInput) {
+      await Promise.all([
+        utils.finance.payables.list.invalidate(listInput),
+        utils.finance.payables.dashboard.invalidate(dashboardInput),
+        utils.finance.fixedCosts.payments.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
+        utils.finance.creditCards.list.invalidate({ cnpjId: selectedCnpjNumber }),
+        utils.finance.creditCards.invoices.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
+        utils.finance.loans.list.invalidate({ cnpjId: selectedCnpjNumber }),
+        utils.finance.loans.installments.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
+        utils.finance.loans.retentionEntries.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
+        utils.finance.dre.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
+      ]);
+    }
     onSaved(savedPayable ?? null);
     onOpenChange(false);
   }
 
   const createPayableMutation = trpc.finance.payables.create.useMutation();
   const updatePayableMutation = trpc.finance.payables.update.useMutation();
-  const deletePayableMutation = trpc.finance.payables.delete.useMutation();
   const createFixedCostMutation = trpc.finance.fixedCosts.create.useMutation();
   const createCreditCardMutation = trpc.finance.creditCards.create.useMutation();
   const createCreditCardInvoiceMutation = trpc.finance.creditCards.upsertInvoice.useMutation();
@@ -395,8 +382,8 @@ function ObligationDialog({
 
   async function handleSubmit() {
     if (!mode) return;
-    if (!activeCnpj) {
-      toast.error("Selecione uma subconta de CNPJ antes de continuar.");
+    if (!selectedCnpj || !selectedCnpjNumber) {
+      toast.error("Selecione o CNPJ do lançamento antes de continuar.");
       return;
     }
 
@@ -407,7 +394,7 @@ function ObligationDialog({
       }
 
       const payload = {
-        cnpjId: Number(activeCnpjId),
+        cnpjId: selectedCnpjNumber,
         title: description,
         supplier: counterparty || null,
         category,
@@ -441,7 +428,7 @@ function ObligationDialog({
         return;
       }
       await createFixedCostMutation.mutateAsync({
-        cnpjId: Number(activeCnpjId),
+        cnpjId: selectedCnpjNumber,
         name: description,
         category,
         amount,
@@ -459,7 +446,7 @@ function ObligationDialog({
         return;
       }
       await createCreditCardMutation.mutateAsync({
-        cnpjId: Number(activeCnpjId),
+        cnpjId: selectedCnpjNumber,
         name: cardName,
         brand: bankName || "outros",
         lastFourDigits: null,
@@ -500,7 +487,7 @@ function ObligationDialog({
         return;
       }
       await createLoanMutation.mutateAsync({
-        cnpjId: Number(activeCnpjId),
+        cnpjId: selectedCnpjNumber,
         name: loanName,
         institution: institutionName,
         loanType,
@@ -542,22 +529,43 @@ function ObligationDialog({
   }
 
   const meta = mode ? obligationDialogMeta[mode] : null;
-  const loading = createPayableMutation.isPending || updatePayableMutation.isPending || deletePayableMutation.isPending || createFixedCostMutation.isPending || createCreditCardMutation.isPending || createCreditCardInvoiceMutation.isPending || createLoanMutation.isPending || createRetentionMutation.isPending;
+  const loading = createPayableMutation.isPending || updatePayableMutation.isPending || createFixedCostMutation.isPending || createCreditCardMutation.isPending || createCreditCardInvoiceMutation.isPending || createLoanMutation.isPending || createRetentionMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{meta?.title ?? "Cadastro"}</DialogTitle>
           <DialogDescription>{meta?.description ?? "Preencha os dados para seguir."}</DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-2xl border bg-muted/20 px-4 py-3 text-sm">
-          <p className="font-medium">Subconta ativa</p>
-          <p className="mt-1 text-muted-foreground">
-            {activeCnpj ? `${activeCnpj.nomeFantasia || activeCnpj.razaoSocial} • ${activeCnpj.cnpj}` : "Selecione um CNPJ na tela principal."}
-          </p>
+        <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm">
+          <p className="font-medium text-sky-950">CNPJ do lançamento</p>
+          <p className="mt-1 text-sky-900/80">Escolha manualmente a empresa deste cadastro. O histórico continuará consolidado, mas cada lançamento ficará identificado pelo CNPJ.</p>
         </div>
+
+        <div className="space-y-2">
+          <Label>CNPJ</Label>
+          <Select value={selectedCnpjId} onValueChange={setSelectedCnpjId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o CNPJ do lançamento" />
+            </SelectTrigger>
+            <SelectContent>
+              {cnpjs.map((item: any) => (
+                <SelectItem key={item.id} value={String(item.id)}>
+                  {getCnpjLabel(item)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedCnpj ? (
+          <div className="rounded-2xl border bg-muted/20 px-4 py-3 text-sm">
+            <p className="font-medium">Empresa selecionada</p>
+            <p className="mt-1 text-muted-foreground">{getCnpjLabel(selectedCnpj)}</p>
+          </div>
+        ) : null}
 
         <div className="grid gap-4 md:grid-cols-2">
           {(mode === "conta" || mode === "custoFixo") && (
@@ -666,11 +674,12 @@ export default function Finance() {
   const today = ymd(now);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [selectedCnpjId, setSelectedCnpjId] = useState<string>("");
+  const [selectedCnpjFilter, setSelectedCnpjFilter] = useState<string>("all");
+  const [preferredDialogCnpjId, setPreferredDialogCnpjId] = useState<string | undefined>(undefined);
   const [obligationDialogMode, setObligationDialogMode] = useState<ObligationDialogMode | null>(null);
   const [obligationDialogOpen, setObligationDialogOpen] = useState(false);
   const [editingPayable, setEditingPayable] = useState<any | null>(null);
-  const [savedPayableFeedback, setSavedPayableFeedback] = useState<{ id: number; title: string } | null>(null);
+  const [savedPayableFeedback, setSavedPayableFeedback] = useState<{ id: number; title: string; cnpjLabel: string } | null>(null);
   const [highlightedPayableId, setHighlightedPayableId] = useState<number | null>(null);
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
@@ -678,48 +687,62 @@ export default function Finance() {
   const cnpjs = cnpjsQuery.data ?? [];
 
   useEffect(() => {
-    if (!selectedCnpjId && cnpjs[0]?.id) {
-      setSelectedCnpjId(String(cnpjs[0].id));
+    if (selectedCnpjFilter === "all") return;
+    if (!cnpjs.some((item: any) => String(item.id) === selectedCnpjFilter)) {
+      setSelectedCnpjFilter("all");
     }
-  }, [cnpjs, selectedCnpjId]);
+  }, [cnpjs, selectedCnpjFilter]);
 
-  const activeCnpjId = selectedCnpjId ? Number(selectedCnpjId) : undefined;
-  const financeQueriesEnabled = Boolean(activeCnpjId);
+  useEffect(() => {
+    if (!preferredDialogCnpjId && cnpjs[0]?.id) {
+      setPreferredDialogCnpjId(String(cnpjs[0].id));
+    }
+  }, [cnpjs, preferredDialogCnpjId]);
+
+  const cnpjMap = useMemo(() => {
+    return new Map<string, any>(cnpjs.map((item: any) => [String(item.id), item] as [string, any]));
+  }, [cnpjs]);
+
+  const selectedFinanceCnpjId = selectedCnpjFilter !== "all"
+    ? Number(selectedCnpjFilter)
+    : (cnpjs[0]?.id ? Number(cnpjs[0].id) : undefined);
+
+  const financeQueriesEnabled = Boolean(selectedFinanceCnpjId);
 
   const payablesQuery = trpc.finance.payables.list.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
     { enabled: financeQueriesEnabled },
   );
   const payablesDashboardQuery = trpc.finance.payables.dashboard.useQuery(
-    { referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId },
+    { referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
     { enabled: financeQueriesEnabled },
   );
   const fixedCostPaymentsQuery = trpc.finance.fixedCosts.payments.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId as number },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId as number },
     { enabled: financeQueriesEnabled },
   );
   const creditCardsQuery = trpc.finance.creditCards.list.useQuery(
-    { cnpjId: activeCnpjId as number },
+    { cnpjId: selectedFinanceCnpjId as number },
     { enabled: financeQueriesEnabled },
   );
   const creditCardInvoicesQuery = trpc.finance.creditCards.invoices.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
     { enabled: financeQueriesEnabled },
   );
   const loansQuery = trpc.finance.loans.list.useQuery(
-    { cnpjId: activeCnpjId as number },
+    { cnpjId: selectedFinanceCnpjId as number },
     { enabled: financeQueriesEnabled },
   );
   const loanInstallmentsQuery = trpc.finance.loans.installments.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
     { enabled: financeQueriesEnabled },
   );
   const retentionEntriesQuery = trpc.finance.loans.retentionEntries.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
     { enabled: financeQueriesEnabled },
   );
   const dreQuery = trpc.finance.dre.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: activeCnpjId as number },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId as number },
     { enabled: financeQueriesEnabled },
   );
 
@@ -735,8 +758,8 @@ export default function Finance() {
   const dre = dreQuery.data;
 
   useEffect(() => {
-    if (!selectedCnpjId || statements.length === 0) return;
-    const statementsForCnpj = statements.filter((statement: any) => String(statement.cnpjId) === selectedCnpjId);
+    if (!selectedFinanceCnpjId || statements.length === 0) return;
+    const statementsForCnpj = statements.filter((statement: any) => Number(statement.cnpjId) === selectedFinanceCnpjId);
     if (statementsForCnpj.length === 0) return;
     const sorted = [...statementsForCnpj].sort((a: any, b: any) => {
       const left = Number(a.periodYear) * 100 + Number(a.periodMonth);
@@ -750,21 +773,25 @@ export default function Finance() {
       setSelectedYear(latestYear);
       setSelectedMonth(latestMonth);
     }
-  }, [statements, selectedCnpjId, selectedMonth, selectedYear]);
+  }, [statements, selectedFinanceCnpjId, selectedMonth, selectedYear]);
 
-  const selectedCnpj = useMemo(() => cnpjs.find((item: any) => String(item.id) === selectedCnpjId) ?? null, [cnpjs, selectedCnpjId]);
-  const cnpjLabel = selectedCnpj ? `${selectedCnpj.nomeFantasia || selectedCnpj.razaoSocial} • ${selectedCnpj.cnpj}` : "Nenhuma subconta selecionada";
+  const selectedFinanceCnpj = useMemo(
+    () => cnpjs.find((item: any) => Number(item.id) === selectedFinanceCnpjId) ?? null,
+    [cnpjs, selectedFinanceCnpjId],
+  );
+
+  const cnpjLabel = selectedFinanceCnpj ? getCnpjLabel(selectedFinanceCnpj) : "Nenhum CNPJ disponível";
 
   const currentMonthStatements = useMemo(() => {
-    if (!selectedCnpjId) return [];
-    return statements.filter((statement: any) => Number(statement.periodYear) === selectedYear && Number(statement.periodMonth) === selectedMonth && String(statement.cnpjId) === selectedCnpjId);
-  }, [statements, selectedYear, selectedMonth, selectedCnpjId]);
+    if (!selectedFinanceCnpjId) return [];
+    return statements.filter((statement: any) => Number(statement.periodYear) === selectedYear && Number(statement.periodMonth) === selectedMonth && Number(statement.cnpjId) === selectedFinanceCnpjId);
+  }, [statements, selectedYear, selectedMonth, selectedFinanceCnpjId]);
 
   const allTransactions = useMemo(() => {
     const transactions = Array.isArray(dre?.bankTransactions) ? dre.bankTransactions : [];
-    if (!selectedCnpjId) return [];
-    return transactions.filter((item: any) => String(item.cnpjId || "") === selectedCnpjId);
-  }, [dre?.bankTransactions, selectedCnpjId]);
+    if (!selectedFinanceCnpjId) return [];
+    return transactions.filter((item: any) => Number(item.cnpjId || 0) === selectedFinanceCnpjId);
+  }, [dre?.bankTransactions, selectedFinanceCnpjId]);
 
   const bankSummary = useMemo(() => {
     const entradas = Number(dre?.entradasTotais || 0);
@@ -781,7 +808,7 @@ export default function Finance() {
   }, [dre?.topExpenseCategories]);
 
   const topCredits = useMemo(() => allTransactions.filter((item: any) => item.transactionType === "credit").slice(0, 5), [allTransactions]);
-  const topDebits = useMemo(() => allTransactions.filter((item: any) => item.transactionType === "debit").slice(0, 8), [allTransactions]);
+  const topDebits = useMemo(() => allTransactions.filter((item: any) => item.transactionType === "debit").slice(0, 5), [allTransactions]);
 
   const mercadoPagoSummary = useMemo(() => {
     const mercadoPagoStatements = currentMonthStatements.filter((statement: any) => String(statement.bankName || "").toLowerCase().includes("mercado pago"));
@@ -810,6 +837,21 @@ export default function Finance() {
   }, [dre?.totalCustosFixos, dre?.totalCartoes, dre?.totalEmprestimos, dre?.totalContasPagas]);
 
   const alerts = Array.isArray(dre?.alerts) ? dre.alerts : [];
+
+  const payablesForHistory = useMemo(() => {
+    const items = Array.isArray(payables) ? payables : [];
+    const filtered = selectedCnpjFilter === "all"
+      ? items
+      : items.filter((item: any) => String(item.cnpjId || "") === selectedCnpjFilter);
+
+    return filtered.map((item: any) => {
+      const cnpjItem = cnpjMap.get(String(item.cnpjId || ""));
+      return {
+        ...item,
+        cnpjLabel: getCnpjLabel(cnpjItem),
+      };
+    });
+  }, [payables, selectedCnpjFilter, cnpjMap]);
 
   function prevMonth() {
     const date = new Date(selectedYear, selectedMonth - 2, 1);
@@ -848,14 +890,15 @@ export default function Finance() {
   });
 
   const openObligationDialog = (mode: ObligationDialogMode, payable?: any | null) => {
-    if (!selectedCnpjId) {
-      toast.error("Cadastre e selecione um CNPJ para usar as subcontas.");
+    if (!cnpjs.length) {
+      toast.error("Cadastre ao menos um CNPJ antes de continuar.");
       return;
     }
     if (!isObligationsRoute) {
       navigate(mode === "conta" || mode === "custoFixo" ? "/obrigacoes/contas" : mode === "cartao" || mode === "fatura" ? "/obrigacoes/cartoes" : "/obrigacoes/emprestimos");
     }
     setEditingPayable(payable ?? null);
+    setPreferredDialogCnpjId(payable?.cnpjId ? String(payable.cnpjId) : selectedCnpjFilter !== "all" ? selectedCnpjFilter : (cnpjs[0] ? String(cnpjs[0].id) : undefined));
     setObligationDialogMode(mode);
     setObligationDialogOpen(true);
   };
@@ -868,17 +911,13 @@ export default function Finance() {
         <div className="space-y-6">
           <EmptyState
             title="Nenhum CNPJ cadastrado"
-            description="Cadastre ao menos um CNPJ para ativar as subcontas isoladas do Financeiro e de Obrigações. Depois disso, cada subconta funcionará sem misturar informações com as demais."
+            description="Cadastre ao menos um CNPJ para ativar os lançamentos por empresa no Financeiro e em Obrigações, sem misturar as informações entre elas."
             actionLabel="Ir para CNPJs"
             onAction={() => navigate("/clientes")}
           />
         </div>
       </DashboardLayout>
     );
-  }
-
-  if (!selectedCnpjId) {
-    return null;
   }
 
   if (isObligationsRoute) {
@@ -894,21 +933,36 @@ export default function Finance() {
       <DashboardLayout activeSection="obrigacoes" onNavigate={(section) => navigate(`/${section}`)}>
         <div className="space-y-6">
           <FinanceHeader
-            selectedCnpjId={selectedCnpjId}
-            setSelectedCnpjId={setSelectedCnpjId}
-            cnpjs={cnpjs}
             selectedMonth={selectedMonth}
             selectedYear={selectedYear}
             prevMonth={prevMonth}
             nextMonth={nextMonth}
             badge="Obrigações financeiras"
             title={currentTabMeta.title}
-            description={`${currentTabMeta.description} Subconta ativa: ${cnpjLabel}.`}
+            description={`${currentTabMeta.description} O cadastro escolhe o CNPJ manualmente e o histórico deixa essa identificação visível em cada lançamento.`}
           />
 
-          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-sky-900">
-            <p className="font-semibold">Subconta isolada ativa</p>
-            <p className="mt-1">Todos os cadastros, leituras e dashboards desta tela estão restritos ao CNPJ <span className="font-medium">{cnpjLabel}</span>.</p>
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-4 text-sm text-sky-900">
+              <p className="font-semibold">Histórico consolidado com identificação por empresa</p>
+              <p className="mt-1">Os lançamentos continuam isolados por CNPJ no backend, mas agora a tela deixa tudo mais claro: você escolhe a empresa no cadastro e enxerga o nome do CNPJ de forma nítida em cada item salvo.</p>
+            </div>
+            <div className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Filtro visual do histórico</Label>
+              <Select value={selectedCnpjFilter} onValueChange={setSelectedCnpjFilter}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Todos os CNPJs" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os CNPJs</SelectItem>
+                  {cnpjs.map((item: any) => (
+                    <SelectItem key={item.id} value={String(item.id)}>
+                      {getCnpjLabel(item)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-2 rounded-2xl bg-muted/60 p-1 sm:grid-cols-3 sm:gap-1">
@@ -929,8 +983,8 @@ export default function Finance() {
               <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
                 <ObligationSpotlight
                   eyebrow="Central de contas"
-                  title="Boletos, fornecedores e fixos por subconta"
-                  description="Toda a rotina desta área está presa ao CNPJ ativo. Isso evita mistura entre subcontas e elimina divergência entre o filtro principal e o cadastro do modal."
+                  title="Boletos, fornecedores e fixos com CNPJ no cadastro"
+                  description="O fluxo deixa de depender de uma subconta global na tela. Cada novo lançamento escolhe o CNPJ manualmente e o histórico mostra essa empresa de forma explícita."
                   accentClass="bg-gradient-to-br from-rose-500 via-rose-600 to-orange-500"
                 >
                   <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
@@ -940,40 +994,40 @@ export default function Finance() {
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
                   <CardHeader>
                     <CardTitle>Radar executivo</CardTitle>
-                    <CardDescription>{cnpjLabel}</CardDescription>
+                    <CardDescription>{selectedCnpjFilter === "all" ? "Resumo financeiro do CNPJ-base do período" : cnpjLabel}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-700">Vencendo hoje</p>
-                          <p className="mt-2 text-3xl font-semibold text-amber-700">{payables.filter((item: any) => item.dueDate === today && item.status !== "paid").length}</p>
+                          <p className="mt-2 text-3xl font-semibold text-amber-700">{payablesForHistory.filter((item: any) => item.dueDate === today && item.status !== "paid").length}</p>
                         </div>
                         <CalendarClock className="h-8 w-8 text-amber-500" />
                       </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                      <InsightMetric label="Em atraso" value={`R$ ${fmt(payablesDashboard?.totalOverdue || 0)}`} helper="Valor que continua pressionando o caixa até receber baixa." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
-                      <InsightMetric label="Previsto no mês" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Compromissos futuros ainda não liquidados." tone="info" icon={<Target className="h-4 w-4" />} />
+                      <InsightMetric label="Em atraso" value={`R$ ${fmt(payablesDashboard?.totalOverdue || 0)}`} helper="Valor ainda pressionando o caixa na empresa exibida no painel executivo." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
+                      <InsightMetric label="Previsto no mês" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Compromissos futuros ainda não liquidados no recorte do painel." tone="info" icon={<Target className="h-4 w-4" />} />
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <InsightMetric label="Contas do mês" value={String(payables.length)} helper="Boletos, parcelas e fornecedores monitorados nesta subconta." icon={<Receipt className="h-4 w-4" />} />
-                <InsightMetric label="Total previsto" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Montante ainda aguardando pagamento." tone="warning" icon={<Wallet className="h-4 w-4" />} />
-                <InsightMetric label="Custos fixos" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Compromissos recorrentes lançados para este CNPJ." tone="success" icon={<Sparkles className="h-4 w-4" />} />
-                <InsightMetric label="Valor controlado" value={`R$ ${fmt(obligations.totalContas + obligations.totalCustos)}`} helper="Base operacional acompanhada dentro desta subconta." tone="neutral" icon={<PieChart className="h-4 w-4" />} />
+                <InsightMetric label="Contas no histórico" value={String(payablesForHistory.length)} helper="Itens visíveis com identificação de CNPJ no histórico desta tela." icon={<Receipt className="h-4 w-4" />} />
+                <InsightMetric label="Total previsto" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Montante ainda aguardando pagamento na empresa base do período." tone="warning" icon={<Wallet className="h-4 w-4" />} />
+                <InsightMetric label="Custos fixos" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Compromissos recorrentes monitorados para o período." tone="success" icon={<Sparkles className="h-4 w-4" />} />
+                <InsightMetric label="Valor controlado" value={`R$ ${fmt(obligations.totalContas + obligations.totalCustos)}`} helper="Base operacional acompanhada no painel de obrigações." tone="neutral" icon={<PieChart className="h-4 w-4" />} />
               </div>
 
               <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                {payables.length > 0 ? (
+                {payablesForHistory.length > 0 ? (
                   <Card className="rounded-3xl border bg-card/95 shadow-sm">
                     <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <CardTitle>Lista de contas a pagar</CardTitle>
-                        <CardDescription>Visualize vencimento, status e impacto financeiro de cada obrigação somente desta subconta.</CardDescription>
+                        <CardTitle>Histórico de contas a pagar</CardTitle>
+                        <CardDescription>Todos os lançamentos aparecem juntos na tela, com o nome do CNPJ visível em cada item para identificação imediata.</CardDescription>
                       </div>
                       <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
                     </CardHeader>
@@ -981,10 +1035,10 @@ export default function Finance() {
                       {savedPayableFeedback ? (
                         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm">
                           <p className="font-semibold">Cadastro salvo com sucesso.</p>
-                          <p className="mt-1">A conta <span className="font-medium">{savedPayableFeedback.title}</span> foi adicionada à subconta <span className="font-medium">{cnpjLabel}</span> e ficou destacada por alguns segundos.</p>
+                          <p className="mt-1">A conta <span className="font-medium">{savedPayableFeedback.title}</span> foi adicionada ao CNPJ <span className="font-medium">{savedPayableFeedback.cnpjLabel}</span> e ficou destacada por alguns segundos.</p>
                         </div>
                       ) : null}
-                      {payables.slice(0, 12).map((item: any) => {
+                      {payablesForHistory.slice(0, 12).map((item: any) => {
                         const mainTitle = item.title || item.description || item.supplier || "Conta a pagar";
                         const detailParts = [item.supplier, item.description].filter((value, index, array) => {
                           if (!value) return false;
@@ -1000,6 +1054,7 @@ export default function Finance() {
                               badge={<Badge variant={item.status === "paid" ? "default" : item.status === "overdue" ? "destructive" : "outline"}>{item.status}</Badge>}
                               amount={`R$ ${fmt(item.amount)}`}
                               accentClass={item.status === "paid" ? "bg-emerald-500" : item.status === "overdue" ? "bg-rose-500" : "bg-amber-500"}
+                              cnpjLabel={item.cnpjLabel}
                             />
                             <div className="flex flex-wrap justify-end gap-2">
                               <Button type="button" variant="outline" size="sm" onClick={() => openObligationDialog("conta", item)}>Editar</Button>
@@ -1022,18 +1077,18 @@ export default function Finance() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <EmptyState title="Nenhuma conta a pagar cadastrada" description="Comece por boletos, fornecedores e despesas previstas para montar seu controle operacional desta subconta." actionLabel="Cadastrar conta a pagar" onAction={() => openObligationDialog("conta")} />
+                  <EmptyState title="Nenhuma conta a pagar cadastrada" description="Comece por boletos, fornecedores e despesas previstas. Ao salvar, o histórico mostrará explicitamente o CNPJ de cada lançamento." actionLabel="Cadastrar conta a pagar" onAction={() => openObligationDialog("conta")} />
                 )}
 
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
                   <CardHeader>
                     <CardTitle>Custos fixos do período</CardTitle>
-                    <CardDescription>Leitura separada para aluguel, folha, carro, água, luz e outros compromissos recorrentes deste CNPJ.</CardDescription>
+                    <CardDescription>Leitura separada para aluguel, folha, carro, água, luz e outros compromissos recorrentes, com apoio do mesmo CNPJ-base do painel executivo.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Pagamentos lançados" value={String(fixedCostPayments.length)} helper="Quantidade de registros para o período selecionado." tone="success" icon={<Sparkles className="h-4 w-4" />} />
-                      <InsightMetric label="Impacto mensal" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Quanto os custos fixos pesam no controle gerencial desta subconta." tone="neutral" icon={<Wallet className="h-4 w-4" />} />
+                      <InsightMetric label="Impacto mensal" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Quanto os custos fixos pesam no controle gerencial da empresa base do painel." tone="neutral" icon={<Wallet className="h-4 w-4" />} />
                     </div>
                     <div className="space-y-3">
                       {fixedCostPayments.length > 0 ? fixedCostPayments.slice(0, 10).map((payment: any) => (
@@ -1044,6 +1099,7 @@ export default function Finance() {
                           badge={<Badge variant="outline">fixo</Badge>}
                           amount={`R$ ${fmt(payment.amount || payment.amountPaid)}`}
                           accentClass="bg-emerald-500"
+                          cnpjLabel={getCnpjLabel(cnpjMap.get(String(payment.cnpjId || selectedFinanceCnpjId || "")))}
                         />
                       )) : <p className="text-sm text-muted-foreground">Nenhum pagamento de custo fixo registrado para o período.</p>}
                     </div>
@@ -1058,8 +1114,8 @@ export default function Finance() {
               <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
                 <ObligationSpotlight
                   eyebrow="Painel de cartões"
-                  title="Faturas, vencimentos e exposição do limite por subconta"
-                  description="Aqui o objetivo é mostrar concentração de compromissos por cartão dentro do CNPJ ativo, sem misturar outras subcontas."
+                  title="Faturas e limites com cadastro por CNPJ"
+                  description="A empresa é escolhida no próprio cadastro. Na leitura do histórico, o CNPJ pode ser filtrado, mas permanece visível para evitar confusão entre operações."
                   accentClass="bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-600"
                 >
                   <QuickActionButton label="Novo cartão" onClick={() => openObligationDialog("cartao")} />
@@ -1072,10 +1128,10 @@ export default function Finance() {
                     <CardDescription>{cnpjLabel}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <InsightMetric label="Cartões cadastrados" value={String(creditCards.length)} helper="Base de cartões atualmente monitorada para esta operação." tone="info" icon={<CreditCard className="h-4 w-4" />} />
+                    <InsightMetric label="Cartões cadastrados" value={String(creditCards.length)} helper="Base de cartões atualmente monitorada para a empresa base do painel." tone="info" icon={<CreditCard className="h-4 w-4" />} />
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Faturas do mês" value={String(creditCardInvoices.length)} helper="Competências com fechamento no período selecionado." tone="neutral" icon={<CalendarClock className="h-4 w-4" />} />
-                      <InsightMetric label="Valor acompanhado" value={`R$ ${fmt(obligations.totalCartoes)}`} helper="Compromissos futuros desta subconta." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
+                      <InsightMetric label="Valor acompanhado" value={`R$ ${fmt(obligations.totalCartoes)}`} helper="Compromissos futuros da empresa exibida no painel executivo." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
                     </div>
                   </CardContent>
                 </Card>
@@ -1092,7 +1148,7 @@ export default function Finance() {
                   <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Faturas registradas</CardTitle>
-                      <CardDescription>Monitore fechamento, vencimento e o peso real das faturas futuras da subconta selecionada.</CardDescription>
+                      <CardDescription>O histórico continua objetivo e agora pode conviver com a nova lógica de cadastro por empresa, sem exigir uma subconta visual fixa na tela.</CardDescription>
                     </div>
                     <QuickActionButton label="Nova fatura" onClick={() => openObligationDialog("fatura")} />
                   </CardHeader>
@@ -1105,12 +1161,13 @@ export default function Finance() {
                         badge={<Badge variant="outline">fatura</Badge>}
                         amount={`R$ ${fmt(invoice.amount || invoice.totalAmount)}`}
                         accentClass="bg-violet-500"
+                        cnpjLabel={getCnpjLabel(cnpjMap.get(String(invoice.cnpjId || selectedFinanceCnpjId || "")))}
                       />
                     ))}
                   </CardContent>
                 </Card>
               ) : (
-                <EmptyState title="Nenhuma fatura cadastrada" description="Cadastre cartões e faturas para acompanhar saldos devidos e pagamentos realizados sem misturar outras subcontas." actionLabel="Cadastrar cartão ou fatura" onAction={() => openObligationDialog("fatura")} />
+                <EmptyState title="Nenhuma fatura cadastrada" description="Cadastre cartões e faturas para acompanhar saldos devidos e pagamentos realizados por empresa, com identificação visível no histórico." actionLabel="Cadastrar cartão ou fatura" onAction={() => openObligationDialog("fatura")} />
               )}
             </div>
           ) : null}
@@ -1120,8 +1177,8 @@ export default function Finance() {
               <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
                 <ObligationSpotlight
                   eyebrow="Painel de empréstimos"
-                  title="Saldo, retenções e ritmo de amortização por subconta"
-                  description="Este quadro destaca passivos ativos, parcelas do mês e retenções operacionais apenas do CNPJ ativo."
+                  title="Saldo, retenções e ritmo de amortização"
+                  description="A escolha do CNPJ sai da barra principal e entra no cadastro. Isso simplifica a operação sem perder o isolamento dos dados no backend."
                   accentClass="bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600"
                 >
                   <QuickActionButton label="Novo empréstimo" onClick={() => openObligationDialog("emprestimo")} />
@@ -1137,7 +1194,7 @@ export default function Finance() {
                     <InsightMetric label="Empréstimos ativos" value={String(loans.length)} helper="Quantidade de contratos hoje em acompanhamento." tone="success" icon={<Landmark className="h-4 w-4" />} />
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <InsightMetric label="Parcelas do mês" value={String(loanInstallments.length)} helper="Compromissos periódicos com vencimento no período." tone="info" icon={<CalendarClock className="h-4 w-4" />} />
-                      <InsightMetric label="Retenção do mês" value={`R$ ${fmt(obligations.totalEmprestimos)}`} helper="Volume ligado a empréstimos nesta subconta." tone="warning" icon={<TrendingDown className="h-4 w-4" />} />
+                      <InsightMetric label="Retenção do mês" value={`R$ ${fmt(obligations.totalEmprestimos)}`} helper="Volume ligado a empréstimos na empresa base do painel." tone="warning" icon={<TrendingDown className="h-4 w-4" />} />
                     </div>
                   </CardContent>
                 </Card>
@@ -1146,7 +1203,7 @@ export default function Finance() {
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <InsightMetric label="Saldo em aberto" value={`R$ ${fmt(loans.reduce((sum: number, loan: any) => sum + Number(loan.remainingAmount || loan.balance || 0), 0))}`} helper="Estimativa somada do saldo restante informado nos contratos." tone="danger" icon={<Wallet className="h-4 w-4" />} />
                 <InsightMetric label="Retenções lançadas" value={String(retentionEntries.length)} helper="Quantidade de registros de abatimento/rastreamento no período." tone="neutral" icon={<Sparkles className="h-4 w-4" />} />
-                <InsightMetric label="Valor contratado" value={`R$ ${fmt(loans.reduce((sum: number, loan: any) => sum + Number(loan.totalAmount || loan.amount || 0), 0))}`} helper="Base total dos empréstimos monitorados nesta subconta." tone="info" icon={<Target className="h-4 w-4" />} />
+                <InsightMetric label="Valor contratado" value={`R$ ${fmt(loans.reduce((sum: number, loan: any) => sum + Number(loan.totalAmount || loan.amount || 0), 0))}`} helper="Base total dos empréstimos monitorados no período." tone="info" icon={<Target className="h-4 w-4" />} />
               </div>
 
               {loans.length > 0 ? (
@@ -1154,7 +1211,7 @@ export default function Finance() {
                   <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Empréstimos cadastrados</CardTitle>
-                      <CardDescription>Registre saldos, retenções e parcelas com uma visão mais elegante do passivo em andamento.</CardDescription>
+                      <CardDescription>Registre saldos, retenções e parcelas com uma leitura mais simples, sem depender de uma subconta fixa na interface.</CardDescription>
                     </div>
                     <QuickActionButton label="Novo empréstimo" onClick={() => openObligationDialog("emprestimo")} />
                   </CardHeader>
@@ -1167,12 +1224,13 @@ export default function Finance() {
                         badge={<Badge variant="outline">{loan.status || "ativo"}</Badge>}
                         amount={`R$ ${fmt(loan.totalAmount || loan.amount || 0)}`}
                         accentClass="bg-teal-500"
+                        cnpjLabel={getCnpjLabel(cnpjMap.get(String(loan.cnpjId || selectedFinanceCnpjId || "")))}
                       />
                     ))}
                   </CardContent>
                 </Card>
               ) : (
-                <EmptyState title="Nenhum empréstimo cadastrado" description="Cadastre retenções e empréstimos nesta área para controle do passivo e pagamentos desta subconta." actionLabel="Cadastrar empréstimo" onAction={() => openObligationDialog("emprestimo")} />
+                <EmptyState title="Nenhum empréstimo cadastrado" description="Cadastre retenções e empréstimos por empresa para controlar o passivo com identificação clara do CNPJ." actionLabel="Cadastrar empréstimo" onAction={() => openObligationDialog("emprestimo")} />
               )}
             </div>
           ) : null}
@@ -1180,7 +1238,7 @@ export default function Finance() {
           <ObligationDialog
             open={obligationDialogOpen}
             mode={obligationDialogMode}
-            activeCnpjId={selectedCnpjId}
+            defaultCnpjId={preferredDialogCnpjId}
             editingPayable={editingPayable}
             onOpenChange={(open) => {
               setObligationDialogOpen(open);
@@ -1193,9 +1251,11 @@ export default function Finance() {
             selectedMonth={selectedMonth}
             onSaved={(savedPayable) => {
               if (savedPayable?.id) {
+                const savedCnpj = cnpjMap.get(String(savedPayable.cnpjId || ""));
                 setSavedPayableFeedback({
                   id: Number(savedPayable.id),
                   title: String(savedPayable.title || savedPayable.description || savedPayable.supplier || "Conta a pagar"),
+                  cnpjLabel: getCnpjLabel(savedCnpj),
                 });
                 setHighlightedPayableId(Number(savedPayable.id));
               }
@@ -1210,67 +1270,62 @@ export default function Finance() {
     <DashboardLayout activeSection="financeiro" onNavigate={(section) => navigate(`/${section}`)}>
       <div className="space-y-6">
         <FinanceHeader
-          selectedCnpjId={selectedCnpjId}
-          setSelectedCnpjId={setSelectedCnpjId}
-          cnpjs={cnpjs}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           prevMonth={prevMonth}
           nextMonth={nextMonth}
           badge="Financeiro profissional"
-          title="DRE e caixa realizado por subconta"
-          description="Aqui fica apenas o painel principal de caixa e análise do extrato da subconta selecionada. As obrigações continuam em dashboards próprios, mas sem misturar CNPJs."
+          title="DRE e caixa realizado por empresa"
+          description="O Financeiro continua isolando os dados por CNPJ no backend. Nesta visão, o painel principal usa a empresa base do período para analisar caixa, extratos e classificação de saídas."
         />
 
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900">
-          <p className="font-semibold">Subconta isolada ativa</p>
-          <p className="mt-1">O Financeiro agora lê apenas os dados do CNPJ <span className="font-medium">{cnpjLabel}</span> para este período.</p>
+          <p className="font-semibold">Empresa-base do painel financeiro</p>
+          <p className="mt-1">O DRE e os extratos desta análise estão sendo lidos a partir do CNPJ <span className="font-medium">{cnpjLabel}</span>. Em Obrigações, o cadastro do lançamento escolhe o CNPJ manualmente.</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="border-emerald-200 bg-emerald-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Entradas do caixa</p><p className="mt-2 text-2xl font-bold text-emerald-700">R$ {fmt(bankSummary.entradas)}</p><p className="mt-1 text-xs text-emerald-700/80">{cnpjLabel}</p></div><ArrowUpCircle className="h-8 w-8 text-emerald-500" /></div></CardContent></Card>
-          <Card className="border-rose-200 bg-rose-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Saídas do caixa</p><p className="mt-2 text-2xl font-bold text-rose-700">R$ {fmt(bankSummary.saidas)}</p><p className="mt-1 text-xs text-rose-700/80">Somente débitos do extrato desta subconta</p></div><ArrowDownCircle className="h-8 w-8 text-rose-500" /></div></CardContent></Card>
+          <Card className="border-rose-200 bg-rose-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Saídas do caixa</p><p className="mt-2 text-2xl font-bold text-rose-700">R$ {fmt(bankSummary.saidas)}</p><p className="mt-1 text-xs text-rose-700/80">Somente débitos do extrato desta empresa</p></div><ArrowDownCircle className="h-8 w-8 text-rose-500" /></div></CardContent></Card>
           <Card className="border-sky-200 bg-sky-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Resultado de caixa</p><p className={`mt-2 text-2xl font-bold ${bankSummary.saldo >= 0 ? "text-sky-700" : "text-red-600"}`}>R$ {fmt(bankSummary.saldo)}</p><p className="mt-1 text-xs text-sky-700/80">Entrou menos saiu no período</p></div><Wallet className="h-8 w-8 text-sky-500" /></div></CardContent></Card>
-          <Card className="border-violet-200 bg-violet-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Saídas classificadas</p><p className="mt-2 text-2xl font-bold text-violet-700">{toPercent(Number(dre?.percentualSaidasClassificadas || 0))}</p><p className="mt-1 text-xs text-violet-700/80">Quanto do extrato desta subconta já está explicado</p></div><PieChart className="h-8 w-8 text-violet-500" /></div></CardContent></Card>
+          <Card className="border-violet-200 bg-violet-50/70"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Saídas classificadas</p><p className="mt-2 text-2xl font-bold text-violet-700">{toPercent(Number(dre?.percentualSaidasClassificadas || 0))}</p><p className="mt-1 text-xs text-violet-700/80">Quanto do extrato desta empresa já está explicado</p></div><PieChart className="h-8 w-8 text-violet-500" /></div></CardContent></Card>
         </div>
 
-        {alerts.length > 0 ? (
-          <div className="space-y-3">
-            {alerts.map((alert: any, index: number) => (
-              <div key={`${alert.type}-${index}`} className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${alert.type === "danger" ? "border-red-200 bg-red-50 text-red-800" : alert.type === "warning" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
-                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
-                <span>{alert.message}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
-          <Card>
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <Card className="rounded-3xl border bg-card/95 shadow-sm">
             <CardHeader>
-              <CardTitle>DRE de caixa realizado</CardTitle>
-              <CardDescription>Este quadro usa apenas as movimentações do extrato do mês para o CNPJ selecionado.</CardDescription>
+              <CardTitle>Leitura executiva do caixa</CardTitle>
+              <CardDescription>Compare entradas, saídas e qualidade da classificação para entender rapidamente a pressão do mês.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Entradas confirmadas</span><span className="font-medium text-emerald-600">R$ {fmt(bankSummary.entradas)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Saídas confirmadas</span><span className="font-medium text-rose-600">R$ {fmt(bankSummary.saidas)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Resultado do mês</span><span className={`font-semibold ${bankSummary.saldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>R$ {fmt(bankSummary.saldo)}</span></div>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <InsightMetric label="Saídas classificadas" value={`R$ ${fmt(bankSummary.classified)}`} helper="Valor já explicado por categoria no DRE." tone="success" icon={<Sparkles className="h-4 w-4" />} />
+                <InsightMetric label="Saídas sem explicação" value={`R$ ${fmt(bankSummary.unclassified)}`} helper="Volume ainda pendente de classificação no extrato." tone="warning" icon={<TrendingDown className="h-4 w-4" />} />
+              </div>
               <div className="rounded-2xl border bg-muted/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Leitura estratégica</p>
-                <p className="mt-2 text-sm text-muted-foreground">Se este número ficar negativo, esta subconta consumiu mais do que recebeu no período. O próximo passo é olhar as categorias de saída para descobrir exatamente onde o dinheiro foi embora.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Se este número ficar negativo, esta empresa consumiu mais do que recebeu no período. O próximo passo é olhar as categorias de saída para descobrir exatamente onde o dinheiro foi embora.</p>
               </div>
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Saídas classificadas</p><p className="mt-2 text-xl font-semibold">R$ {fmt(bankSummary.classified)}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Sem classificação</p><p className="mt-2 text-xl font-semibold text-amber-600">R$ {fmt(bankSummary.unclassified)}</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Extratos usados</p><p className="mt-2 text-xl font-semibold">{currentMonthStatements.length}</p></div>
+                {alerts.length > 0 ? alerts.slice(0, 3).map((alert: any, index: number) => (
+                  <div key={`${alert.title || alert.message}-${index}`} className="rounded-2xl border bg-amber-50/70 p-4 text-sm text-amber-950">
+                    <p className="font-medium">{alert.title || "Alerta financeiro"}</p>
+                    <p className="mt-1 text-amber-900/80">{alert.message || alert.description || "Sem detalhes adicionais."}</p>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border bg-emerald-50/70 p-4 text-sm text-emerald-950 md:col-span-3">
+                    <p className="font-medium">Sem alertas críticos para este período.</p>
+                    <p className="mt-1 text-emerald-900/80">O painel não identificou pontos graves de atenção com base nos dados atuais.</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-3xl border bg-card/95 shadow-sm">
             <CardHeader>
               <CardTitle>Painel Mercado Pago</CardTitle>
-              <CardDescription>A automação continua restrita ao layout do Mercado Pago/Mercado Livre para facilitar repasses e ajustes deste fluxo na subconta ativa.</CardDescription>
+              <CardDescription>A automação continua restrita ao layout do Mercado Pago/Mercado Livre para facilitar repasses e ajustes deste fluxo na empresa base do painel.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Extratos no período</span><span className="font-medium">{mercadoPagoSummary.statementCount}</span></div>
@@ -1286,13 +1341,13 @@ export default function Finance() {
           <Card>
             <CardHeader>
               <CardTitle>Onde o dinheiro mais saiu</CardTitle>
-              <CardDescription>Estas categorias vêm das saídas do extrato já classificadas para o CNPJ ativo.</CardDescription>
+              <CardDescription>Estas categorias vêm das saídas do extrato já classificadas para a empresa analisada.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {topExpenseCategories.length > 0 ? topExpenseCategories.map((item: any, index: number) => (
                 <BarRow key={`${item.category}-${index}`} label={item.category} amount={Number(item.amount || 0)} total={bankSummary.saidas} tone={index === 0 ? "rose" : index === 1 ? "amber" : "sky"} />
               )) : (
-                <p className="text-sm text-muted-foreground">Classifique as saídas do extrato para descobrir onde o caixa mais sangra nesta subconta.</p>
+                <p className="text-sm text-muted-foreground">Classifique as saídas do extrato para descobrir onde o caixa mais sangra nesta empresa.</p>
               )}
             </CardContent>
           </Card>
@@ -1330,16 +1385,16 @@ export default function Finance() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
-          <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contas em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalContas)}</p><p className="mt-1 text-xs text-muted-foreground">Somente desta subconta</p></CardContent></Card>
-          <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cartões em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalCartoes)}</p><p className="mt-1 text-xs text-muted-foreground">Somente desta subconta</p></CardContent></Card>
-          <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Empréstimos em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalEmprestimos)}</p><p className="mt-1 text-xs text-muted-foreground">Somente desta subconta</p></CardContent></Card>
+          <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contas em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalContas)}</p><p className="mt-1 text-xs text-muted-foreground">Somente da empresa analisada</p></CardContent></Card>
+          <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cartões em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalCartoes)}</p><p className="mt-1 text-xs text-muted-foreground">Somente da empresa analisada</p></CardContent></Card>
+          <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Empréstimos em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalEmprestimos)}</p><p className="mt-1 text-xs text-muted-foreground">Somente da empresa analisada</p></CardContent></Card>
           <Card><CardContent className="pt-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custos fixos em controle</p><p className="mt-2 text-2xl font-bold">R$ {fmt(obligations.totalCustos)}</p><p className="mt-1 text-xs text-muted-foreground">Controle separado do resultado principal</p></CardContent></Card>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Próximo passo recomendado</CardTitle>
-            <CardDescription>Para o DRE ficar mais preciso, classifique especialmente as saídas do C6 Bank por categoria dentro da subconta ativa. Isso melhora os gráficos e a leitura de onde o caixa está sendo consumido.</CardDescription>
+            <CardDescription>Para o DRE ficar mais preciso, classifique especialmente as saídas do C6 Bank por categoria. Isso melhora os gráficos e a leitura de onde o caixa está sendo consumido.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button onClick={() => navigate("/extratos")}>Abrir Extratos para classificar</Button>
@@ -1352,4 +1407,3 @@ export default function Finance() {
     </DashboardLayout>
   );
 }
-
