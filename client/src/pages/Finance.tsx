@@ -303,7 +303,7 @@ function ObligationDialog({
   selectedYear: number;
   selectedMonth: number;
   editingPayable?: any | null;
-  onSaved: () => void;
+  onSaved: (savedPayable?: Record<string, any> | null) => void;
 }) {
   const utils = trpc.useUtils();
   const [selectedCnpjId, setSelectedCnpjId] = useState<string>(cnpjs[0] ? String(cnpjs[0].id) : "none");
@@ -422,8 +422,8 @@ function ObligationDialog({
     });
   }
 
-  async function refreshAfterSave() {
-    onSaved();
+  async function refreshAfterSave(savedPayable?: Record<string, any> | null) {
+    onSaved(savedPayable ?? null);
     onOpenChange(false);
     await Promise.all([
       utils.finance.payables.list.invalidate(payablesListInput),
@@ -471,12 +471,13 @@ function ObligationDialog({
         const updatedPayable = await updatePayableMutation.mutateAsync({ id: editingPayable.id, ...payload });
         upsertPayableInCache(updatedPayable as Record<string, any>);
         toast.success("Conta a pagar atualizada.");
+        await refreshAfterSave(updatedPayable as Record<string, any>);
       } else {
         const createdPayable = await createPayableMutation.mutateAsync(payload);
         upsertPayableInCache(createdPayable as Record<string, any>);
         toast.success("Conta a pagar cadastrada.");
+        await refreshAfterSave(createdPayable as Record<string, any>);
       }
-      await refreshAfterSave();
       return;
     }
 
@@ -717,6 +718,8 @@ export default function Finance() {
   const [obligationDialogMode, setObligationDialogMode] = useState<ObligationDialogMode | null>(null);
   const [obligationDialogOpen, setObligationDialogOpen] = useState(false);
   const [editingPayable, setEditingPayable] = useState<any | null>(null);
+  const [savedPayableFeedback, setSavedPayableFeedback] = useState<{ id: number; title: string } | null>(null);
+  const [highlightedPayableId, setHighlightedPayableId] = useState<number | null>(null);
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
   const statementsQuery = trpc.bankStatements.list.useQuery();
@@ -832,6 +835,18 @@ export default function Finance() {
     setSelectedYear(date.getFullYear());
     setSelectedMonth(date.getMonth() + 1);
   }
+
+  useEffect(() => {
+    if (!savedPayableFeedback) return;
+    const timeout = window.setTimeout(() => setSavedPayableFeedback(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [savedPayableFeedback]);
+
+  useEffect(() => {
+    if (!highlightedPayableId) return;
+    const timeout = window.setTimeout(() => setHighlightedPayableId(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [highlightedPayableId]);
 
   const goToExtratos = () => navigate("/extratos");
   const deletePayableMutation = trpc.finance.payables.delete.useMutation({
@@ -950,6 +965,12 @@ export default function Finance() {
                       <QuickActionButton label="Nova conta a pagar" onClick={() => openObligationDialog("conta")} />
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      {savedPayableFeedback ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm">
+                          <p className="font-semibold">Cadastro salvo com sucesso.</p>
+                          <p className="mt-1">A conta <span className="font-medium">{savedPayableFeedback.title}</span> foi adicionada à lista abaixo e ficou destacada por alguns segundos.</p>
+                        </div>
+                      ) : null}
                       {payables.slice(0, 12).map((item: any) => {
                         const mainTitle = item.title || item.description || item.supplier || "Conta a pagar";
                         const detailParts = [item.supplier, item.description].filter((value, index, array) => {
@@ -959,7 +980,10 @@ export default function Finance() {
                         const detailLabel = detailParts.length > 0 ? detailParts.join(" • ") : "Sem detalhes adicionais";
 
                         return (
-                          <div key={item.id} className="space-y-2 rounded-2xl border border-border/60 bg-background/70 p-3">
+                          <div
+                            key={item.id}
+                            className={`space-y-2 rounded-2xl border p-3 transition-all ${highlightedPayableId === item.id ? "border-emerald-300 bg-emerald-50/80 shadow-md ring-2 ring-emerald-200" : "border-border/60 bg-background/70"}`}
+                          >
                             <ObligationListItem
                               title={mainTitle}
                               subtitle={`${detailLabel} • ${item.category || "Sem categoria"} • vencimento ${item.dueDate}`}
@@ -1151,7 +1175,14 @@ export default function Finance() {
             loans={loans}
             selectedYear={selectedYear}
             selectedMonth={selectedMonth}
-            onSaved={() => {
+            onSaved={(savedPayable) => {
+              if (savedPayable?.id) {
+                setSavedPayableFeedback({
+                  id: Number(savedPayable.id),
+                  title: String(savedPayable.title || savedPayable.description || savedPayable.supplier || "Conta a pagar"),
+                });
+                setHighlightedPayableId(Number(savedPayable.id));
+              }
               payablesQuery.refetch();
               payablesDashboardQuery.refetch();
             }}

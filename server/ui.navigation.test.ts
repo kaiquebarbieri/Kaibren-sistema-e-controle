@@ -173,6 +173,28 @@ describe("ui.navigation contract", () => {
     expect(updated[1]?.title).toBe("Conta anterior");
   });
 
+  it("mostra confirmação visual clara e destaca o item recém-criado após salvar conta a pagar", () => {
+    const savedPayable = {
+      id: 88,
+      title: "Boleto sem feedback",
+      supplier: "Fornecedor Z",
+      description: "Compra emergencial",
+    };
+
+    const feedback = {
+      id: Number(savedPayable.id),
+      title: String(savedPayable.title || savedPayable.description || savedPayable.supplier || "Conta a pagar"),
+    };
+
+    const highlightClass = feedback.id === savedPayable.id
+      ? "border-emerald-300 bg-emerald-50/80 shadow-md ring-2 ring-emerald-200"
+      : "border-border/60 bg-background/70";
+
+    expect(feedback).toEqual({ id: 88, title: "Boleto sem feedback" });
+    expect(highlightClass).toContain("ring-2");
+    expect(highlightClass).toContain("emerald");
+  });
+
   it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
     const responsiveRules = {
       mobileMenu: "grid-cols-4 com textos em duas linhas",

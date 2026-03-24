@@ -271,3 +271,6 @@
 - [ ] Reproduzir e corrigir a recorrência do cadastro que voltou a não refletir no painel de Obrigações no uso real do usuário
 - [ ] Corrigir o caso em que novo boleto confirma salvamento, mas não aparece na lista de Contas a Pagar no painel de Obrigações
 - [ ] Fazer novos registros de Contas a Pagar aparecerem imediatamente na tela após salvar, sem atraso perceptível de atualização
+- [ ] Investigar e corrigir definitivamente a recorrência em que novas contas a pagar parecem não salvar no site no uso real do usuário
+- [ ] Corrigir o caso em que o cadastro de contas a pagar não mostra nenhum feedback e não atualiza a tela ao salvar no uso real do usuário
+- [ ] Exibir confirmação visual clara e destacar o item recém-criado após salvar uma conta a pagar
