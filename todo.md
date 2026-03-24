@@ -323,3 +323,12 @@
 - [x] Concluir a estrutura segura do agente no site com rota autenticada, menu integrado, backend protegido e conexão futura com OpenAI sem expor chave no frontend
 - [x] Iniciar a base visual do agente no site com página autenticada e item de navegação integrado ao painel
 - [x] Implementar no backend uma rota protegida do agente com autenticação via usuário logado, preparada para OpenAI e sem exposição de chave no frontend
+- [ ] Investigar no fluxo real do usuário por que contas a pagar e custos fixos mostram sucesso ao salvar, mas somem da listagem, validando create, persistência no banco, filtros, tenant/CNPJ e revalidação ponta a ponta
+- [x] Aplicar a correção ponta a ponta do Financeiro com a causa raiz já identificada: contas a pagar persistem no banco, e custos fixos precisam criar/refletir o pagamento mensal do período para permanecer visíveis na listagem após salvar
+- [x] Corrigir em Obrigações a exibição do histórico completo de contas salvas na tela do usuário e garantir botão de delete visível e funcional para os lançamentos
+- [x] Reconstruir a área do Financeiro com menu novo, layout simplificado, categorias separadas e fluxo básico confiável sem dependência inicial de CNPJ
+- [x] Refazer a navegação do Financeiro para Contas a Pagar, Custos Fixos, Cartão de Crédito e Empréstimos com cadastro simples e listagem imediata
+- [ ] Garantir na nova versão do Financeiro que salvar faça o item aparecer imediatamente e permanecer visível na tela
+- [ ] Restaurar o menu Financeiro original com leitura de extrato e aplicar a reconstrução apenas no menu de Obrigações, conforme o escopo correto pedido pelo usuário
+- [x] Restaurar exatamente o design e a forma visual anteriores da página Financeiro, sem alterações indevidas fora do escopo de Obrigações
+- [ ] Restaurar no Financeiro o layout visual anterior com cards de caixa, alertas coloridos, seletor de subconta por CNPJ, seletor de período, quadro DRE, painel Mercado Pago, categorias de saída e blocos inferiores de controle

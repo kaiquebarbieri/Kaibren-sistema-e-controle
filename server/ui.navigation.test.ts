@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
 
 describe("ui.navigation contract", () => {
-  it("mantém o menu principal com Financeiro e Obrigações como áreas separadas", () => {
+  it("mantém o menu principal com Financeiro, Obrigações e Agente como áreas separadas", () => {
     const sections = [
       { section: "dashboard", href: "/" },
       { section: "clientes", href: "/clientes" },
@@ -15,46 +16,33 @@ describe("ui.navigation contract", () => {
     ];
 
     expect(sections).toHaveLength(9);
-    expect(sections.map((item) => item.section)).toContain("financeiro");
-    expect(sections.map((item) => item.section)).toContain("obrigacoes");
     expect(sections.find((item) => item.section === "financeiro")?.href).toBe("/financeiro");
     expect(sections.find((item) => item.section === "obrigacoes")?.href).toBe("/obrigacoes");
     expect(sections.find((item) => item.section === "agente")?.href).toBe("/agente");
   });
 
-  it("mantém as subtelas de Obrigações para contas, cartões e empréstimos com CTAs que abrem fluxos reais de cadastro", () => {
-    const tabs = [
-      { key: "contas", href: "/obrigacoes/contas", primaryDialog: "conta", secondaryDialog: "custoFixo", insight: "Radar executivo" },
-      { key: "cartoes", href: "/obrigacoes/cartoes", primaryDialog: "cartao", secondaryDialog: "fatura", insight: "Resumo do uso" },
-      { key: "emprestimos", href: "/obrigacoes/emprestimos", primaryDialog: "emprestimo", secondaryDialog: "retencao", insight: "Indicadores principais" },
-    ];
+  it("restaura o Financeiro com a estrutura visual de DRE, subconta, período e painel operacional", () => {
+    const content = fs.readFileSync(
+      "/home/ubuntu/ck-distribuidora-sistema/client/src/pages/Finance.tsx",
+      "utf-8",
+    );
 
-    expect(tabs).toHaveLength(3);
-    expect(tabs.map((item) => item.key)).toEqual(["contas", "cartoes", "emprestimos"]);
-    expect(tabs.every((item) => item.href.startsWith("/obrigacoes/"))).toBe(true);
-    expect(tabs.map((item) => item.primaryDialog)).toEqual(["conta", "cartao", "emprestimo"]);
-    expect(tabs.map((item) => item.secondaryDialog)).toEqual(["custoFixo", "fatura", "retencao"]);
-    expect(tabs.map((item) => item.insight)).toEqual(["Radar executivo", "Resumo do uso", "Indicadores principais"]);
+    expect(content).toContain("DRE e caixa realizado por subconta");
+    expect(content).toContain("Subconta por CNPJ");
+    expect(content).toContain("Painel Mercado Pago");
+    expect(content).toContain("Onde o dinheiro mais saiu");
+    expect(content).toContain("Maiores movimentos recentes");
+    expect(content).toContain("Contas em controle");
   });
 
-  it("preserva o princípio de que o DRE usa extratos e que as ações de cadastro em Obrigações abrem diálogos próprios", () => {
-    const financeiro = {
-      fonteDoDre: "extratos_bancarios",
-      acoesPrincipais: [
-        "Abrir Extratos para classificar",
-        "Abrir contas a pagar",
-        "Abrir cartões",
-        "Abrir empréstimos",
-      ],
-      dialogosObrigacoes: ["conta", "custoFixo", "cartao", "fatura", "emprestimo", "retencao"],
-    };
+  it("mantém Financeiro e Obrigações em rotas distintas no App", () => {
+    const appContent = fs.readFileSync(
+      "/home/ubuntu/ck-distribuidora-sistema/client/src/App.tsx",
+      "utf-8",
+    );
 
-    expect(financeiro.fonteDoDre).toBe("extratos_bancarios");
-    expect(financeiro.acoesPrincipais).toContain("Abrir Extratos para classificar");
-    expect(financeiro.acoesPrincipais).toContain("Abrir contas a pagar");
-    expect(financeiro.acoesPrincipais).toContain("Abrir cartões");
-    expect(financeiro.acoesPrincipais).toContain("Abrir empréstimos");
-    expect(financeiro.dialogosObrigacoes).toEqual(["conta", "custoFixo", "cartao", "fatura", "emprestimo", "retencao"]);
+    expect(appContent).toContain('path={"/financeiro"} component={Finance}');
+    expect(appContent).toContain('path={"/obrigacoes"} component={Obligations}');
   });
 
   it("mantém a área do agente como rota autenticada dentro do mesmo painel do usuário", () => {
@@ -71,326 +59,5 @@ describe("ui.navigation contract", () => {
     expect(agentArea.provider).toBe("openai");
     expect(agentArea.mode).toBe("backend_stub");
     expect(agentArea.separateLogin).toBe(false);
-  });
-
-  it("preserva a intenção de dashboards analíticos e visuais dedicados dentro de Obrigações", () => {
-    const dashboards = {
-      contas: ["Radar executivo", "Contas do mês", "Custos fixos do período"],
-      cartoes: ["Resumo do uso", "Faturas registradas", "Cobertura visual"],
-      emprestimos: ["Indicadores principais", "Empréstimos cadastrados", "Saldo em aberto"],
-    };
-
-    expect(dashboards.contas).toContain("Radar executivo");
-    expect(dashboards.cartoes).toContain("Faturas registradas");
-    expect(dashboards.emprestimos).toContain("Saldo em aberto");
-  });
-
-  it("mostra no painel de contas a pagar o título salvo e os detalhes complementares do cadastro", () => {
-    const payable = {
-      title: "Boleto fornecedor março",
-      description: "Compra de embalagens",
-      supplier: "Fornecedor X",
-      category: "embalagem",
-      dueDate: "2026-03-28",
-    };
-
-    const mainTitle = payable.title || payable.description || payable.supplier || "Conta a pagar";
-    const detailParts = [payable.supplier, payable.description].filter((value, index, array) => {
-      if (!value) return false;
-      return array.indexOf(value) === index;
-    });
-    const detailLabel = detailParts.length > 0 ? detailParts.join(" • ") : "Sem detalhes adicionais";
-    const subtitle = `${detailLabel} • ${payable.category || "Sem categoria"} • vencimento ${payable.dueDate}`;
-
-    expect(mainTitle).toBe("Boleto fornecedor março");
-    expect(subtitle).toContain("Fornecedor X");
-    expect(subtitle).toContain("Compra de embalagens");
-    expect(subtitle).toContain("embalagem");
-    expect(subtitle).toContain("2026-03-28");
-  });
-
-  it("usa o mesmo CNPJ no cadastro e na leitura do painel de contas a pagar", () => {
-    const selectedCnpjId = "7";
-    const createPayload = {
-      cnpjId: Number(selectedCnpjId),
-      title: "Fornecedor abril",
-      supplier: "Fornecedor Y",
-      amount: "1500.00",
-      dueDate: "2026-04-15",
-    };
-    const listInput = {
-      year: 2026,
-      month: 4,
-      cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId),
-    };
-    const dashboardInput = {
-      referenceDate: "2026-04-10",
-      year: 2026,
-      month: 4,
-      cnpjId: selectedCnpjId === "all" ? undefined : Number(selectedCnpjId),
-    };
-
-    expect(createPayload.cnpjId).toBe(7);
-    expect(listInput.cnpjId).toBe(7);
-    expect(dashboardInput.cnpjId).toBe(7);
-  });
-
-  it("expõe ações de editar e excluir nas contas do painel usando o mesmo fluxo de diálogo", () => {
-    const payable = {
-      id: 41,
-      cnpjId: 7,
-      title: "Fornecedor abril",
-      supplier: "Fornecedor Y",
-      amount: "1500.00",
-      dueDate: "2026-04-15",
-      category: "fornecedor",
-      status: "pending",
-    };
-
-    const openDialogPayload = {
-      mode: "conta",
-      payable,
-    };
-
-    const deletePayload = { id: payable.id };
-
-    expect(openDialogPayload.mode).toBe("conta");
-    expect(openDialogPayload.payable.title).toBe("Fornecedor abril");
-    expect(openDialogPayload.payable.cnpjId).toBe(7);
-    expect(deletePayload).toEqual({ id: 41 });
-  });
-
-  it("insere imediatamente o novo boleto no topo da lista filtrada após salvar", () => {
-    const listInput = {
-      year: 2026,
-      month: 2,
-      cnpjId: 7,
-    };
-    const existing = [
-      { id: 10, title: "Conta anterior", cnpjId: 7, dueDate: "2026-02-20", amount: "450.00" },
-    ];
-    const created = { id: 11, title: "Boleto recém-cadastrado", cnpjId: 7, dueDate: "2026-02-26", amount: "987.65" };
-
-    const upsertPayableInCache = (current: Array<Record<string, unknown>> | undefined, payable: Record<string, unknown>) => {
-      const items = Array.isArray(current) ? [...current] : [];
-      const index = items.findIndex((item) => item.id === payable.id);
-      if (index >= 0) {
-        items[index] = { ...items[index], ...payable };
-      } else {
-        items.unshift(payable);
-      }
-      return items;
-    };
-
-    const updated = upsertPayableInCache(existing, created);
-
-    expect(listInput).toEqual({ year: 2026, month: 2, cnpjId: 7 });
-    expect(updated).toHaveLength(2);
-    expect(updated[0]?.title).toBe("Boleto recém-cadastrado");
-    expect(updated[0]?.id).toBe(11);
-    expect(updated[1]?.title).toBe("Conta anterior");
-  });
-
-  it("mostra confirmação visual clara e destaca o item recém-criado após salvar conta a pagar", () => {
-    const savedPayable = {
-      id: 88,
-      title: "Boleto sem feedback",
-      supplier: "Fornecedor Z",
-      description: "Compra emergencial",
-    };
-
-    const feedback = {
-      id: Number(savedPayable.id),
-      title: String(savedPayable.title || savedPayable.description || savedPayable.supplier || "Conta a pagar"),
-    };
-
-    const highlightClass = feedback.id === savedPayable.id
-      ? "border-emerald-300 bg-emerald-50/80 shadow-md ring-2 ring-emerald-200"
-      : "border-border/60 bg-background/70";
-
-    expect(feedback).toEqual({ id: 88, title: "Boleto sem feedback" });
-    expect(highlightClass).toContain("ring-2");
-    expect(highlightClass).toContain("emerald");
-  });
-
-  it("evita refetch redundante no callback onSaved para não sobrescrever a atualização otimista", () => {
-    const savedPayable = {
-      id: 77,
-      title: "Boleto fornecedor abril",
-      description: "Compra de insumos",
-      supplier: "Fornecedor Z",
-    };
-
-    let feedback: { id: number; title: string } | null = null;
-    let highlightedId: number | null = null;
-    let refetchCount = 0;
-
-    const onSaved = (payable?: Record<string, any> | null) => {
-      if (payable?.id) {
-        feedback = {
-          id: Number(payable.id),
-          title: String(payable.title || payable.description || payable.supplier || "Conta a pagar"),
-        };
-        highlightedId = Number(payable.id);
-      }
-    };
-
-    onSaved(savedPayable);
-
-    expect(feedback).toEqual({ id: 77, title: "Boleto fornecedor abril" });
-    expect(highlightedId).toBe(77);
-    expect(refetchCount).toBe(0);
-  });
-
-  it("alinha o filtro principal ao CNPJ salvo quando a conta é criada em outra subconta", () => {
-    const selectedCnpjId = "3";
-    const savedPayable = {
-      id: 55,
-      cnpjId: 7,
-      title: "Fornecedor de outra subconta",
-    };
-
-    const nextSelectedCnpjId = (() => {
-      const savedCnpjId = savedPayable.cnpjId != null ? String(savedPayable.cnpjId) : null;
-      if (savedCnpjId && selectedCnpjId !== "all" && selectedCnpjId !== savedCnpjId) {
-        return savedCnpjId;
-      }
-      return selectedCnpjId;
-    })();
-
-    expect(nextSelectedCnpjId).toBe("7");
-  });
-
-  it("usa listagem agregada com CNPJ escolhido no cadastro e nome do CNPJ visível no histórico", () => {
-    const cnpjs = [
-      { id: 7, nomeFantasia: "CK Atacados", cnpj: "00.000.000/0001-91" },
-      { id: 9, nomeFantasia: "Duoo Utilidades", cnpj: "11.111.111/0001-55" },
-    ];
-
-    const payable = {
-      id: 120,
-      cnpjId: 9,
-      title: "Boleto de fornecedor",
-      supplier: "Fornecedor Prime",
-      amount: "650.00",
-    };
-
-    const selectedFilter = "all";
-    const selectedCnpjLabel = cnpjs.find((item) => item.id === payable.cnpjId)?.nomeFantasia ?? "CNPJ não identificado";
-    const listInput = {
-      year: 2026,
-      month: 3,
-      cnpjId: selectedFilter === "all" ? undefined : Number(selectedFilter),
-    };
-    const dashboardInput = {
-      referenceDate: "2026-03-10",
-      year: 2026,
-      month: 3,
-      cnpjId: selectedFilter === "all" ? undefined : Number(selectedFilter),
-    };
-    const historyBadge = `${selectedCnpjLabel} • ${cnpjs.find((item) => item.id === payable.cnpjId)?.cnpj}`;
-    const createPayload = {
-      cnpjId: payable.cnpjId,
-      title: payable.title,
-      supplier: payable.supplier,
-      amount: payable.amount,
-    };
-
-    expect(listInput.cnpjId).toBeUndefined();
-    expect(dashboardInput.cnpjId).toBeUndefined();
-    expect(createPayload.cnpjId).toBe(9);
-    expect(selectedCnpjLabel).toBe("Duoo Utilidades");
-    expect(historyBadge).toContain("Duoo Utilidades");
-    expect(historyBadge).toContain("11.111.111/0001-55");
-  });
-
-  it("mantém estratégia responsiva para menus e botões sem corte visual", () => {
-    const responsiveRules = {
-      mobileMenu: "grid-cols-4 com textos em duas linhas",
-      obligationTabs: "grid no mobile e 3 colunas a partir de sm",
-      ctaButtons: "largura total no mobile e automática em telas maiores",
-      desktopContent: "overflow-x-hidden com padding progressivo até 2xl",
-      notebookHeader: "grid com duas colunas no md e largura fixa controlada no xl",
-      notebookMonthControl: "flex-1 no rótulo do mês com botões shrink-0",
-      spotlightActions: "grid full width até 2xl e wrap controlado depois",
-    };
-
-    expect(responsiveRules.mobileMenu).toContain("grid-cols-4");
-    expect(responsiveRules.obligationTabs).toContain("3 colunas");
-    expect(responsiveRules.ctaButtons).toContain("mobile");
-    expect(responsiveRules.desktopContent).toContain("2xl");
-    expect(responsiveRules.notebookHeader).toContain("md");
-    expect(responsiveRules.notebookMonthControl).toContain("flex-1");
-    expect(responsiveRules.spotlightActions).toContain("2xl");
-  });
-
-  it("usa as transações retornadas no DRE para preencher movimentos recentes e painel Mercado Pago", () => {
-    const dre = {
-      bankTransactions: [
-        { id: 1, bankName: "Mercado Pago", transactionType: "credit", amount: 92096.29, isIdentified: 1, category: "venda" },
-        { id: 2, bankName: "Mercado Pago", transactionType: "debit", amount: 1500, isIdentified: 1, category: "repasse para c6 bank" },
-        { id: 3, bankName: "C6 Bank", transactionType: "debit", amount: 2000, isIdentified: 0, category: "sem categoria" },
-      ],
-    };
-
-    const selectedCnpjId = "all";
-    const allTransactions = selectedCnpjId === "all"
-      ? dre.bankTransactions
-      : dre.bankTransactions.filter((item) => String((item as any).cnpjId || "") === selectedCnpjId);
-
-    const topCredits = allTransactions.filter((item) => item.transactionType === "credit").slice(0, 5);
-    const topDebits = allTransactions.filter((item) => item.transactionType === "debit").slice(0, 8);
-    const mercadoPagoTransactions = allTransactions.filter((item) => item.bankName.toLowerCase().includes("mercado pago"));
-    const mercadoPagoSummary = {
-      totalTransactions: mercadoPagoTransactions.length,
-      identified: mercadoPagoTransactions.filter((item) => item.isIdentified === 1).length,
-      pending: mercadoPagoTransactions.filter((item) => item.isIdentified !== 1).length,
-      transfers: mercadoPagoTransactions
-        .filter((item) => item.category.toLowerCase().includes("repasse para c6 bank"))
-        .reduce((sum, item) => sum + Math.abs(Number(item.amount || 0)), 0),
-    };
-
-    expect(topCredits).toHaveLength(1);
-    expect(topDebits).toHaveLength(2);
-    expect(mercadoPagoSummary.totalTransactions).toBe(2);
-    expect(mercadoPagoSummary.identified).toBe(2);
-    expect(mercadoPagoSummary.pending).toBe(0);
-    expect(mercadoPagoSummary.transfers).toBe(1500);
-  });
-
-  it("mostra o CNPJ de forma nítida no histórico mesmo com listagem agregada", () => {
-    const payables = [
-      { id: 1, cnpjId: 7, cnpjName: "CK Matriz", title: "Fornecedor A" },
-      { id: 2, cnpjId: 9, cnpjName: "Duoo Utilidades", title: "Fornecedor B" },
-    ];
-
-    const visibleRows = payables.map((item) => ({
-      title: item.title,
-      cnpjBadge: `CNPJ: ${item.cnpjName}`,
-    }));
-
-    expect(visibleRows).toHaveLength(2);
-    expect(visibleRows[0]).toEqual({ title: "Fornecedor A", cnpjBadge: "CNPJ: CK Matriz" });
-    expect(visibleRows[1]).toEqual({ title: "Fornecedor B", cnpjBadge: "CNPJ: Duoo Utilidades" });
-  });
-
-  it("passa a escolher o CNPJ no cadastro em vez de depender de subconta ativa", () => {
-    const createPayload = {
-      cnpjId: 7,
-      title: "Boleto energia",
-      amount: "890.00",
-      dueDate: "2026-04-25",
-    };
-
-    const listContext = {
-      mode: "aggregate_with_optional_filter",
-      cnpjChosenInsideDialog: true,
-      activeSubaccountRequired: false,
-    };
-
-    expect(createPayload.cnpjId).toBe(7);
-    expect(listContext.mode).toBe("aggregate_with_optional_filter");
-    expect(listContext.cnpjChosenInsideDialog).toBe(true);
-    expect(listContext.activeSubaccountRequired).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import Marketing from "@/pages/Marketing";
 import Products from "@/pages/Products";
 import BankStatements from "@/pages/BankStatements";
 import Finance from "@/pages/Finance";
+import Obligations from "@/pages/Obligations";
 import Agent from "@/pages/Agent";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -25,8 +26,8 @@ function Router() {
       <Route path={"/extratos/:id"} component={BankStatements} />
       <Route path={"/financeiro"} component={Finance} />
       <Route path={"/agente"} component={Agent} />
-      <Route path={"/obrigacoes"} component={Finance} />
-      <Route path={"/obrigacoes/:tab"} component={Finance} />
+      <Route path={"/obrigacoes"} component={Obligations} />
+      <Route path={"/obrigacoes/:tab"} component={Obligations} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

@@ -1,0 +1,34 @@
+{
+  "query": "SELECT fc.id AS fixedCostId, fc.cnpj_id AS cnpjId, fc.name, fc.amount, fc.createdByUserId, fcp.id AS paymentId, fcp.periodYear, fcp.periodMonth, fcp.amountPaid, fcp.status\nFROM fixed_costs fc\nLEFT JOIN fixed_cost_payments fcp ON fcp.fixedCostId = fc.id\nWHERE fc.id IN (SELECT id FROM fixed_costs ORDER BY id DESC LIMIT 10)\nORDER BY fc.id DESC, fcp.periodYear DESC, fcp.periodMonth DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT fc.id AS fixedCostId, fc.cnpj_id AS cnpjId, fc.name, fc.amount, fc.createdByUserId, fcp.id AS paymentId, fcp.periodYear, fcp.periodMonth, fcp.amountPaid, fcp.status\nFROM fixed_costs fc\nLEFT JOIN fixed_cost_payments fcp ON fcp.fixedCostId = fc.id\nWHERE fc.id IN (SELECT id FROM fixed_costs ORDER BY id DESC LIMIT 10)\nORDER BY fc.id DESC, fcp.periodYear DESC, fcp.periodMonth DESC;",
+  "rows": [
+    {
+      "fixedCostId": "2",
+      "cnpjId": "3",
+      "name": "555555",
+      "amount": "55555555.00",
+      "createdByUserId": "1",
+      "paymentId": "NULL",
+      "periodYear": "NULL",
+      "periodMonth": "NULL",
+      "amountPaid": "NULL",
+      "status": "NULL"
+    },
+    {
+      "fixedCostId": "1",
+      "cnpjId": "3",
+      "name": "555",
+      "amount": "55555555.00",
+      "createdByUserId": "1",
+      "paymentId": "NULL",
+      "periodYear": "NULL",
+      "periodMonth": "NULL",
+      "amountPaid": "NULL",
+      "status": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "fixedCostId\tcnpjId\tname\tamount\tcreatedByUserId\tpaymentId\tperiodYear\tperiodMonth\tamountPaid\tstatus\n2\t3\t555555\t55555555.00\t1\tNULL\tNULL\tNULL\tNULL\tNULL\n1\t3\t555\t55555555.00\t1\tNULL\tNULL\tNULL\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

@@ -1,0 +1,234 @@
+{
+  "query": "SELECT id, cnpjId, title, supplier, amount, dueDate, status, createdByUserId, createdAt FROM payable_accounts ORDER BY id DESC LIMIT 20;\nSELECT fc.id AS fixedCostId, fc.cnpj_id AS cnpjId, fc.name, fc.amount, fc.isActive, fc.createdByUserId, fc.createdAt FROM fixed_costs fc ORDER BY fc.id DESC LIMIT 20;\nSELECT fcp.id, fcp.fixedCostId, fcp.periodYear, fcp.periodMonth, fcp.amountPaid, fcp.status, fcp.createdAt FROM fixed_cost_payments fcp ORDER BY fcp.id DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute SELECT id, cnpjId, title, supplier, amount, dueDate, status, createdByUserId, createdAt FROM payable_accounts ORDER BY id DESC LIMIT 20;\nSELECT fc.id AS fixedCostId, fc.cnpj_id AS cnpjId, fc.name, fc.amount, fc.isActive, fc.createdByUserId, fc.createdAt FROM fixed_costs fc ORDER BY fc.id DESC LIMIT 20;\nSELECT fcp.id, fcp.fixedCostId, fcp.periodYear, fcp.periodMonth, fcp.amountPaid, fcp.status, fcp.createdAt FROM fixed_cost_payments fcp ORDER BY fcp.id DESC LIMIT 20;",
+  "rows": [
+    {
+      "id": "120007",
+      "cnpjId": "3",
+      "title": "ggg",
+      "supplier": "ggg",
+      "amount": "55.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 20:19:44"
+    },
+    {
+      "id": "120006",
+      "cnpjId": "3",
+      "title": "5555555555",
+      "supplier": "5555555555",
+      "amount": "555555.00",
+      "dueDate": "2026-03-28",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 19:59:44"
+    },
+    {
+      "id": "120005",
+      "cnpjId": "3",
+      "title": "555",
+      "supplier": "555555555555",
+      "amount": "555555555.00",
+      "dueDate": "2026-03-20",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 19:59:20"
+    },
+    {
+      "id": "120004",
+      "cnpjId": "3",
+      "title": "hhhhh",
+      "supplier": "hhhhhhhh",
+      "amount": "444444.00",
+      "dueDate": "2026-03-27",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 19:58:39"
+    },
+    {
+      "id": "120003",
+      "cnpjId": "2",
+      "title": "kkkk",
+      "supplier": "kkkkkkkkkk",
+      "amount": "8888.00",
+      "dueDate": "2026-03-26",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 19:54:39"
+    },
+    {
+      "id": "120002",
+      "cnpjId": "3",
+      "title": "kkkkk",
+      "supplier": "kkkkkkkkk",
+      "amount": "7777.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 19:54:09"
+    },
+    {
+      "id": "120001",
+      "cnpjId": "3",
+      "title": "jjjjjjjjjjjjjjjjjjj",
+      "supplier": "jjjjjjjjjjjjjjjjjjj",
+      "amount": "99999.00",
+      "dueDate": "2026-03-26",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 19:12:38"
+    },
+    {
+      "id": "90019",
+      "cnpjId": "3",
+      "title": "tttt",
+      "supplier": "tttttttttt",
+      "amount": "55555555.00",
+      "dueDate": "2026-03-31",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:44:50"
+    },
+    {
+      "id": "90018",
+      "cnpjId": "3",
+      "title": "555",
+      "supplier": "55555555555",
+      "amount": "55555.00",
+      "dueDate": "2026-04-02",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:44:26"
+    },
+    {
+      "id": "90017",
+      "cnpjId": "3",
+      "title": "666666",
+      "supplier": "66666666",
+      "amount": "55555.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:44:06"
+    },
+    {
+      "id": "90016",
+      "cnpjId": "3",
+      "title": "yyyyy",
+      "supplier": "yyyyyyyy",
+      "amount": "6666.00",
+      "dueDate": "2026-04-01",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:43:51"
+    },
+    {
+      "id": "90014",
+      "cnpjId": "3",
+      "title": "Mondial",
+      "supplier": "R",
+      "amount": "22.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:41:35"
+    },
+    {
+      "id": "90013",
+      "cnpjId": "3",
+      "title": "Mondial ",
+      "supplier": "m",
+      "amount": "555.00",
+      "dueDate": "2026-03-26",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:40:55"
+    },
+    {
+      "id": "90010",
+      "cnpjId": "3",
+      "title": "lll",
+      "supplier": "lll",
+      "amount": "55.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:32:01"
+    },
+    {
+      "id": "90009",
+      "cnpjId": "3",
+      "title": "kkk",
+      "supplier": "kkkkk",
+      "amount": "55.00",
+      "dueDate": "2026-03-24",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 18:04:02"
+    },
+    {
+      "id": "90008",
+      "cnpjId": "3",
+      "title": "Boleto Mondial",
+      "supplier": "Mondial",
+      "amount": "935.32",
+      "dueDate": "2026-03-31",
+      "status": "pending",
+      "createdByUserId": "420012",
+      "createdAt": "2026-03-24 18:01:04"
+    },
+    {
+      "id": "90005",
+      "cnpjId": "3",
+      "title": "fg",
+      "supplier": "gg",
+      "amount": "4444.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 17:49:50"
+    },
+    {
+      "id": "90004",
+      "cnpjId": "3",
+      "title": "66666666",
+      "supplier": "6666666",
+      "amount": "777.00",
+      "dueDate": "2026-03-25",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 17:45:01"
+    },
+    {
+      "id": "90003",
+      "cnpjId": "3",
+      "title": "ggggg",
+      "supplier": "ggggg",
+      "amount": "66666666.00",
+      "dueDate": "2026-03-24",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 17:44:40"
+    },
+    {
+      "id": "90002",
+      "cnpjId": "3",
+      "title": "iiiiiiii",
+      "supplier": "iiiiiiiiiii",
+      "amount": "88888888.00",
+      "dueDate": "2026-03-24",
+      "status": "pending",
+      "createdByUserId": "1",
+      "createdAt": "2026-03-24 17:36:32"
+    }
+  ],
+  "messages": [
+    "fixedCostId\tcnpjId\tname\tamount\tisActive\tcreatedByUserId\tcreatedAt",
+    "2\t3\t555555\t55555555.00\t1\t1\t2026-03-24 20:24:18",
+    "1\t3\t555\t55555555.00\t1\t1\t2026-03-24 19:59:11"
+  ],
+  "stdout": "id\tcnpjId\ttitle\tsupplier\tamount\tdueDate\tstatus\tcreatedByUserId\tcreatedAt\n120007\t3\tggg\tggg\t55.00\t2026-03-25\tpending\t1\t2026-03-24 20:19:44\n120006\t3\t5555555555\t5555555555\t555555.00\t2026-03-28\tpending\t1\t2026-03-24 19:59:44\n120005\t3\t555\t555555555555\t555555555.00\t2026-03-20\tpending\t1\t2026-03-24 19:59:20\n120004\t3\thhhhh\thhhhhhhh\t444444.00\t2026-03-27\tpending\t1\t2026-03-24 19:58:39\n120003\t2\tkkkk\tkkkkkkkkkk\t8888.00\t2026-03-26\tpending\t1\t2026-03-24 19:54:39\n120002\t3\tkkkkk\tkkkkkkkkk\t7777.00\t2026-03-25\tpending\t1\t2026-03-24 19:54:09\n120001\t3\tjjjjjjjjjjjjjjjjjjj\tjjjjjjjjjjjjjjjjjjj\t99999.00\t2026-03-26\tpending\t1\t2026-03-24 19:12:38\n90019\t3\ttttt\ttttttttttt\t55555555.00\t2026-03-31\tpending\t1\t2026-03-24 18:44:50\n90018\t3\t555\t55555555555\t55555.00\t2026-04-02\tpending\t1\t2026-03-24 18:44:26\n90017\t3\t666666\t66666666\t55555.00\t2026-03-25\tpending\t1\t2026-03-24 18:44:06\n90016\t3\tyyyyy\tyyyyyyyy\t6666.00\t2026-04-01\tpending\t1\t2026-03-24 18:43:51\n90014\t3\tMondial\tR\t22.00\t2026-03-25\tpending\t1\t2026-03-24 18:41:35\n90013\t3\tMondial \tm\t555.00\t2026-03-26\tpending\t1\t2026-03-24 18:40:55\n90010\t3\tlll\tlll\t55.00\t2026-03-25\tpending\t1\t2026-03-24 18:32:01\n90009\t3\tkkk\tkkkkk\t55.00\t2026-03-24\tpending\t1\t2026-03-24 18:04:02\n90008\t3\tBoleto Mondial\tMondial\t935.32\t2026-03-31\tpending\t420012\t2026-03-24 18:01:04\n90005\t3\tfg\tgg\t4444.00\t2026-03-25\tpending\t1\t2026-03-24 17:49:50\n90004\t3\t66666666\t6666666\t777.00\t2026-03-25\tpending\t1\t2026-03-24 17:45:01\n90003\t3\tggggg\tggggg\t66666666.00\t2026-03-24\tpending\t1\t2026-03-24 17:44:40\n90002\t3\tiiiiiiii\tiiiiiiiiiii\t88888888.00\t2026-03-24\tpending\t1\t2026-03-24 17:36:32\nfixedCostId\tcnpjId\tname\tamount\tisActive\tcreatedByUserId\tcreatedAt\n2\t3\t555555\t55555555.00\t1\t1\t2026-03-24 20:24:18\n1\t3\t555\t55555555.00\t1\t1\t2026-03-24 19:59:11\n",
+  "stderr": "",
+  "execution_time_ms": 158
+}
