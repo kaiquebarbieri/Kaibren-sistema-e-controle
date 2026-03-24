@@ -703,19 +703,18 @@ export default function Finance() {
     return new Map<string, any>(cnpjs.map((item: any) => [String(item.id), item] as [string, any]));
   }, [cnpjs]);
 
-  const selectedFinanceCnpjId = selectedCnpjFilter !== "all"
-    ? Number(selectedCnpjFilter)
-    : (cnpjs[0]?.id ? Number(cnpjs[0].id) : undefined);
+  const selectedFinanceCnpjId = cnpjs[0]?.id ? Number(cnpjs[0].id) : undefined;
+  const selectedHistoryCnpjId = selectedCnpjFilter !== "all" ? Number(selectedCnpjFilter) : undefined;
 
   const financeQueriesEnabled = Boolean(selectedFinanceCnpjId);
 
   const payablesQuery = trpc.finance.payables.list.useQuery(
-    { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
-    { enabled: financeQueriesEnabled },
+    { year: selectedYear, month: selectedMonth, cnpjId: selectedHistoryCnpjId },
+    { enabled: cnpjs.length > 0 },
   );
   const payablesDashboardQuery = trpc.finance.payables.dashboard.useQuery(
-    { referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId },
-    { enabled: financeQueriesEnabled },
+    { referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: selectedHistoryCnpjId },
+    { enabled: cnpjs.length > 0 },
   );
   const fixedCostPaymentsQuery = trpc.finance.fixedCosts.payments.useQuery(
     { year: selectedYear, month: selectedMonth, cnpjId: selectedFinanceCnpjId as number },
@@ -945,7 +944,7 @@ export default function Finance() {
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-4 text-sm text-sky-900">
               <p className="font-semibold">Histórico consolidado com identificação por empresa</p>
-              <p className="mt-1">Os lançamentos continuam isolados por CNPJ no backend, mas agora a tela deixa tudo mais claro: você escolhe a empresa no cadastro e enxerga o nome do CNPJ de forma nítida em cada item salvo.</p>
+              <p className="mt-1">Os lançamentos continuam isolados por CNPJ no backend, mas agora a tela deixa tudo mais claro: você escolhe a empresa no cadastro, o histórico pode mostrar todos os CNPJs juntos e o painel respeita o filtro visual selecionado.</p>
             </div>
             <div className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Filtro visual do histórico</Label>
@@ -994,7 +993,8 @@ export default function Finance() {
                 <Card className="rounded-3xl border bg-card/95 shadow-sm">
                   <CardHeader>
                     <CardTitle>Radar executivo</CardTitle>
-                    <CardDescription>{selectedCnpjFilter === "all" ? "Resumo financeiro do CNPJ-base do período" : cnpjLabel}</CardDescription>
+                      <CardDescription>{selectedCnpjFilter === "all" ? "Resumo agregado de todos os CNPJs no período" : getCnpjLabel(cnpjMap.get(String(selectedHistoryCnpjId || "")))}</CardDescription>
+
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4">
@@ -1007,8 +1007,8 @@ export default function Finance() {
                       </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                      <InsightMetric label="Em atraso" value={`R$ ${fmt(payablesDashboard?.totalOverdue || 0)}`} helper="Valor ainda pressionando o caixa na empresa exibida no painel executivo." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
-                      <InsightMetric label="Previsto no mês" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Compromissos futuros ainda não liquidados no recorte do painel." tone="info" icon={<Target className="h-4 w-4" />} />
+                      <InsightMetric label="Em atraso" value={`R$ ${fmt(payablesDashboard?.totalOverdue || 0)}`} helper="Valor ainda pressionando o caixa conforme o filtro visual atual do histórico." tone="danger" icon={<TrendingDown className="h-4 w-4" />} />
+                      <InsightMetric label="Previsto no mês" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Compromissos futuros ainda não liquidados conforme o filtro visual atual." tone="info" icon={<Target className="h-4 w-4" />} />
                     </div>
                   </CardContent>
                 </Card>
@@ -1016,7 +1016,7 @@ export default function Finance() {
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <InsightMetric label="Contas no histórico" value={String(payablesForHistory.length)} helper="Itens visíveis com identificação de CNPJ no histórico desta tela." icon={<Receipt className="h-4 w-4" />} />
-                <InsightMetric label="Total previsto" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Montante ainda aguardando pagamento na empresa base do período." tone="warning" icon={<Wallet className="h-4 w-4" />} />
+                <InsightMetric label="Total previsto" value={`R$ ${fmt(payablesDashboard?.totalPending || 0)}`} helper="Montante ainda aguardando pagamento conforme o filtro visual aplicado ao histórico." tone="warning" icon={<Wallet className="h-4 w-4" />} />
                 <InsightMetric label="Custos fixos" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Compromissos recorrentes monitorados para o período." tone="success" icon={<Sparkles className="h-4 w-4" />} />
                 <InsightMetric label="Valor controlado" value={`R$ ${fmt(obligations.totalContas + obligations.totalCustos)}`} helper="Base operacional acompanhada no painel de obrigações." tone="neutral" icon={<PieChart className="h-4 w-4" />} />
               </div>

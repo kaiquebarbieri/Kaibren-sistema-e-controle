@@ -264,6 +264,12 @@ describe("ui.navigation contract", () => {
       month: 3,
       cnpjId: selectedFilter === "all" ? undefined : Number(selectedFilter),
     };
+    const dashboardInput = {
+      referenceDate: "2026-03-10",
+      year: 2026,
+      month: 3,
+      cnpjId: selectedFilter === "all" ? undefined : Number(selectedFilter),
+    };
     const historyBadge = `${selectedCnpjLabel} • ${cnpjs.find((item) => item.id === payable.cnpjId)?.cnpj}`;
     const createPayload = {
       cnpjId: payable.cnpjId,
@@ -273,6 +279,7 @@ describe("ui.navigation contract", () => {
     };
 
     expect(listInput.cnpjId).toBeUndefined();
+    expect(dashboardInput.cnpjId).toBeUndefined();
     expect(createPayload.cnpjId).toBe(9);
     expect(selectedCnpjLabel).toBe("Duoo Utilidades");
     expect(historyBadge).toContain("Duoo Utilidades");

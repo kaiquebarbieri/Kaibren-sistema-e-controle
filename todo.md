@@ -318,3 +318,4 @@
 - [x] Estabilizar a sintaxe residual de Finance.tsx na seção de movimentos recentes para destravar a simplificação visual do fluxo de CNPJ em Obrigações
 - [x] Implementar visualmente a nova regra já validada em regressão: escolher o CNPJ no cadastro de Obrigações e mostrar com destaque o nome do CNPJ em cada lançamento do histórico agregado
 - [x] Concluir a implementação visual em Finance.tsx da nova experiência de Obrigações com listagem agregada, escolha de CNPJ no cadastro e destaque claro do nome do CNPJ em cada lançamento do histórico
+- [x] Corrigir em Obrigações o bug em que contas e boletos recém-salvos exibem sucesso, mas não atualizam corretamente o painel e o histórico com o valor lançado
