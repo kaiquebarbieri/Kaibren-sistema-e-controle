@@ -35,7 +35,7 @@ describe("ui.navigation contract", () => {
     expect(content).toContain("Contas em controle");
   });
 
-  it("mantém Financeiro e Obrigações em rotas distintas no App", () => {
+  it("mantém Financeiro e o módulo Contas em rotas distintas no App", () => {
     const appContent = fs.readFileSync(
       "/home/ubuntu/ck-distribuidora-sistema/client/src/App.tsx",
       "utf-8",
@@ -43,6 +43,23 @@ describe("ui.navigation contract", () => {
 
     expect(appContent).toContain('path={"/financeiro"} component={Finance}');
     expect(appContent).toContain('path={"/obrigacoes"} component={Obligations}');
+    expect(appContent).toContain('path={"/obrigacoes/:tab"} component={Obligations}');
+  });
+
+  it("implementa o módulo Contas com os três submenus aprovados", () => {
+    const content = fs.readFileSync(
+      "/home/ubuntu/ck-distribuidora-sistema/client/src/pages/Obligations.tsx",
+      "utf-8",
+    );
+
+    expect(content).toContain("Contas");
+    expect(content).toContain("Contas a Pagar");
+    expect(content).toContain("Cartão de Crédito");
+    expect(content).toContain("Empréstimos");
+    expect(content).not.toContain('label: "Custos Fixos"');
+    expect(content).not.toContain('"fixed-costs"');
+    expect(content).toContain("Módulo Contas com navegação clara e separada");
+    expect(content).toContain("Submenu");
   });
 
   it("mantém a área do agente como rota autenticada dentro do mesmo painel do usuário", () => {

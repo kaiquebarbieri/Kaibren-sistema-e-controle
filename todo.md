@@ -332,3 +332,5 @@
 - [ ] Restaurar o menu Financeiro original com leitura de extrato e aplicar a reconstrução apenas no menu de Obrigações, conforme o escopo correto pedido pelo usuário
 - [x] Restaurar exatamente o design e a forma visual anteriores da página Financeiro, sem alterações indevidas fora do escopo de Obrigações
 - [ ] Restaurar no Financeiro o layout visual anterior com cards de caixa, alertas coloridos, seletor de subconta por CNPJ, seletor de período, quadro DRE, painel Mercado Pago, categorias de saída e blocos inferiores de controle
+- [ ] Reestruturar o módulo Contas com menu principal "Contas" e submenus exatos "Contas a Pagar", "Cartão de Crédito" e "Empréstimos", com navegação interna clara e aparência de módulo real do sistema
+- [ ] Implementar o módulo Contas com submenus exatos "Contas a Pagar", "Cartão de Crédito" e "Empréstimos", navegação interna visível e aparência de módulo real do sistema
