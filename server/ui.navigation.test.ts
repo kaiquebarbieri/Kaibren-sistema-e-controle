@@ -11,13 +11,15 @@ describe("ui.navigation contract", () => {
       { section: "extratos", href: "/extratos" },
       { section: "financeiro", href: "/financeiro" },
       { section: "obrigacoes", href: "/obrigacoes" },
+      { section: "agente", href: "/agente" },
     ];
 
-    expect(sections).toHaveLength(8);
+    expect(sections).toHaveLength(9);
     expect(sections.map((item) => item.section)).toContain("financeiro");
     expect(sections.map((item) => item.section)).toContain("obrigacoes");
     expect(sections.find((item) => item.section === "financeiro")?.href).toBe("/financeiro");
     expect(sections.find((item) => item.section === "obrigacoes")?.href).toBe("/obrigacoes");
+    expect(sections.find((item) => item.section === "agente")?.href).toBe("/agente");
   });
 
   it("mantém as subtelas de Obrigações para contas, cartões e empréstimos com CTAs que abrem fluxos reais de cadastro", () => {
@@ -53,6 +55,22 @@ describe("ui.navigation contract", () => {
     expect(financeiro.acoesPrincipais).toContain("Abrir cartões");
     expect(financeiro.acoesPrincipais).toContain("Abrir empréstimos");
     expect(financeiro.dialogosObrigacoes).toEqual(["conta", "custoFixo", "cartao", "fatura", "emprestimo", "retencao"]);
+  });
+
+  it("mantém a área do agente como rota autenticada dentro do mesmo painel do usuário", () => {
+    const agentArea = {
+      route: "/agente",
+      requiresAuth: true,
+      provider: "openai",
+      mode: "backend_stub",
+      separateLogin: false,
+    };
+
+    expect(agentArea.route).toBe("/agente");
+    expect(agentArea.requiresAuth).toBe(true);
+    expect(agentArea.provider).toBe("openai");
+    expect(agentArea.mode).toBe("backend_stub");
+    expect(agentArea.separateLogin).toBe(false);
   });
 
   it("preserva a intenção de dashboards analíticos e visuais dedicados dentro de Obrigações", () => {

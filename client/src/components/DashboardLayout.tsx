@@ -32,6 +32,7 @@ import {
   UserPlus,
   Wallet,
   ReceiptText,
+  Bot,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -47,6 +48,7 @@ const menuItems = [
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
   { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro" },
   { icon: ReceiptText, label: "Obrigações", section: "obrigacoes", href: "/obrigacoes" },
+  { icon: Bot, label: "Agente", section: "agente", href: "/agente" },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

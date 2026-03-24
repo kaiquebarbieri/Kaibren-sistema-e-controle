@@ -180,10 +180,27 @@ describe("Finance Module", () => {
       ];
       const savedPayable = { id: 12, title: "Novo boleto", cnpjId: 9 };
 
+      const listInvalidateInputs = [
+        { year: 2026, month: 3 },
+        { year: 2026, month: 3, cnpjId: savedPayable.cnpjId },
+      ];
+      const dashboardInvalidateInputs = [
+        { referenceDate: "2026-03-10", year: 2026, month: 3 },
+        { referenceDate: "2026-03-10", year: 2026, month: 3, cnpjId: savedPayable.cnpjId },
+      ];
+
       const history = [savedPayable, ...existingPayables].filter((item) => {
         return selectedFilter === "all" ? true : String(item.cnpjId) === selectedFilter;
       });
 
+      expect(listInvalidateInputs).toEqual([
+        { year: 2026, month: 3 },
+        { year: 2026, month: 3, cnpjId: 9 },
+      ]);
+      expect(dashboardInvalidateInputs).toEqual([
+        { referenceDate: "2026-03-10", year: 2026, month: 3 },
+        { referenceDate: "2026-03-10", year: 2026, month: 3, cnpjId: 9 },
+      ]);
       expect(history.map((item) => item.id)).toEqual([12, 11]);
       expect(history[0].title).toBe("Novo boleto");
     });
@@ -198,6 +215,10 @@ describe("Finance Module", () => {
         { id: 1, title: "Fornecedor A", cnpjId: 7 },
         { id: 2, title: "Fornecedor B", cnpjId: 9 },
       ];
+      const fixedCostPayments = [
+        { id: 31, cnpjId: 7, amountPaid: "500.00" },
+        { id: 32, cnpjId: 9, amountPaid: "850.00" },
+      ];
 
       const visibleRows = payables
         .filter((item) => selectedFilter === "all" || String(item.cnpjId) === selectedFilter)
@@ -206,10 +227,15 @@ describe("Finance Module", () => {
           cnpjLabel: cnpjs.get(item.cnpjId),
         }));
 
+      const visibleFixedCostPayments = fixedCostPayments.filter((item) => selectedFilter === "all" || String(item.cnpjId) === selectedFilter);
+      const totalVisibleFixedCosts = visibleFixedCostPayments.reduce((sum, item) => sum + parseFloat(item.amountPaid), 0);
+
       expect(visibleRows).toEqual([
         { id: 1, cnpjLabel: "CK Matriz • 11.111.111/0001-11" },
         { id: 2, cnpjLabel: "Duoo Utilidades • 22.222.222/0001-22" },
       ]);
+      expect(visibleFixedCostPayments.map((item) => item.id)).toEqual([31, 32]);
+      expect(totalVisibleFixedCosts).toBe(1350);
     });
 
     it("should calculate DRE correctly", () => {

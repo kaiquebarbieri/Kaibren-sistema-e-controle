@@ -472,8 +472,47 @@ Gere APENAS a mensagem, sem explica\u00e7\u00f5es. Use {nome} e {produtos} como 
   }),
 });
 
+const agentMessageSchema = z.object({
+  role: z.enum(["system", "user", "assistant"]),
+  content: z.string().min(1),
+});
+
+const agentRouter = router({
+  status: protectedProcedure.query(({ ctx }) => ({
+    enabled: false,
+    provider: "openai",
+    mode: "backend_stub",
+    authenticatedUserId: ctx.user.id,
+    message: "A estrutura segura do agente está pronta no backend. Falta apenas conectar a chave da OpenAI em ambiente seguro para ativar as respostas reais.",
+  })),
+  chat: protectedProcedure
+    .input(z.object({
+      messages: z.array(agentMessageSchema).min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const lastUserMessage = [...input.messages].reverse().find((message) => message.role === "user");
+      const userName = ctx.user.name || "usuário";
+
+      return {
+        reply: [
+          `Olá, ${userName}.`,
+          "Sua mensagem foi recebida pelo backend protegido do agente.",
+          "Nesta fase, a rota já está autenticada pelo login do sistema e pronta para receber a OpenAI no servidor, sem expor chave no frontend.",
+          lastUserMessage ? `Última solicitação registrada: ${lastUserMessage.content}` : "Nenhuma solicitação do usuário foi identificada no payload.",
+        ].join("\n\n"),
+        metadata: {
+          provider: "openai",
+          mode: "backend_stub",
+          userId: ctx.user.id,
+          receivedMessages: input.messages.length,
+        },
+      };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
+  agent: agentRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

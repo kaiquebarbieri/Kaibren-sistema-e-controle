@@ -41,6 +41,7 @@ type SavedPayable = {
   title?: string | null;
   description?: string | null;
   supplier?: string | null;
+  kind?: "payable" | "fixed_cost";
 };
 
 const obligationDialogMeta: Record<ObligationDialogMode, { title: string; description: string }> = {
@@ -354,11 +355,19 @@ function ObligationDialog({
     });
   }
 
-  async function refreshAfterSave(savedPayable?: SavedPayable | null) {
-    if (selectedCnpjNumber && listInput && dashboardInput) {
-      await Promise.all([
-        utils.finance.payables.list.invalidate(listInput),
-        utils.finance.payables.dashboard.invalidate(dashboardInput),
+  async function refreshAfterSave(savedEntry?: SavedPayable | null) {
+    const invalidations: Array<Promise<unknown>> = [];
+
+    invalidations.push(
+      utils.finance.payables.list.invalidate({ year: selectedYear, month: selectedMonth }),
+      utils.finance.payables.dashboard.invalidate({ referenceDate: today, year: selectedYear, month: selectedMonth }),
+      utils.finance.fixedCosts.payments.invalidate({ year: selectedYear, month: selectedMonth }),
+    );
+
+    if (selectedCnpjNumber) {
+      invalidations.push(
+        utils.finance.payables.list.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
+        utils.finance.payables.dashboard.invalidate({ referenceDate: today, year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
         utils.finance.fixedCosts.payments.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
         utils.finance.creditCards.list.invalidate({ cnpjId: selectedCnpjNumber }),
         utils.finance.creditCards.invoices.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
@@ -366,9 +375,11 @@ function ObligationDialog({
         utils.finance.loans.installments.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
         utils.finance.loans.retentionEntries.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
         utils.finance.dre.invalidate({ year: selectedYear, month: selectedMonth, cnpjId: selectedCnpjNumber }),
-      ]);
+      );
     }
-    onSaved(savedPayable ?? null);
+
+    await Promise.all(invalidations);
+    onSaved(savedEntry ?? null);
     onOpenChange(false);
   }
 
@@ -415,7 +426,7 @@ function ObligationDialog({
       }
 
       const created = await createPayableMutation.mutateAsync(payload);
-      const saved = { id: created?.id, ...payload };
+      const saved = { id: created?.id, ...payload, kind: "payable" as const };
       upsertPayableInCache(saved);
       toast.success("Conta a pagar cadastrada.");
       await refreshAfterSave(saved);
@@ -427,7 +438,7 @@ function ObligationDialog({
         toast.error("Preencha nome e valor do custo fixo.");
         return;
       }
-      await createFixedCostMutation.mutateAsync({
+      const createdFixedCost = await createFixedCostMutation.mutateAsync({
         cnpjId: selectedCnpjNumber,
         name: description,
         category,
@@ -436,7 +447,13 @@ function ObligationDialog({
         notes: notes || null,
       });
       toast.success("Custo fixo cadastrado.");
-      await refreshAfterSave();
+      await refreshAfterSave({
+        id: createdFixedCost?.id,
+        cnpjId: selectedCnpjNumber,
+        title: description,
+        description,
+        kind: "fixed_cost",
+      });
       return;
     }
 
@@ -852,6 +869,14 @@ export default function Finance() {
     });
   }, [payables, selectedCnpjFilter, cnpjMap]);
 
+  const fixedCostPaymentsForHistory = useMemo(() => {
+    const items = Array.isArray(fixedCostPayments) ? fixedCostPayments : [];
+    return items.filter((payment: any) => {
+      if (selectedCnpjFilter === "all") return true;
+      return String(payment.cnpjId || payment.fixedCost?.cnpjId || "") === selectedCnpjFilter;
+    });
+  }, [fixedCostPayments, selectedCnpjFilter]);
+
   function prevMonth() {
     const date = new Date(selectedYear, selectedMonth - 2, 1);
     setSelectedYear(date.getFullYear());
@@ -1087,19 +1112,19 @@ export default function Finance() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                      <InsightMetric label="Pagamentos lançados" value={String(fixedCostPayments.length)} helper="Quantidade de registros para o período selecionado." tone="success" icon={<Sparkles className="h-4 w-4" />} />
-                      <InsightMetric label="Impacto mensal" value={`R$ ${fmt(obligations.totalCustos)}`} helper="Quanto os custos fixos pesam no controle gerencial da empresa base do painel." tone="neutral" icon={<Wallet className="h-4 w-4" />} />
+                      <InsightMetric label="Pagamentos lançados" value={String(fixedCostPaymentsForHistory.length)} helper="Quantidade de registros para o período selecionado conforme o filtro visual." tone="success" icon={<Sparkles className="h-4 w-4" />} />
+                      <InsightMetric label="Impacto mensal" value={`R$ ${fmt(fixedCostPaymentsForHistory.reduce((sum: number, payment: any) => sum + Number(payment.amount || payment.amountPaid || payment.payment?.amountPaid || 0), 0))}`} helper="Quanto os custos fixos pesam no período conforme o filtro visual atual." tone="neutral" icon={<Wallet className="h-4 w-4" />} />
                     </div>
                     <div className="space-y-3">
-                      {fixedCostPayments.length > 0 ? fixedCostPayments.slice(0, 10).map((payment: any) => (
+                      {fixedCostPaymentsForHistory.length > 0 ? fixedCostPaymentsForHistory.slice(0, 10).map((payment: any) => (
                         <ObligationListItem
                           key={payment.id}
-                          title={payment.name || payment.description || "Custo fixo"}
-                          subtitle={`Pagamento registrado em ${payment.referenceMonth || selectedMonth}/${payment.referenceYear || selectedYear}`}
+                          title={payment.name || payment.fixedCost?.name || payment.description || "Custo fixo"}
+                          subtitle={`Pagamento registrado em ${payment.referenceMonth || payment.payment?.periodMonth || selectedMonth}/${payment.referenceYear || payment.payment?.periodYear || selectedYear}`}
                           badge={<Badge variant="outline">fixo</Badge>}
-                          amount={`R$ ${fmt(payment.amount || payment.amountPaid)}`}
+                          amount={`R$ ${fmt(payment.amount || payment.amountPaid || payment.payment?.amountPaid)}`}
                           accentClass="bg-emerald-500"
-                          cnpjLabel={getCnpjLabel(cnpjMap.get(String(payment.cnpjId || selectedFinanceCnpjId || "")))}
+                          cnpjLabel={getCnpjLabel(cnpjMap.get(String(payment.cnpjId || payment.fixedCost?.cnpjId || selectedHistoryCnpjId || selectedFinanceCnpjId || "")))}
                         />
                       )) : <p className="text-sm text-muted-foreground">Nenhum pagamento de custo fixo registrado para o período.</p>}
                     </div>

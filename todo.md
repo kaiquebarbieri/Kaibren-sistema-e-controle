@@ -269,8 +269,8 @@
 - [ ] Adicionar botões de editar e excluir nas contas do painel de Obrigações com fluxo claro e seguro
 - [ ] Revisar e corrigir todos os erros restantes de cadastro em Obrigações para garantir que salvar, editar e excluir reflitam corretamente nos painéis
 - [ ] Reproduzir e corrigir a recorrência do cadastro que voltou a não refletir no painel de Obrigações no uso real do usuário
-- [ ] Corrigir o caso em que novo boleto confirma salvamento, mas não aparece na lista de Contas a Pagar no painel de Obrigações
-- [ ] Fazer novos registros de Contas a Pagar aparecerem imediatamente na tela após salvar, sem atraso perceptível de atualização
+- [x] Corrigir o caso em que novo boleto confirma salvamento, mas não aparece na lista de Contas a Pagar no painel de Obrigações
+- [x] Fazer novos registros de Contas a Pagar aparecerem imediatamente na tela após salvar, sem atraso perceptível de atualização
 - [ ] Investigar e corrigir definitivamente a recorrência em que novas contas a pagar parecem não salvar no site no uso real do usuário
 - [ ] Corrigir o caso em que o cadastro de contas a pagar não mostra nenhum feedback e não atualiza a tela ao salvar no uso real do usuário
 - [ ] Exibir confirmação visual clara e destacar o item recém-criado após salvar uma conta a pagar
@@ -319,3 +319,7 @@
 - [x] Implementar visualmente a nova regra já validada em regressão: escolher o CNPJ no cadastro de Obrigações e mostrar com destaque o nome do CNPJ em cada lançamento do histórico agregado
 - [x] Concluir a implementação visual em Finance.tsx da nova experiência de Obrigações com listagem agregada, escolha de CNPJ no cadastro e destaque claro do nome do CNPJ em cada lançamento do histórico
 - [x] Corrigir em Obrigações o bug em que contas e boletos recém-salvos exibem sucesso, mas não atualizam corretamente o painel e o histórico com o valor lançado
+- [ ] Integrar uma IA via API ao site com autenticação segura para permitir login e uso controlado do agente dentro da aplicação
+- [x] Concluir a estrutura segura do agente no site com rota autenticada, menu integrado, backend protegido e conexão futura com OpenAI sem expor chave no frontend
+- [x] Iniciar a base visual do agente no site com página autenticada e item de navegação integrado ao painel
+- [x] Implementar no backend uma rota protegida do agente com autenticação via usuário logado, preparada para OpenAI e sem exposição de chave no frontend
