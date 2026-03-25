@@ -344,3 +344,5 @@
 - [x] Isolar o conteúdo de cada submenu para exibir apenas informações próprias da sua categoria, sem mistura entre contas, cartões e empréstimos
 - [x] Corrigir erro 404 ao clicar em Contas a Pagar, garantindo rota válida e navegação funcional no módulo Contas
 - [x] Corrigir erro 404 ao clicar em Cartão de Crédito e Empréstimos, garantindo rotas válidas e navegação funcional no módulo Contas
+- [x] Remover os cartões internos de menu das telas Contas a Pagar, Cartão de Crédito e Empréstimos
+- [x] Isolar totalmente o design e os indicadores de cada submenu para não exibir dados de outras categorias dentro da tela ativa

@@ -77,6 +77,9 @@ describe("ui.navigation contract", () => {
     expect(content).toContain("Aqui aparecem somente vencimentos e movimentos ligados a contas a pagar.");
     expect(content).toContain("Aqui aparecem somente cartões, bancos, limites e referências de fechamento ou vencimento.");
     expect(content).toContain("Aqui aparecem somente empréstimos, instituições, parcelas e datas relacionadas ao contrato.");
+    expect(content).not.toContain("Leitura operacional");
+    expect(content).not.toContain("Separação mantida");
+    expect(content).not.toContain("SectionMenu sections={sections}");
   });
 
   it("mantém a área do agente como rota autenticada dentro do mesmo painel do usuário", () => {

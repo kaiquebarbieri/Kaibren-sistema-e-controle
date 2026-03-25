@@ -928,70 +928,25 @@ export default function Obligations() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard title="Contas a Pagar" value={`R$ ${toCurrency(payableTotal)}`} helper={`${payables.length} registro(s) no período selecionado.`} />
-          <MetricCard title="Cartão de Crédito" value={`R$ ${toCurrency(creditLimitTotal)}`} helper={`${creditCards.length} cartão(ões) no controle atual.`} />
-          <MetricCard title="Empréstimos" value={`R$ ${toCurrency(loanTotal)}`} helper={`${loans.length} contrato(s) em acompanhamento.`} />
-          <MetricCard title="Alertas de vencimento" value={`${overduePayables + dueSoonPayables}`} helper={`${overduePayables} atrasado(s) e ${dueSoonPayables} com vencimento em até 7 dias.`} />
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <div className="space-y-6">
-            <SectionMenu sections={sections} activeSection={activeSection} onNavigate={navigateToSection} counts={menuCounts} />
-
-            <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base tracking-tight">
-                  <AlertTriangle className="h-4 w-4 text-primary" />
-                  Leitura operacional
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
-                <p>Os três menus do módulo Contas ficaram separados por categoria.</p>
-                <p>Cartão de Crédito não mostra mais dados de contas a pagar, e Empréstimos não mistura cartões nem boletos.</p>
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4">
-              <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4" /> Período</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{MONTHS[selectedMonth - 1]} de {selectedYear}</p>
-                </CardContent>
-              </Card>
-              <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-base">Separação mantida</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm leading-6 text-muted-foreground">O Financeiro continua separado desta área e cada submenu mostra apenas sua própria informação.</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          <ObligationsSectionView
-            section={activeSection}
-            selectedMonth={selectedMonth}
-            selectedYear={selectedYear}
-            payables={payables}
-            creditCards={creditCards}
-            loans={loans}
-            payableTotal={payableTotal}
-            creditLimitTotal={creditLimitTotal}
-            loanTotal={loanTotal}
-            dueSoonPayables={dueSoonPayables}
-            overduePayables={overduePayables}
-            onRefresh={refreshAll}
-            onOpenDialog={(section) => {
-              setDialogMode(section);
-              setDialogOpen(true);
-            }}
-            onDelete={handleDelete}
-          />
-        </div>
+        <ObligationsSectionView
+          section={activeSection}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
+          payables={payables}
+          creditCards={creditCards}
+          loans={loans}
+          payableTotal={payableTotal}
+          creditLimitTotal={creditLimitTotal}
+          loanTotal={loanTotal}
+          dueSoonPayables={dueSoonPayables}
+          overduePayables={overduePayables}
+          onRefresh={refreshAll}
+          onOpenDialog={(section) => {
+            setDialogMode(section);
+            setDialogOpen(true);
+          }}
+          onDelete={handleDelete}
+        />
       </div>
 
       <AccountsDialog
