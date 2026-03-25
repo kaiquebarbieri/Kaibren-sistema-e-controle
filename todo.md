@@ -342,3 +342,4 @@
 - [x] Validar que o Financeiro permaneça separado do módulo Contas após a reorganização da navegação
 - [x] Corrigir abertura individual dos menus Cartão de Crédito e Empréstimos dentro do módulo Contas
 - [x] Isolar o conteúdo de cada submenu para exibir apenas informações próprias da sua categoria, sem mistura entre contas, cartões e empréstimos
+- [x] Corrigir erro 404 ao clicar em Contas a Pagar, garantindo rota válida e navegação funcional no módulo Contas

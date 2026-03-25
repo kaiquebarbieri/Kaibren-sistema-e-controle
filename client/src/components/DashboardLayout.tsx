@@ -57,10 +57,10 @@ const menuItems: MenuItem[] = [
   { icon: Megaphone, label: "Marketing", section: "marketing", href: "/marketing" },
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
   { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro" },
-  { icon: ReceiptText, label: "Contas", section: "contas", href: "/obrigacoes/contas-a-pagar" },
-  { icon: ReceiptText, label: "Contas a Pagar", section: "contas-a-pagar", href: "/obrigacoes/contas-a-pagar", indent: true },
-  { icon: CreditCard, label: "Cartão de Crédito", section: "cartao-de-credito", href: "/obrigacoes/cartao-de-credito", indent: true },
-  { icon: Landmark, label: "Empréstimos", section: "emprestimos", href: "/obrigacoes/emprestimos", indent: true },
+  { icon: ReceiptText, label: "Contas", section: "contas", href: "/contas/contas-a-pagar" },
+  { icon: ReceiptText, label: "Contas a Pagar", section: "contas-a-pagar", href: "/contas/contas-a-pagar", indent: true },
+  { icon: CreditCard, label: "Cartão de Crédito", section: "cartao-de-credito", href: "/contas/cartao-de-credito", indent: true },
+  { icon: Landmark, label: "Empréstimos", section: "emprestimos", href: "/contas/emprestimos", indent: true },
   { icon: Bot, label: "Agente", section: "agente", href: "/agente" },
 ];
 

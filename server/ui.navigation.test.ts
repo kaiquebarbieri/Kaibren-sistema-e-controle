@@ -42,6 +42,10 @@ describe("ui.navigation contract", () => {
     expect(layoutContent).toContain('label: "Contas a Pagar"');
     expect(layoutContent).toContain('label: "Cartão de Crédito"');
     expect(layoutContent).toContain('label: "Empréstimos"');
+    expect(layoutContent).toContain('href: "/contas/contas-a-pagar"');
+    expect(layoutContent).toContain('href: "/contas/cartao-de-credito"');
+    expect(layoutContent).toContain('href: "/contas/emprestimos"');
+    expect(layoutContent).not.toContain('href: "/obrigacoes/contas-a-pagar"');
     expect(layoutContent).not.toContain('label: "Obrigações"');
   });
 
