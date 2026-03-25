@@ -9,7 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CalendarDays, CreditCard, Landmark, Plus, Receipt, RotateCcw, Trash2, WalletCards } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CalendarClock,
+  CalendarDays,
+  CreditCard,
+  Landmark,
+  Plus,
+  Receipt,
+  RotateCcw,
+  Trash2,
+  WalletCards,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 
@@ -36,37 +48,55 @@ function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function normalizeDate(value: string | number | Date | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function differenceInDays(target: Date) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const end = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+  return Math.round((end - start) / 86400000);
+}
+
+function getStatusLabel(days: number | null) {
+  if (days === null) return "Sem data";
+  if (days < 0) return `Atrasado há ${Math.abs(days)} dia(s)`;
+  if (days === 0) return "Vence hoje";
+  if (days <= 3) return `Vence em ${days} dia(s)`;
+  return `Vence em ${days} dia(s)`;
+}
+
 function getSectionMeta(section: AccountsSection) {
   const map = {
     payables: {
       label: "Contas a Pagar",
-      description: "Cadastre boletos, dívidas da empresa, fornecedores, despesas a vencer e contas em atraso.",
+      description: "Boletos, fornecedores, despesas, contas vencidas e próximos vencimentos.",
       icon: Receipt,
       accent: "from-rose-500 via-pink-500 to-orange-400",
       button: "Nova conta a pagar",
       empty: "Nenhuma conta a pagar cadastrada neste período.",
-      helperTitle: "Fluxo desta área",
-      helperText: "Aqui você lança boletos, fornecedores, despesas a vencer e contas em atraso em uma lista direta e objetiva.",
+      badge: "Conta",
     },
     "credit-cards": {
       label: "Cartão de Crédito",
-      description: "Cadastre cartões, limite, vencimento, fechamento, valor de fatura, compras e parcelas.",
+      description: "Limites, vencimentos, fechamento, faturas e parcelas em acompanhamento diário.",
       icon: CreditCard,
       accent: "from-sky-500 via-blue-500 to-indigo-500",
       button: "Novo cartão",
       empty: "Nenhum cartão cadastrado.",
-      helperTitle: "Controle de cartões",
-      helperText: "Cada cartão fica em uma área própria para acompanhar limite, fechamento, vencimento e observações de uso.",
+      badge: "Cartão",
     },
     loans: {
       label: "Empréstimos",
-      description: "Cadastre empréstimos, valor total, parcelas, vencimentos e saldo restante.",
+      description: "Saldo total, parcelas, vencimentos e contratos ativos para controle gerencial.",
       icon: Landmark,
       accent: "from-amber-500 via-orange-500 to-rose-500",
       button: "Novo empréstimo",
       empty: "Nenhum empréstimo cadastrado.",
-      helperTitle: "Acompanhamento de parcelas",
-      helperText: "Use esta área para manter empréstimos organizados com valor total, quantidade de parcelas e saldo restante visível.",
+      badge: "Empréstimo",
     },
   } satisfies Record<AccountsSection, {
     label: string;
@@ -75,11 +105,30 @@ function getSectionMeta(section: AccountsSection) {
     accent: string;
     button: string;
     empty: string;
-    helperTitle: string;
-    helperText: string;
+    badge: string;
   }>;
 
   return map[section];
+}
+
+function DashboardMetricCard({
+  title,
+  value,
+  helper,
+}: {
+  title: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
+      <CardContent className="p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{title}</p>
+        <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
+      </CardContent>
+    </Card>
+  );
 }
 
 function AccountsRow({
@@ -87,26 +136,31 @@ function AccountsRow({
   subtitle,
   amount,
   badge,
+  urgency,
   onDelete,
 }: {
   title: string;
   subtitle: string;
   amount: string;
   badge: string;
+  urgency: string;
   onDelete?: () => void;
 }) {
   return (
-    <div className="rounded-3xl border border-border/70 bg-card/95 p-4 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <Badge variant="secondary" className="w-fit">{badge}</Badge>
+    <div className="rounded-[1.75rem] border border-border/70 bg-card/95 p-4 shadow-sm">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary" className="w-fit">{badge}</Badge>
+            <Badge variant="outline" className="w-fit">{urgency}</Badge>
+          </div>
           <div>
-            <p className="text-base font-semibold tracking-tight">{title}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+            <p className="text-base font-semibold tracking-tight text-foreground">{title}</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">{subtitle}</p>
           </div>
         </div>
-        <div className="flex flex-col items-start gap-3 lg:items-end">
-          <span className="text-lg font-semibold tracking-tight">R$ {amount}</span>
+        <div className="flex flex-col items-start gap-3 xl:items-end">
+          <span className="text-lg font-semibold tracking-tight text-foreground">R$ {amount}</span>
           {onDelete ? (
             <Button variant="destructive" size="sm" onClick={onDelete}>
               <Trash2 className="mr-2 h-4 w-4" />
@@ -169,7 +223,7 @@ function AccountsDialog({
         <DialogHeader>
           <DialogTitle>{meta ? meta.button : "Novo cadastro"}</DialogTitle>
           <DialogDescription>
-            Esta etapa foca em um cadastro simples e estável, com os campos principais visíveis logo no módulo Contas.
+            O cadastro continua simples, mas agora alimenta o dashboard de controle do módulo Contas.
           </DialogDescription>
         </DialogHeader>
 
@@ -228,7 +282,7 @@ function AccountsDialog({
             <Textarea
               value={form.notes}
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-              placeholder="Detalhes opcionais para deixar a leitura da listagem mais clara"
+              placeholder="Detalhes opcionais para deixar a leitura do controle mais clara"
               rows={4}
             />
           </div>
@@ -290,16 +344,64 @@ export default function Obligations() {
   const creditCards = creditCardsQuery.data ?? [];
   const loans = loansQuery.data ?? [];
 
-  const metrics = {
-    payables: payables.length,
-    creditCards: creditCards.length,
-    loans: loans.length,
-  };
-
   const sections: AccountsSection[] = ["payables", "credit-cards", "loans"];
 
   const currentMeta = useMemo(() => getSectionMeta(activeSection), [activeSection]);
   const CurrentIcon = currentMeta.icon;
+
+  const payableTotal = payables.reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0);
+  const creditLimitTotal = creditCards.reduce((sum: number, item: any) => sum + Number(item.limitAmount || item.creditLimit || 0), 0);
+  const loanTotal = loans.reduce((sum: number, item: any) => sum + Number(item.amount || item.totalAmount || 0), 0);
+
+  const dueSoonPayables = payables.filter((item: any) => {
+    const dueDate = normalizeDate(item.dueDate);
+    const days = dueDate ? differenceInDays(dueDate) : null;
+    return days !== null && days >= 0 && days <= 7;
+  }).length;
+
+  const overduePayables = payables.filter((item: any) => {
+    const dueDate = normalizeDate(item.dueDate);
+    const days = dueDate ? differenceInDays(dueDate) : null;
+    return days !== null && days < 0;
+  }).length;
+
+  const nextEvents = [
+    ...payables.map((item: any) => ({
+      section: "payables" as AccountsSection,
+      title: item.title || item.description || item.supplier || "Conta a pagar",
+      subtitle: item.notes || item.supplier || "Sem observações",
+      amount: Number(item.amount || 0),
+      dueDate: normalizeDate(item.dueDate),
+      badge: "Contas a Pagar",
+    })),
+    ...creditCards.map((item: any) => ({
+      section: "credit-cards" as AccountsSection,
+      title: item.name || "Cartão",
+      subtitle: `${item.bankName || item.brand || "Banco não informado"} • fechamento ${item.closingDay || 1} / vencimento ${item.dueDay || 10}`,
+      amount: Number(item.limitAmount || item.creditLimit || 0),
+      dueDate: normalizeDate(item.nextDueDate || item.updatedAt),
+      badge: "Cartão de Crédito",
+    })),
+    ...loans.map((item: any) => ({
+      section: "loans" as AccountsSection,
+      title: item.name || "Empréstimo",
+      subtitle: `${item.institution || "Instituição não informada"} • parcelas ${item.totalInstallments || 1}`,
+      amount: Number(item.amount || item.totalAmount || 0),
+      dueDate: normalizeDate(item.nextDueDate || item.startDate),
+      badge: "Empréstimos",
+    })),
+  ]
+    .map((entry) => ({
+      ...entry,
+      days: entry.dueDate ? differenceInDays(entry.dueDate) : null,
+    }))
+    .sort((a, b) => {
+      if (a.days === null && b.days === null) return 0;
+      if (a.days === null) return 1;
+      if (b.days === null) return -1;
+      return a.days - b.days;
+    })
+    .slice(0, 6);
 
   function navigateToSection(section: AccountsSection) {
     setActiveSection(section);
@@ -336,7 +438,7 @@ export default function Obligations() {
         category: "financeiro",
         notes: payload.notes || null,
       });
-      toast.success("Conta a pagar salva e exibida na listagem.");
+      toast.success("Conta a pagar salva e exibida no controle.");
     }
 
     if (dialogMode === "credit-cards") {
@@ -349,7 +451,7 @@ export default function Obligations() {
         creditLimit: payload.amount,
         notes: [payload.secondaryValue, payload.installments, payload.notes].filter(Boolean).join(" • ") || null,
       });
-      toast.success("Cartão salvo e exibido na listagem.");
+      toast.success("Cartão salvo e exibido no controle.");
     }
 
     if (dialogMode === "loans") {
@@ -362,7 +464,7 @@ export default function Obligations() {
         loanType: "installment",
         totalInstallments: Number(payload.installments || 1),
       });
-      toast.success("Empréstimo salvo e exibido na listagem.");
+      toast.success("Empréstimo salvo e exibido no controle.");
     }
 
     await refreshAll();
@@ -385,7 +487,7 @@ export default function Obligations() {
   if (!user) return null;
 
   return (
-    <DashboardLayout activeSection="obrigacoes" onNavigate={(section) => navigate(`/${section}`)}>
+    <DashboardLayout activeSection="contas" onNavigate={(section) => navigate(section === "dashboard" ? "/" : `/${section}`)}>
       <div className="space-y-6">
         <Card className="overflow-hidden rounded-[2rem] border-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white shadow-xl">
           <CardContent className="p-6 md:p-8">
@@ -393,9 +495,9 @@ export default function Obligations() {
               <div className="max-w-3xl space-y-3">
                 <Badge variant="secondary" className="w-fit bg-white/10 text-white hover:bg-white/10">Contas</Badge>
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-tight">Módulo Contas com navegação clara e separada</h1>
+                  <h1 className="text-3xl font-semibold tracking-tight">Dashboard de Contas para análise e controle</h1>
                   <p className="mt-2 text-sm leading-6 text-white/75">
-                    Esta área foi organizada para funcionar como um módulo real do sistema, com três submenus fixos: Contas a Pagar, Cartão de Crédito e Empréstimos.
+                    Este módulo agora funciona como painel gerencial das contas, com visão rápida de valores, vencimentos e acompanhamento de Contas a Pagar, Cartão de Crédito e Empréstimos.
                   </p>
                 </div>
               </div>
@@ -413,45 +515,83 @@ export default function Obligations() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
-                <WalletCards className="h-5 w-5 text-primary" />
-                Contas
-              </CardTitle>
-              <CardDescription>
-                Selecione abaixo o submenu que deseja usar dentro do módulo.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {sections.map((section) => {
-                const meta = getSectionMeta(section);
-                const Icon = meta.icon;
-                const isActive = activeSection === section;
-                const count = section === "payables" ? metrics.payables : section === "credit-cards" ? metrics.creditCards : metrics.loans;
-                return (
-                  <button
-                    key={section}
-                    onClick={() => navigateToSection(section)}
-                    className={`w-full rounded-3xl border p-4 text-left shadow-sm transition-all ${isActive ? "border-slate-900 bg-slate-900 text-white" : "border-border bg-card hover:-translate-y-0.5 hover:shadow-md"}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${isActive ? "text-white/70" : "text-muted-foreground"}`}>Submenu</p>
-                        <p className="mt-3 text-lg font-semibold tracking-tight">{meta.label}</p>
-                        <p className={`mt-2 text-sm leading-6 ${isActive ? "text-white/75" : "text-muted-foreground"}`}>{meta.description}</p>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <DashboardMetricCard
+            title="Contas a Pagar"
+            value={`R$ ${toCurrency(payableTotal)}`}
+            helper={`${payables.length} registro(s) no período selecionado.`}
+          />
+          <DashboardMetricCard
+            title="Cartão de Crédito"
+            value={`R$ ${toCurrency(creditLimitTotal)}`}
+            helper={`${creditCards.length} cartão(ões) no controle atual.`}
+          />
+          <DashboardMetricCard
+            title="Empréstimos"
+            value={`R$ ${toCurrency(loanTotal)}`}
+            helper={`${loans.length} contrato(s) em acompanhamento.`}
+          />
+          <DashboardMetricCard
+            title="Alertas de vencimento"
+            value={`${overduePayables + dueSoonPayables}`}
+            helper={`${overduePayables} atrasado(s) e ${dueSoonPayables} com vencimento em até 7 dias.`}
+          />
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="space-y-6">
+            <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
+                  <WalletCards className="h-5 w-5 text-primary" />
+                  Contas
+                </CardTitle>
+                <CardDescription>
+                  Os menus abaixo servem para navegação, análise e controle do módulo.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {sections.map((section) => {
+                  const meta = getSectionMeta(section);
+                  const Icon = meta.icon;
+                  const isActive = activeSection === section;
+                  const count = section === "payables" ? payables.length : section === "credit-cards" ? creditCards.length : loans.length;
+                  return (
+                    <button
+                      key={section}
+                      onClick={() => navigateToSection(section)}
+                      className={`w-full rounded-[1.5rem] border p-4 text-left shadow-sm transition-all ${isActive ? "border-slate-900 bg-slate-900 text-white" : "border-border bg-card hover:-translate-y-0.5 hover:shadow-md"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${isActive ? "text-white/70" : "text-muted-foreground"}`}>Menu</p>
+                          <p className="mt-3 text-lg font-semibold tracking-tight">{meta.label}</p>
+                          <p className={`mt-2 text-sm leading-6 ${isActive ? "text-white/75" : "text-muted-foreground"}`}>{meta.description}</p>
+                        </div>
+                        <div className={`rounded-2xl p-3 ${isActive ? "bg-white/10" : "bg-muted"}`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
                       </div>
-                      <div className={`rounded-2xl p-3 ${isActive ? "bg-white/10" : "bg-muted"}`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                    </div>
-                    <div className="mt-4 text-sm font-medium">{count} item(ns) visíveis</div>
-                  </button>
-                );
-              })}
-            </CardContent>
-          </Card>
+                      <div className="mt-4 text-sm font-medium">{count} item(ns) visíveis</div>
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base tracking-tight">
+                  <AlertTriangle className="h-4 w-4 text-primary" />
+                  Leitura operacional
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
+                <p>Este painel foi ajustado para ser uma área de análise e controle, não apenas um submenu interno escondido.</p>
+                <p>O Financeiro continua separado, enquanto este módulo concentra números, vencimentos e acompanhamento das contas.</p>
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="space-y-6">
             <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
@@ -471,25 +611,28 @@ export default function Obligations() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-3xl border border-border/70 bg-muted/30 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{currentMeta.helperTitle}</p>
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">{currentMeta.helperText}</p>
-                  </div>
-                  <div className="rounded-3xl border border-border/70 bg-muted/30 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Fluxo esperado</p>
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Entrar no submenu, cadastrar, salvar e ver o item aparecer imediatamente na listagem sem sumir da tela.</p>
-                  </div>
-                  <div className="rounded-3xl border border-border/70 bg-muted/30 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Itens visíveis</p>
-                    <p className="mt-3 text-3xl font-semibold tracking-tight">
-                      {activeSection === "payables" ? metrics.payables : activeSection === "credit-cards" ? metrics.creditCards : metrics.loans}
+                  <div className="rounded-[1.5rem] border border-border/70 bg-muted/30 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Resumo</p>
+                    <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                      {activeSection === "payables" ? payables.length : activeSection === "credit-cards" ? creditCards.length : loans.length}
                     </p>
-                    <p className="mt-2 text-sm text-muted-foreground">Quantidade carregada no submenu atual.</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Quantidade de registros visíveis neste menu.</p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-border/70 bg-muted/30 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Valor monitorado</p>
+                    <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                      R$ {activeSection === "payables" ? toCurrency(payableTotal) : activeSection === "credit-cards" ? toCurrency(creditLimitTotal) : toCurrency(loanTotal)}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Leitura consolidada do menu ativo.</p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-border/70 bg-muted/30 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Fluxo esperado</p>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Cadastrar, salvar e acompanhar o item aparecendo e permanecendo visível no controle.</p>
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-dashed border-border/70 bg-background/70 p-4">
-                  <p className="text-sm font-medium">Ações rápidas do submenu</p>
+                <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/70 p-4">
+                  <p className="text-sm font-medium text-foreground">Ações rápidas do controle</p>
                   <div className="mt-4 flex flex-wrap gap-3">
                     <Button onClick={() => { setDialogMode(activeSection); setDialogOpen(true); }}>
                       <Plus className="mr-2 h-4 w-4" />
@@ -506,21 +649,70 @@ export default function Obligations() {
 
             <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
               <CardHeader>
-                <CardTitle>Listagem do submenu</CardTitle>
-                <CardDescription>Os itens abaixo devem aparecer e permanecer visíveis após o cadastro nesta fase de validação.</CardDescription>
+                <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
+                  <CalendarClock className="h-5 w-5 text-primary" />
+                  Próximos vencimentos e movimentos
+                </CardTitle>
+                <CardDescription>
+                  Esta visão resume rapidamente o que merece atenção imediata no módulo Contas.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {activeSection === "payables" && (payables.length > 0 ? payables.map((item: any) => (
-                  <AccountsRow
-                    key={item.id}
-                    title={item.title || item.description || item.supplier || "Conta a pagar"}
-                    subtitle={`${item.notes || item.supplier || "Sem observações"} • vencimento ${item.dueDate || "não informado"}`}
-                    amount={toCurrency(item.amount)}
-                    badge={item.status || "pendente"}
-                    onDelete={() => handleDelete("payables", Number(item.id))}
-                  />
+                {nextEvents.length > 0 ? nextEvents.map((entry, index) => (
+                  <div key={`${entry.section}-${entry.title}-${index}`} className="rounded-[1.5rem] border border-border/70 bg-muted/20 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">{entry.badge}</Badge>
+                          <Badge variant="outline">{getStatusLabel(entry.days)}</Badge>
+                        </div>
+                        <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{entry.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">{entry.subtitle}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-lg font-semibold tracking-tight text-foreground">R$ {toCurrency(entry.amount)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {entry.dueDate ? entry.dueDate.toLocaleDateString("pt-BR") : "Sem data informada"}
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => navigateToSection(entry.section)}>
+                          Abrir
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )) : (
-                  <div className="rounded-3xl border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                    Ainda não há lançamentos suficientes para montar a agenda de vencimentos.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+              <CardHeader>
+                <CardTitle>Listagem do menu ativo</CardTitle>
+                <CardDescription>Os itens abaixo devem permanecer visíveis após o cadastro nesta etapa de validação.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {activeSection === "payables" && (payables.length > 0 ? payables.map((item: any) => {
+                  const dueDate = normalizeDate(item.dueDate);
+                  const days = dueDate ? differenceInDays(dueDate) : null;
+                  return (
+                    <AccountsRow
+                      key={item.id}
+                      title={item.title || item.description || item.supplier || "Conta a pagar"}
+                      subtitle={`${item.notes || item.supplier || "Sem observações"} • vencimento ${dueDate ? dueDate.toLocaleDateString("pt-BR") : "não informado"}`}
+                      amount={toCurrency(item.amount)}
+                      badge="Contas a Pagar"
+                      urgency={getStatusLabel(days)}
+                      onDelete={() => handleDelete("payables", Number(item.id))}
+                    />
+                  );
+                }) : (
+                  <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                     {getSectionMeta("payables").empty}
                   </div>
                 ))}
@@ -531,11 +723,12 @@ export default function Obligations() {
                     title={item.name || "Cartão"}
                     subtitle={`${item.bankName || item.brand || "Banco não informado"} • fechamento ${item.closingDay || 1} / vencimento ${item.dueDay || 10}`}
                     amount={toCurrency(item.limitAmount || item.creditLimit)}
-                    badge="cartão"
+                    badge="Cartão de Crédito"
+                    urgency="Controle ativo"
                     onDelete={() => handleDelete("credit-cards", Number(item.id))}
                   />
                 )) : (
-                  <div className="rounded-3xl border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                     {getSectionMeta("credit-cards").empty}
                   </div>
                 ))}
@@ -546,11 +739,12 @@ export default function Obligations() {
                     title={item.name || "Empréstimo"}
                     subtitle={`${item.institution || "Instituição não informada"} • parcelas ${item.totalInstallments || 1}`}
                     amount={toCurrency(item.amount || item.totalAmount)}
-                    badge="empréstimo"
+                    badge="Empréstimos"
+                    urgency="Acompanhamento ativo"
                     onDelete={() => handleDelete("loans", Number(item.id))}
                   />
                 )) : (
-                  <div className="rounded-3xl border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                     {getSectionMeta("loans").empty}
                   </div>
                 ))}
@@ -558,7 +752,7 @@ export default function Obligations() {
             </Card>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <Card className="rounded-3xl border bg-card/95 shadow-sm">
+              <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4" /> Período</CardTitle>
                 </CardHeader>
@@ -566,20 +760,20 @@ export default function Obligations() {
                   <p className="text-sm text-muted-foreground">{MONTHS[selectedMonth - 1]} de {selectedYear}</p>
                 </CardContent>
               </Card>
-              <Card className="rounded-3xl border bg-card/95 shadow-sm">
+              <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base">Estrutura aprovada</CardTitle>
+                  <CardTitle className="text-base">Estrutura correta</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm leading-6 text-muted-foreground">Este módulo usa apenas os submenus Contas a Pagar, Cartão de Crédito e Empréstimos.</p>
+                  <p className="text-sm leading-6 text-muted-foreground">Este módulo usa apenas Contas a Pagar, Cartão de Crédito e Empréstimos para análise e controle.</p>
                 </CardContent>
               </Card>
-              <Card className="rounded-3xl border bg-card/95 shadow-sm">
+              <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base">Escopo desta etapa</CardTitle>
+                  <CardTitle className="text-base">Separação mantida</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm leading-6 text-muted-foreground">Custos Fixos não entram nesta estrutura e o Financeiro antigo continua separado desta área.</p>
+                  <p className="text-sm leading-6 text-muted-foreground">O Financeiro continua separado desta área e Custos Fixos não entra neste menu Contas.</p>
                 </CardContent>
               </Card>
             </div>

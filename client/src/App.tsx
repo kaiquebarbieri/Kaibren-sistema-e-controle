@@ -26,6 +26,8 @@ function Router() {
       <Route path={"/extratos/:id"} component={BankStatements} />
       <Route path={"/financeiro"} component={Finance} />
       <Route path={"/agente"} component={Agent} />
+      <Route path={"/contas"} component={Obligations} />
+      <Route path={"/contas/:tab"} component={Obligations} />
       <Route path={"/obrigacoes"} component={Obligations} />
       <Route path={"/obrigacoes/:tab"} component={Obligations} />
       <Route path={"/404"} component={NotFound} />

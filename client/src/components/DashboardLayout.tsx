@@ -23,23 +23,33 @@ import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   BarChart3,
+  Bot,
   ClipboardList,
+  CreditCard,
   FileText,
+  Landmark,
   LogOut,
   Megaphone,
   PackageSearch,
   PanelLeft,
+  ReceiptText,
   UserPlus,
   Wallet,
-  ReceiptText,
-  Bot,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
-const menuItems = [
+type MenuItem = {
+  icon: any;
+  label: string;
+  section: string;
+  href: string;
+  indent?: boolean;
+};
+
+const menuItems: MenuItem[] = [
   { icon: BarChart3, label: "Dashboard", section: "dashboard", href: "/" },
   { icon: UserPlus, label: "Clientes", section: "clientes", href: "/clientes" },
   { icon: PackageSearch, label: "Produtos", section: "produtos", href: "/produtos" },
@@ -47,9 +57,12 @@ const menuItems = [
   { icon: Megaphone, label: "Marketing", section: "marketing", href: "/marketing" },
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
   { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro" },
-  { icon: ReceiptText, label: "Obrigações", section: "obrigacoes", href: "/obrigacoes" },
+  { icon: ReceiptText, label: "Contas", section: "contas", href: "/obrigacoes/contas-a-pagar" },
+  { icon: ReceiptText, label: "Contas a Pagar", section: "contas-a-pagar", href: "/obrigacoes/contas-a-pagar", indent: true },
+  { icon: CreditCard, label: "Cartão de Crédito", section: "cartao-de-credito", href: "/obrigacoes/cartao-de-credito", indent: true },
+  { icon: Landmark, label: "Empréstimos", section: "emprestimos", href: "/obrigacoes/emprestimos", indent: true },
   { icon: Bot, label: "Agente", section: "agente", href: "/agente" },
-] as const;
+];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
@@ -61,6 +74,14 @@ type DashboardLayoutProps = {
   onNavigate?: (section: string) => void;
   activeSection?: string;
 };
+
+function isItemActive(item: MenuItem, activeSection: string) {
+  if (item.section === activeSection) return true;
+  if (item.section === "contas") {
+    return ["contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection);
+  }
+  return false;
+}
 
 export default function DashboardLayout({
   children,
@@ -145,7 +166,7 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.section === activeSection) ?? menuItems[0];
+  const activeMenuItem = menuItems.find(item => isItemActive(item, activeSection) && !item.indent) ?? menuItems[0];
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -184,11 +205,10 @@ function DashboardLayoutContent({
     };
   }, [isResizing, setSidebarWidth]);
 
-  /* ── Mobile layout: bottom nav bar ── */
   if (isMobile) {
+    const mobileItems = menuItems.filter(item => !item.indent);
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        {/* Mobile top header */}
         <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sm:px-4">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <activeMenuItem.icon className="h-5 w-5 shrink-0 text-primary" />
@@ -220,16 +240,14 @@ function DashboardLayoutContent({
           </DropdownMenu>
         </header>
 
-        {/* Main content with bottom padding for nav bar */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-24 sm:px-4">
           {children}
         </main>
 
-        {/* Bottom navigation bar - fixed */}
         <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 px-1 backdrop-blur supports-[backdrop-filter]:backdrop-blur safe-area-bottom">
           <div className="mx-auto grid h-auto max-w-screen-sm grid-cols-4 gap-1 py-2">
-            {menuItems.map(item => {
-              const isActive = item.section === activeSection;
+            {mobileItems.map(item => {
+              const isActive = isItemActive(item, activeSection);
               return (
                 <button
                   key={item.section}
@@ -256,7 +274,6 @@ function DashboardLayoutContent({
     );
   }
 
-  /* ── Desktop layout: sidebar ── */
   return (
     <>
       <div className="relative" ref={sidebarRef}>
@@ -284,7 +301,7 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0 px-2 py-3">
             <SidebarMenu className="gap-1">
               {menuItems.map(item => {
-                const isActive = item.section === activeSection;
+                const isActive = isItemActive(item, activeSection);
                 return (
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
@@ -294,7 +311,7 @@ function DashboardLayoutContent({
                         onNavigate?.(item.section);
                       }}
                       tooltip={item.label}
-                      className="h-10 font-normal"
+                      className={`h-10 font-normal ${item.indent ? "ml-4 w-[calc(100%-1rem)]" : ""}`}
                     >
                       <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       <span>{item.label}</span>

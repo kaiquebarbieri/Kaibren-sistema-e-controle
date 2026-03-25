@@ -1,5 +1,6 @@
 import { and, desc, eq, isNotNull, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import {
   campaignMessages,
   campaignProducts,
@@ -48,13 +49,55 @@ import {
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _pool: mysql.Pool | null = null;
+
+function createDatabasePool() {
+  if (!process.env.DATABASE_URL) return null;
+
+  const pool = mysql.createPool({
+    uri: process.env.DATABASE_URL,
+    waitForConnections: true,
+    connectionLimit: 10,
+    maxIdle: 10,
+    idleTimeout: 60000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    ssl: {
+      minVersion: "TLSv1.2",
+      rejectUnauthorized: true,
+    },
+  });
+
+  pool.on("connection", connection => {
+    connection.on("error", error => {
+      console.warn("[Database] Pool connection error:", error);
+    });
+  });
+
+  return pool;
+}
+
+async function resetDbConnection(reason: string) {
+  console.warn(`[Database] Resetting database connection: ${reason}`);
+  if (_pool) {
+    try {
+      await _pool.end();
+    } catch (error) {
+      console.warn("[Database] Failed to close pool cleanly:", error);
+    }
+  }
+  _pool = null;
+  _db = null;
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _pool = createDatabasePool();
+      _db = _pool ? (drizzle(process.env.DATABASE_URL!) as ReturnType<typeof drizzle>) : null;
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
+      _pool = null;
       _db = null;
     }
   }
@@ -115,6 +158,14 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       set: updateSet,
     });
   } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error ? String((error as { code?: string }).code) : "";
+    const message = error instanceof Error ? error.message : String(error);
+    const isConnectionReset = code === "ECONNRESET" || message.includes("ECONNRESET");
+
+    if (isConnectionReset) {
+      await resetDbConnection("upsertUser ECONNRESET");
+    }
+
     console.error("[Database] Failed to upsert user:", error);
     throw error;
   }

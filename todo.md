@@ -334,3 +334,9 @@
 - [ ] Restaurar no Financeiro o layout visual anterior com cards de caixa, alertas coloridos, seletor de subconta por CNPJ, seletor de período, quadro DRE, painel Mercado Pago, categorias de saída e blocos inferiores de controle
 - [ ] Reestruturar o módulo Contas com menu principal "Contas" e submenus exatos "Contas a Pagar", "Cartão de Crédito" e "Empréstimos", com navegação interna clara e aparência de módulo real do sistema
 - [ ] Implementar o módulo Contas com submenus exatos "Contas a Pagar", "Cartão de Crédito" e "Empréstimos", navegação interna visível e aparência de módulo real do sistema
+- [ ] Corrigir o erro de autenticação "OAuth callback failed" que está impedindo o login no sistema
+- [ ] Adicionar teste automatizado para o fluxo de callback OAuth cobrindo falha e recuperação do upsert do usuário durante o login
+- [x] Renomear o menu principal lateral de Obrigações para Contas, removendo o submenu interno incorreto
+- [x] Posicionar Contas a Pagar, Cartão de Crédito e Empréstimos na sequência de navegação solicitada dentro do módulo Contas, fora da página interna antiga
+- [x] Construir dashboard do módulo Contas com visão de números, vencimentos e análise e controle operacional das contas
+- [x] Validar que o Financeiro permaneça separado do módulo Contas após a reorganização da navegação

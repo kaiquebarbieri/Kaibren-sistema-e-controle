@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 
 describe("ui.navigation contract", () => {
-  it("mantém o menu principal com Financeiro, Obrigações e Agente como áreas separadas", () => {
+  it("mantém o menu principal com Financeiro, Contas e Agente como áreas separadas", () => {
     const sections = [
       { section: "dashboard", href: "/" },
       { section: "clientes", href: "/clientes" },
@@ -11,13 +11,13 @@ describe("ui.navigation contract", () => {
       { section: "marketing", href: "/marketing" },
       { section: "extratos", href: "/extratos" },
       { section: "financeiro", href: "/financeiro" },
-      { section: "obrigacoes", href: "/obrigacoes" },
+      { section: "contas", href: "/contas" },
       { section: "agente", href: "/agente" },
     ];
 
     expect(sections).toHaveLength(9);
     expect(sections.find((item) => item.section === "financeiro")?.href).toBe("/financeiro");
-    expect(sections.find((item) => item.section === "obrigacoes")?.href).toBe("/obrigacoes");
+    expect(sections.find((item) => item.section === "contas")?.href).toBe("/contas");
     expect(sections.find((item) => item.section === "agente")?.href).toBe("/agente");
   });
 
@@ -42,24 +42,37 @@ describe("ui.navigation contract", () => {
     );
 
     expect(appContent).toContain('path={"/financeiro"} component={Finance}');
-    expect(appContent).toContain('path={"/obrigacoes"} component={Obligations}');
-    expect(appContent).toContain('path={"/obrigacoes/:tab"} component={Obligations}');
+    expect(appContent).toContain('path={"/contas"} component={Obligations}');
+    expect(appContent).toContain('path={"/contas/:tab"} component={Obligations}');
   });
 
-  it("implementa o módulo Contas com os três submenus aprovados", () => {
+  it("expõe Contas a Pagar, Cartão de Crédito e Empréstimos na navegação lateral dentro do módulo Contas", () => {
+    const layoutContent = fs.readFileSync(
+      "/home/ubuntu/ck-distribuidora-sistema/client/src/components/DashboardLayout.tsx",
+      "utf-8",
+    );
+
+    expect(layoutContent).toContain('label: "Contas"');
+    expect(layoutContent).toContain('label: "Contas a Pagar"');
+    expect(layoutContent).toContain('label: "Cartão de Crédito"');
+    expect(layoutContent).toContain('label: "Empréstimos"');
+    expect(layoutContent).not.toContain('label: "Obrigações"');
+  });
+
+  it("implementa o dashboard do módulo Contas com visão de números, vencimentos e controle operacional", () => {
     const content = fs.readFileSync(
       "/home/ubuntu/ck-distribuidora-sistema/client/src/pages/Obligations.tsx",
       "utf-8",
     );
 
-    expect(content).toContain("Contas");
+    expect(content).toContain("Dashboard de Contas para análise e controle");
+    expect(content).toContain("Próximos vencimentos e movimentos");
+    expect(content).toContain("Alertas de vencimento");
     expect(content).toContain("Contas a Pagar");
     expect(content).toContain("Cartão de Crédito");
     expect(content).toContain("Empréstimos");
     expect(content).not.toContain('label: "Custos Fixos"');
     expect(content).not.toContain('"fixed-costs"');
-    expect(content).toContain("Módulo Contas com navegação clara e separada");
-    expect(content).toContain("Submenu");
   });
 
   it("mantém a área do agente como rota autenticada dentro do mesmo painel do usuário", () => {
