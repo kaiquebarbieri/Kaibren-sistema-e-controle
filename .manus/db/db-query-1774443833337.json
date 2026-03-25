@@ -1,0 +1,9 @@
+{
+  "query": "DELETE FROM credit_card_invoices; DELETE FROM loan_retention_entries; DELETE FROM loan_installments; DELETE FROM payable_accounts; DELETE FROM credit_cards; DELETE FROM loans;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 26eJkZF7BzJXLnR.8ea55d52e386 --database XxwarzmhDMwJNs5J3puu6o --execute DELETE FROM credit_card_invoices; DELETE FROM loan_retention_entries; DELETE FROM loan_installments; DELETE FROM payable_accounts; DELETE FROM credit_cards; DELETE FROM loans;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 570
+}

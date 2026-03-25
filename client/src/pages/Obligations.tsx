@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
@@ -28,12 +29,19 @@ type AccountsSection = "payables" | "credit-cards" | "loans";
 type DialogMode = AccountsSection | null;
 
 type FormState = {
+  cnpjId: string;
   title: string;
   amount: string;
   dueDate: string;
   notes: string;
   secondaryValue: string;
   installments: string;
+};
+
+type CnpjOption = {
+  id: string;
+  name: string;
+  cnpj: string;
 };
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -193,14 +201,19 @@ function AccountsDialog({
   onOpenChange,
   onSubmit,
   isSaving,
+  cnpjs,
+  defaultCnpjId,
 }: {
   open: boolean;
   mode: DialogMode;
   onOpenChange: (open: boolean) => void;
   onSubmit: (payload: FormState) => Promise<void>;
   isSaving: boolean;
+  cnpjs: CnpjOption[];
+  defaultCnpjId?: string;
 }) {
   const [form, setForm] = useState<FormState>({
+    cnpjId: defaultCnpjId ?? "",
     title: "",
     amount: "",
     dueDate: formatDate(new Date()),
@@ -213,7 +226,19 @@ function AccountsDialog({
   const isCard = mode === "credit-cards";
   const isLoan = mode === "loans";
 
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      cnpjId: current.cnpjId || defaultCnpjId || cnpjs[0]?.id || "",
+    }));
+  }, [defaultCnpjId, cnpjs]);
+
   async function handleSubmit() {
+    if (!form.cnpjId) {
+      toast.error("Selecione o CNPJ do cadastro.");
+      return;
+    }
+
     if (!form.title || !form.amount) {
       toast.error("Preencha pelo menos nome e valor.");
       return;
@@ -221,6 +246,7 @@ function AccountsDialog({
 
     await onSubmit(form);
     setForm({
+      cnpjId: defaultCnpjId ?? cnpjs[0]?.id ?? "",
       title: "",
       amount: "",
       dueDate: formatDate(new Date()),
@@ -241,6 +267,22 @@ function AccountsDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>CNPJ do cadastro</Label>
+            <Select value={form.cnpjId} onValueChange={(value) => setForm((current) => ({ ...current, cnpjId: value }))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o CNPJ" />
+              </SelectTrigger>
+              <SelectContent>
+                {cnpjs.map((cnpj) => (
+                  <SelectItem key={cnpj.id} value={cnpj.id}>
+                    {cnpj.name} · {cnpj.cnpj}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label>{isCard ? "Nome do cartão" : isLoan ? "Nome do empréstimo" : "Título da conta"}</Label>
             <Input
@@ -771,7 +813,11 @@ export default function Obligations() {
   }, [routeTab]);
 
   const cnpjsQuery = trpc.myCnpjs.list.useQuery();
-  const cnpjs = cnpjsQuery.data ?? [];
+  const cnpjs = (cnpjsQuery.data ?? []).map((item: any) => ({
+    id: String(item.id),
+    name: item.nomeFantasia || item.razaoSocial || `CNPJ ${item.id}`,
+    cnpj: item.cnpj,
+  }));
   const fallbackCnpjId = cnpjs[0]?.id ? Number(cnpjs[0].id) : undefined;
 
   const payablesQuery = trpc.finance.payables.list.useQuery(
@@ -841,9 +887,11 @@ export default function Obligations() {
       return;
     }
 
+    const selectedCnpjId = Number(payload.cnpjId);
+
     if (dialogMode === "payables") {
       await createPayableMutation.mutateAsync({
-        cnpjId: fallbackCnpjId,
+        cnpjId: selectedCnpjId,
         title: payload.title,
         supplier: payload.title,
         amount: payload.amount,
@@ -856,7 +904,7 @@ export default function Obligations() {
 
     if (dialogMode === "credit-cards") {
       await createCreditCardMutation.mutateAsync({
-        cnpjId: fallbackCnpjId,
+        cnpjId: selectedCnpjId,
         name: payload.title,
         brand: payload.notes || payload.secondaryValue || "outros",
         closingDay: 1,
@@ -869,7 +917,7 @@ export default function Obligations() {
 
     if (dialogMode === "loans") {
       await createLoanMutation.mutateAsync({
-        cnpjId: fallbackCnpjId,
+        cnpjId: selectedCnpjId,
         name: payload.title,
         institution: payload.notes || "Instituição não informada",
         totalAmount: payload.amount,
@@ -958,6 +1006,8 @@ export default function Obligations() {
         }}
         onSubmit={handleCreate}
         isSaving={createPayableMutation.isPending || createCreditCardMutation.isPending || createLoanMutation.isPending}
+        cnpjs={cnpjs}
+        defaultCnpjId={cnpjs[0]?.id}
       />
     </DashboardLayout>
   );

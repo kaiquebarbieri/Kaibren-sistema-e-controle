@@ -347,3 +347,5 @@
 - [x] Remover os cartões internos de menu das telas Contas a Pagar, Cartão de Crédito e Empréstimos
 - [x] Isolar totalmente o design e os indicadores de cada submenu para não exibir dados de outras categorias dentro da tela ativa
 - [x] Transformar Contas em menu recolhível, exibindo submenus ao clicar no item principal e recolhendo-os após selecionar uma opção
+- [x] Zerar todos os cadastros existentes no módulo Contas para recomeçar do zero em Contas a Pagar, Cartão de Crédito e Empréstimos
+- [x] Adicionar seleção dos 3 CNPJs já cadastrados nos cadastros de Contas a Pagar, Cartão de Crédito e Empréstimos para vincular cada dívida ao CNPJ correto
