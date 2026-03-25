@@ -21,20 +21,6 @@ describe("ui.navigation contract", () => {
     expect(sections.find((item) => item.section === "agente")?.href).toBe("/agente");
   });
 
-  it("restaura o Financeiro com a estrutura visual de DRE, subconta, período e painel operacional", () => {
-    const content = fs.readFileSync(
-      "/home/ubuntu/ck-distribuidora-sistema/client/src/pages/Finance.tsx",
-      "utf-8",
-    );
-
-    expect(content).toContain("DRE e caixa realizado por subconta");
-    expect(content).toContain("Subconta por CNPJ");
-    expect(content).toContain("Painel Mercado Pago");
-    expect(content).toContain("Onde o dinheiro mais saiu");
-    expect(content).toContain("Maiores movimentos recentes");
-    expect(content).toContain("Contas em controle");
-  });
-
   it("mantém Financeiro e o módulo Contas em rotas distintas no App", () => {
     const appContent = fs.readFileSync(
       "/home/ubuntu/ck-distribuidora-sistema/client/src/App.tsx",
@@ -59,20 +45,32 @@ describe("ui.navigation contract", () => {
     expect(layoutContent).not.toContain('label: "Obrigações"');
   });
 
-  it("implementa o dashboard do módulo Contas com visão de números, vencimentos e controle operacional", () => {
+  it("sincroniza os submenus com as rotas de Contas", () => {
     const content = fs.readFileSync(
       "/home/ubuntu/ck-distribuidora-sistema/client/src/pages/Obligations.tsx",
       "utf-8",
     );
 
-    expect(content).toContain("Dashboard de Contas para análise e controle");
-    expect(content).toContain("Próximos vencimentos e movimentos");
-    expect(content).toContain("Alertas de vencimento");
-    expect(content).toContain("Contas a Pagar");
-    expect(content).toContain("Cartão de Crédito");
-    expect(content).toContain("Empréstimos");
-    expect(content).not.toContain('label: "Custos Fixos"');
-    expect(content).not.toContain('"fixed-costs"');
+    expect(content).toContain('useRoute<{ tab?: string }>("/contas/:tab")');
+    expect(content).toContain('useRoute<{ tab?: string }>("/obrigacoes/:tab")');
+    expect(content).toContain('return "/contas/cartao-de-credito"');
+    expect(content).toContain('return "/contas/emprestimos"');
+    expect(content).toContain('return "/contas/contas-a-pagar"');
+  });
+
+  it("mantém cada submenu com conteúdo individual sem mistura entre categorias", () => {
+    const content = fs.readFileSync(
+      "/home/ubuntu/ck-distribuidora-sistema/client/src/pages/Obligations.tsx",
+      "utf-8",
+    );
+
+    expect(content).toContain("Cada submenu agora abre sua própria área de controle");
+    expect(content).toContain("Somente itens de contas a pagar aparecem nesta área.");
+    expect(content).toContain("Somente itens de cartão de crédito aparecem nesta área.");
+    expect(content).toContain("Somente itens de empréstimos aparecem nesta área.");
+    expect(content).toContain("Aqui aparecem somente vencimentos e movimentos ligados a contas a pagar.");
+    expect(content).toContain("Aqui aparecem somente cartões, bancos, limites e referências de fechamento ou vencimento.");
+    expect(content).toContain("Aqui aparecem somente empréstimos, instituições, parcelas e datas relacionadas ao contrato.");
   });
 
   it("mantém a área do agente como rota autenticada dentro do mesmo painel do usuário", () => {

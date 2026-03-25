@@ -340,3 +340,5 @@
 - [x] Posicionar Contas a Pagar, Cartão de Crédito e Empréstimos na sequência de navegação solicitada dentro do módulo Contas, fora da página interna antiga
 - [x] Construir dashboard do módulo Contas com visão de números, vencimentos e análise e controle operacional das contas
 - [x] Validar que o Financeiro permaneça separado do módulo Contas após a reorganização da navegação
+- [x] Corrigir abertura individual dos menus Cartão de Crédito e Empréstimos dentro do módulo Contas
+- [x] Isolar o conteúdo de cada submenu para exibir apenas informações próprias da sua categoria, sem mistura entre contas, cartões e empréstimos
