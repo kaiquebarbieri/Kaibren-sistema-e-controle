@@ -343,3 +343,4 @@
 - [x] Corrigir abertura individual dos menus Cartão de Crédito e Empréstimos dentro do módulo Contas
 - [x] Isolar o conteúdo de cada submenu para exibir apenas informações próprias da sua categoria, sem mistura entre contas, cartões e empréstimos
 - [x] Corrigir erro 404 ao clicar em Contas a Pagar, garantindo rota válida e navegação funcional no módulo Contas
+- [x] Corrigir erro 404 ao clicar em Cartão de Crédito e Empréstimos, garantindo rotas válidas e navegação funcional no módulo Contas

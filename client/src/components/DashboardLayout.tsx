@@ -249,12 +249,12 @@ function DashboardLayoutContent({
             {mobileItems.map(item => {
               const isActive = isItemActive(item, activeSection);
               return (
-                <button
-                  key={item.section}
-                  onClick={() => {
-                    setLocation(item.href);
-                    onNavigate?.(item.section);
-                  }}
+                  <button
+                    key={item.section}
+                    onClick={() => {
+                      setLocation(item.href);
+                    }}
+
                   className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center transition-colors sm:px-2 ${
                     isActive
                       ? "text-primary"
@@ -308,7 +308,6 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => {
                         setLocation(item.href);
-                        onNavigate?.(item.section);
                       }}
                       tooltip={item.label}
                       className={`h-10 font-normal ${item.indent ? "ml-4 w-[calc(100%-1rem)]" : ""}`}

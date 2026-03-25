@@ -45,6 +45,8 @@ describe("ui.navigation contract", () => {
     expect(layoutContent).toContain('href: "/contas/contas-a-pagar"');
     expect(layoutContent).toContain('href: "/contas/cartao-de-credito"');
     expect(layoutContent).toContain('href: "/contas/emprestimos"');
+    expect(layoutContent).toContain('setLocation(item.href)');
+    expect(layoutContent).not.toContain('onNavigate?.(item.section)');
     expect(layoutContent).not.toContain('href: "/obrigacoes/contas-a-pagar"');
     expect(layoutContent).not.toContain('label: "Obrigações"');
   });
