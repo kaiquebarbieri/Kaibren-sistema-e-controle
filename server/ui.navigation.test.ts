@@ -32,7 +32,7 @@ describe("ui.navigation contract", () => {
     expect(appContent).toContain('path={"/contas/:tab"} component={Obligations}');
   });
 
-  it("expõe Contas a Pagar, Cartão de Crédito e Empréstimos na navegação lateral dentro do módulo Contas", () => {
+  it("expõe Contas como grupo recolhível com submenus laterais dentro do módulo Contas", () => {
     const layoutContent = fs.readFileSync(
       "/home/ubuntu/ck-distribuidora-sistema/client/src/components/DashboardLayout.tsx",
       "utf-8",
@@ -42,11 +42,13 @@ describe("ui.navigation contract", () => {
     expect(layoutContent).toContain('label: "Contas a Pagar"');
     expect(layoutContent).toContain('label: "Cartão de Crédito"');
     expect(layoutContent).toContain('label: "Empréstimos"');
-    expect(layoutContent).toContain('href: "/contas/contas-a-pagar"');
-    expect(layoutContent).toContain('href: "/contas/cartao-de-credito"');
-    expect(layoutContent).toContain('href: "/contas/emprestimos"');
+    expect(layoutContent).toContain('parentSection: "contas"');
+    expect(layoutContent).toContain('const [expandedSections, setExpandedSections]');
+    expect(layoutContent).toContain('const isExpandable = item.section === "contas"');
+    expect(layoutContent).toContain('[item.section]: !current[item.section]');
+    expect(layoutContent).toContain('[parentKey]: false');
+    expect(layoutContent).toContain('visibleMenuItems.map(item =>');
     expect(layoutContent).toContain('setLocation(item.href)');
-    expect(layoutContent).not.toContain('onNavigate?.(item.section)');
     expect(layoutContent).not.toContain('href: "/obrigacoes/contas-a-pagar"');
     expect(layoutContent).not.toContain('label: "Obrigações"');
   });

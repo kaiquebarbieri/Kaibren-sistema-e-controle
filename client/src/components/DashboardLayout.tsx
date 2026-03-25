@@ -36,7 +36,7 @@ import {
   UserPlus,
   Wallet,
 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
@@ -47,6 +47,7 @@ type MenuItem = {
   section: string;
   href: string;
   indent?: boolean;
+  parentSection?: string;
 };
 
 const menuItems: MenuItem[] = [
@@ -58,9 +59,9 @@ const menuItems: MenuItem[] = [
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos" },
   { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro" },
   { icon: ReceiptText, label: "Contas", section: "contas", href: "/contas/contas-a-pagar" },
-  { icon: ReceiptText, label: "Contas a Pagar", section: "contas-a-pagar", href: "/contas/contas-a-pagar", indent: true },
-  { icon: CreditCard, label: "Cartão de Crédito", section: "cartao-de-credito", href: "/contas/cartao-de-credito", indent: true },
-  { icon: Landmark, label: "Empréstimos", section: "emprestimos", href: "/contas/emprestimos", indent: true },
+  { icon: ReceiptText, label: "Contas a Pagar", section: "contas-a-pagar", href: "/contas/contas-a-pagar", indent: true, parentSection: "contas" },
+  { icon: CreditCard, label: "Cartão de Crédito", section: "cartao-de-credito", href: "/contas/cartao-de-credito", indent: true, parentSection: "contas" },
+  { icon: Landmark, label: "Empréstimos", section: "emprestimos", href: "/contas/emprestimos", indent: true, parentSection: "contas" },
   { icon: Bot, label: "Agente", section: "agente", href: "/agente" },
 ];
 
@@ -165,15 +166,30 @@ function DashboardLayoutContent({
   const [, setLocation] = useLocation();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => ({
+    contas: ["contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection),
+  }));
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => isItemActive(item, activeSection) && !item.indent) ?? menuItems[0];
   const isMobile = useIsMobile();
+  const visibleMenuItems = useMemo(() => {
+    return menuItems.filter((item) => {
+      if (!item.indent) return true;
+      return Boolean(item.parentSection && expandedSections[item.parentSection]);
+    });
+  }, [expandedSections]);
 
   useEffect(() => {
     if (isCollapsed) {
       setIsResizing(false);
     }
   }, [isCollapsed]);
+
+  useEffect(() => {
+    if (["contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection)) {
+      setExpandedSections((current) => ({ ...current, contas: true }));
+    }
+  }, [activeSection]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -300,20 +316,39 @@ function DashboardLayoutContent({
 
           <SidebarContent className="gap-0 px-2 py-3">
             <SidebarMenu className="gap-1">
-              {menuItems.map(item => {
+              {visibleMenuItems.map(item => {
                 const isActive = isItemActive(item, activeSection);
+                const isExpandable = item.section === "contas";
+                const isExpanded = expandedSections[item.section];
                 return (
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
                       isActive={isActive}
                       onClick={() => {
+                        if (isExpandable) {
+                          setExpandedSections((current) => ({
+                            ...current,
+                            [item.section]: !current[item.section],
+                          }));
+                          return;
+                        }
+
+                        if (item.parentSection) {
+                          const parentKey = item.parentSection as string;
+                          setExpandedSections((current) => ({
+                            ...current,
+                            [parentKey]: false,
+                          }));
+                        }
+
                         setLocation(item.href);
                       }}
                       tooltip={item.label}
                       className={`h-10 font-normal ${item.indent ? "ml-4 w-[calc(100%-1rem)]" : ""}`}
                     >
                       <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
-                      <span>{item.label}</span>
+                      <span className="flex-1 text-left">{item.label}</span>
+                      {isExpandable ? <span className="text-xs text-muted-foreground">{isExpanded ? "−" : "+"}</span> : null}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
