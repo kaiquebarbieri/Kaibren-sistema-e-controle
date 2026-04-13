@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
+import { motion } from "framer-motion";
 
 type AccountsSection = "payables" | "credit-cards" | "loans";
 type DialogMode = AccountsSection | null;
@@ -45,6 +46,11 @@ type CnpjOption = {
 };
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.05, duration: 0.3 } }),
+};
 
 function toCurrency(value: number | string | null | undefined): string {
   const parsed = Number(value || 0);
@@ -73,6 +79,15 @@ function getStatusLabel(days: number | null) {
   if (days < 0) return `Atrasado há ${Math.abs(days)} dia(s)`;
   if (days === 0) return "Vence hoje";
   return `Vence em ${days} dia(s)`;
+}
+
+function getDueBadge(days: number | null) {
+  if (days === null) return { label: "Sem data", className: "border-muted-foreground/30 text-muted-foreground bg-muted/50" };
+  if (days < 0) return { label: "Vencido", className: "animate-pulse border-red-500/50 bg-red-500/15 text-red-400" };
+  if (days === 0) return { label: "Hoje", className: "border-red-500/50 bg-red-500/15 text-red-400" };
+  if (days === 1) return { label: "Amanhã", className: "border-amber-500/50 bg-amber-500/15 text-amber-400" };
+  if (days <= 7) return { label: `${days} dias`, className: "border-amber-500/50 bg-amber-500/15 text-amber-400" };
+  return { label: "Em dia", className: "border-emerald-500/50 bg-emerald-500/15 text-emerald-400" };
 }
 
 function getSectionFromRoute(tab?: string): AccountsSection {
@@ -141,15 +156,17 @@ function getSectionMeta(section: AccountsSection) {
   return map[section];
 }
 
-function MetricCard({ title, value, helper }: { title: string; value: string; helper: string }) {
+function MetricCard({ title, value, helper, index = 0 }: { title: string; value: string; helper: string; index?: number }) {
   return (
-    <Card className="rounded-[1.75rem] border bg-card/95 shadow-sm">
-      <CardContent className="p-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{title}</p>
-        <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
-      </CardContent>
-    </Card>
+    <motion.div custom={index} variants={cardVariants} initial="hidden" animate="visible">
+      <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+        <CardContent className="p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{title}</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }
 
@@ -158,40 +175,45 @@ function AccountsRow({
   subtitle,
   amount,
   badge,
-  urgency,
+  days,
   onDelete,
+  index = 0,
 }: {
   title: string;
   subtitle: string;
   amount: string;
   badge: string;
-  urgency: string;
+  days: number | null;
   onDelete?: () => void;
+  index?: number;
 }) {
+  const dueBadge = getDueBadge(days);
   return (
-    <div className="rounded-[1.75rem] border border-border/70 bg-card/95 p-4 shadow-sm">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary" className="w-fit">{badge}</Badge>
-            <Badge variant="outline" className="w-fit">{urgency}</Badge>
+    <motion.div custom={index} variants={cardVariants} initial="hidden" animate="visible">
+      <div className="rounded-2xl border border-border/50 bg-card p-4 shadow-sm transition-colors hover:bg-card/80">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary" className="w-fit">{badge}</Badge>
+              <Badge variant="outline" className={`w-fit ${dueBadge.className}`}>{dueBadge.label}</Badge>
+            </div>
+            <div>
+              <p className="text-base font-semibold tracking-tight text-foreground">{title}</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{subtitle}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-base font-semibold tracking-tight text-foreground">{title}</p>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">{subtitle}</p>
+          <div className="flex flex-col items-start gap-3 xl:items-end">
+            <span className="text-lg font-semibold tracking-tight text-foreground">R$ {amount}</span>
+            {onDelete ? (
+              <Button variant="destructive" size="sm" onClick={onDelete}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir
+              </Button>
+            ) : null}
           </div>
-        </div>
-        <div className="flex flex-col items-start gap-3 xl:items-end">
-          <span className="text-lg font-semibold tracking-tight text-foreground">R$ {amount}</span>
-          {onDelete ? (
-            <Button variant="destructive" size="sm" onClick={onDelete}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Excluir
-            </Button>
-          ) : null}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -258,7 +280,7 @@ function AccountsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="border-border/50 bg-card sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{meta ? meta.button : "Novo cadastro"}</DialogTitle>
           <DialogDescription>
@@ -270,7 +292,7 @@ function AccountsDialog({
           <div className="space-y-2">
             <Label>CNPJ do cadastro</Label>
             <Select value={form.cnpjId} onValueChange={(value) => setForm((current) => ({ ...current, cnpjId: value }))}>
-              <SelectTrigger>
+              <SelectTrigger className="border-border/50 bg-card">
                 <SelectValue placeholder="Selecione o CNPJ" />
               </SelectTrigger>
               <SelectContent>
@@ -286,6 +308,7 @@ function AccountsDialog({
           <div className="space-y-2">
             <Label>{isCard ? "Nome do cartão" : isLoan ? "Nome do empréstimo" : "Título da conta"}</Label>
             <Input
+              className="border-border/50 bg-card"
               value={form.title}
               onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
               placeholder={isCard ? "Ex.: Cartão Santander" : isLoan ? "Ex.: Capital de giro" : "Ex.: Boleto do fornecedor"}
@@ -296,6 +319,7 @@ function AccountsDialog({
             <div className="space-y-2">
               <Label>{isCard ? "Limite" : isLoan ? "Valor total" : "Valor"}</Label>
               <Input
+                className="border-border/50 bg-card"
                 value={form.amount}
                 onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
                 placeholder="0,00"
@@ -304,6 +328,7 @@ function AccountsDialog({
             <div className="space-y-2">
               <Label>{isCard ? "Vencimento" : "Data de referência"}</Label>
               <Input
+                className="border-border/50 bg-card"
                 type="date"
                 value={form.dueDate}
                 onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
@@ -316,6 +341,7 @@ function AccountsDialog({
               <div className="space-y-2">
                 <Label>{isCard ? "Fechamento ou fatura atual" : "Parcela"}</Label>
                 <Input
+                  className="border-border/50 bg-card"
                   value={form.secondaryValue}
                   onChange={(event) => setForm((current) => ({ ...current, secondaryValue: event.target.value }))}
                   placeholder={isCard ? "Ex.: Fecha dia 25 / fatura 1.980,00" : "Ex.: 1.250,00"}
@@ -324,6 +350,7 @@ function AccountsDialog({
               <div className="space-y-2">
                 <Label>{isCard ? "Compras / parcelas" : "Quantidade de parcelas"}</Label>
                 <Input
+                  className="border-border/50 bg-card"
                   value={form.installments}
                   onChange={(event) => setForm((current) => ({ ...current, installments: event.target.value }))}
                   placeholder={isCard ? "Ex.: 8 compras / 3 parcelas" : "12"}
@@ -335,6 +362,7 @@ function AccountsDialog({
           <div className="space-y-2">
             <Label>Observações</Label>
             <Textarea
+              className="border-border/50 bg-card"
               value={form.notes}
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
               placeholder="Detalhes opcionais para deixar a leitura do controle mais clara"
@@ -364,7 +392,7 @@ function SectionMenu({
   counts: Record<AccountsSection, number>;
 }) {
   return (
-    <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+    <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
           <WalletCards className="h-5 w-5 text-primary" />
@@ -375,32 +403,83 @@ function SectionMenu({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {sections.map((section) => {
+        {sections.map((section, i) => {
           const meta = getSectionMeta(section);
           const Icon = meta.icon;
           const isActive = activeSection === section;
           return (
-            <button
-              key={section}
-              onClick={() => onNavigate(section)}
-              className={`w-full rounded-[1.5rem] border p-4 text-left shadow-sm transition-all ${isActive ? "border-slate-900 bg-slate-900 text-white" : "border-border bg-card hover:-translate-y-0.5 hover:shadow-md"}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${isActive ? "text-white/70" : "text-muted-foreground"}`}>Menu</p>
-                  <p className="mt-3 text-lg font-semibold tracking-tight">{meta.label}</p>
-                  <p className={`mt-2 text-sm leading-6 ${isActive ? "text-white/75" : "text-muted-foreground"}`}>{meta.description}</p>
+            <motion.div key={section} custom={i} variants={cardVariants} initial="hidden" animate="visible">
+              <button
+                onClick={() => onNavigate(section)}
+                className={`w-full rounded-2xl border p-4 text-left shadow-sm transition-all ${isActive ? "border-primary/50 bg-primary/10 text-foreground ring-1 ring-primary/20" : "border-border/50 bg-card hover:-translate-y-0.5 hover:shadow-md"}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${isActive ? "text-primary" : "text-muted-foreground"}`}>Menu</p>
+                    <p className="mt-3 text-lg font-semibold tracking-tight">{meta.label}</p>
+                    <p className={`mt-2 text-sm leading-6 ${isActive ? "text-muted-foreground" : "text-muted-foreground"}`}>{meta.description}</p>
+                  </div>
+                  <div className={`rounded-2xl p-3 ${isActive ? "bg-primary/15" : "bg-muted"}`}>
+                    <Icon className={`h-5 w-5 ${isActive ? "text-primary" : ""}`} />
+                  </div>
                 </div>
-                <div className={`rounded-2xl p-3 ${isActive ? "bg-white/10" : "bg-muted"}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-              </div>
-              <div className="mt-4 text-sm font-medium">{counts[section]} item(ns) visíveis</div>
-            </button>
+                <div className="mt-4 text-sm font-medium">{counts[section]} item(ns) visíveis</div>
+              </button>
+            </motion.div>
           );
         })}
       </CardContent>
     </Card>
+  );
+}
+
+function EventRow({
+  entry,
+  badgeLabel,
+  index = 0,
+}: {
+  entry: { id: number; title: string; subtitle: string; amount: number; dueDate: Date | null; days: number | null };
+  badgeLabel: string;
+  index?: number;
+}) {
+  const dueBadge = getDueBadge(entry.days);
+  return (
+    <motion.div key={entry.id} custom={index} variants={cardVariants} initial="hidden" animate="visible">
+      <div className="rounded-2xl border border-border/50 bg-card p-4 transition-colors hover:bg-card/80">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">{badgeLabel}</Badge>
+              <Badge variant="outline" className={dueBadge.className}>{dueBadge.label}</Badge>
+            </div>
+            <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{entry.title}</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">{entry.subtitle}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-semibold tracking-tight text-foreground">R$ {toCurrency(entry.amount)}</p>
+            <p className="text-xs text-muted-foreground">{entry.dueDate ? entry.dueDate.toLocaleDateString("pt-BR") : "Sem data informada"}</p>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function TotalBanner({ label, total, accent }: { label: string; total: number; accent: string }) {
+  return (
+    <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible">
+      <div className={`rounded-2xl bg-gradient-to-r ${accent} p-[1px]`}>
+        <div className="flex items-center justify-between rounded-2xl bg-card px-6 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+            <p className="mt-1 text-3xl font-bold tracking-tight text-foreground">R$ {toCurrency(total)}</p>
+          </div>
+          <div className={`rounded-2xl bg-gradient-to-br ${accent} p-3`}>
+            <AlertTriangle className="h-5 w-5 text-white" />
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -483,103 +562,101 @@ function ObligationsSectionView({
   if (section === "credit-cards") {
     return (
       <div className="space-y-6">
-        <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-          <CardHeader>
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-3 text-2xl tracking-tight">
-                  <div className={`rounded-2xl bg-gradient-to-br p-3 text-white ${meta.accent}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  {meta.label}
-                </CardTitle>
-                <CardDescription className="mt-2 text-sm leading-6">{meta.description}</CardDescription>
-              </div>
-              <Badge variant="outline">{MONTHS[selectedMonth - 1]} {selectedYear}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <MetricCard title="Cartões ativos" value={`${creditCards.length}`} helper="Quantidade de cartões acompanhados neste menu." />
-              <MetricCard title="Limite total" value={`R$ ${toCurrency(creditLimitTotal)}`} helper="Soma dos limites cadastrados apenas para cartões." />
-              <MetricCard title="Fechamento e vencimento" value="Faturas" helper="Acompanhe datas de fechamento e pagamento sem misturar com outras contas." />
-            </div>
-            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/70 p-4">
-              <p className="text-sm font-medium text-foreground">{meta.helperTitle}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{meta.helperText}</p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button onClick={() => onOpenDialog(section)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  {meta.button}
-                </Button>
-                <Button variant="outline" onClick={() => onRefresh()}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Recarregar dados
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <TotalBanner label="Limite total monitorado" total={creditLimitTotal} accent={meta.accent} />
 
-        <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
-              <CalendarClock className="h-5 w-5 text-primary" />
-              Agenda de cartões e faturas
-            </CardTitle>
-            <CardDescription>
-              Aqui aparecem somente cartões, bancos, limites e referências de fechamento ou vencimento.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {creditCardEvents.length > 0 ? creditCardEvents.map((entry) => (
-              <div key={entry.id} className="rounded-[1.5rem] border border-border/70 bg-muted/20 p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary">Cartão de Crédito</Badge>
-                      <Badge variant="outline">{getStatusLabel(entry.days)}</Badge>
+        <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-3 text-2xl tracking-tight">
+                    <div className={`rounded-2xl bg-gradient-to-br p-3 text-white ${meta.accent}`}>
+                      <Icon className="h-5 w-5" />
                     </div>
-                    <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{entry.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{entry.subtitle}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-semibold tracking-tight text-foreground">R$ {toCurrency(entry.amount)}</p>
-                    <p className="text-xs text-muted-foreground">{entry.dueDate ? entry.dueDate.toLocaleDateString("pt-BR") : "Sem data informada"}</p>
-                  </div>
+                    {meta.label}
+                  </CardTitle>
+                  <CardDescription className="mt-2 text-sm leading-6">{meta.description}</CardDescription>
+                </div>
+                <Badge variant="outline" className="border-border/50">{MONTHS[selectedMonth - 1]} {selectedYear}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <MetricCard index={2} title="Cartões ativos" value={`${creditCards.length}`} helper="Quantidade de cartões acompanhados neste menu." />
+                <MetricCard index={3} title="Limite total" value={`R$ ${toCurrency(creditLimitTotal)}`} helper="Soma dos limites cadastrados apenas para cartões." />
+                <MetricCard index={4} title="Fechamento e vencimento" value="Faturas" helper="Acompanhe datas de fechamento e pagamento sem misturar com outras contas." />
+              </div>
+              <div className="rounded-2xl border border-dashed border-border/50 bg-background/70 p-4">
+                <p className="text-sm font-medium text-foreground">{meta.helperTitle}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{meta.helperText}</p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button onClick={() => onOpenDialog(section)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {meta.button}
+                  </Button>
+                  <Button variant="outline" onClick={() => onRefresh()}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Recarregar dados
+                  </Button>
                 </div>
               </div>
-            )) : (
-              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-                {meta.empty}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-          <CardHeader>
-            <CardTitle>Listagem de cartões</CardTitle>
-            <CardDescription>Somente itens de cartão de crédito aparecem nesta área.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {creditCards.length > 0 ? creditCards.map((item: any) => (
-              <AccountsRow
-                key={item.id}
-                title={item.name || "Cartão"}
-                subtitle={`${item.bankName || item.brand || "Banco não informado"} • fechamento ${item.closingDay || 1} / vencimento ${item.dueDay || 10}`}
-                amount={toCurrency(item.limitAmount || item.creditLimit)}
-                badge="Cartão de Crédito"
-                urgency="Controle ativo"
-                onDelete={() => onDelete("credit-cards", Number(item.id))}
-              />
-            )) : (
-              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-                {meta.empty}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <motion.div custom={5} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
+                <CalendarClock className="h-5 w-5 text-primary" />
+                Agenda de cartões e faturas
+              </CardTitle>
+              <CardDescription>
+                Aqui aparecem somente cartões, bancos, limites e referências de fechamento ou vencimento.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {creditCardEvents.length > 0 ? creditCardEvents.map((entry, i) => (
+                <EventRow key={entry.id} entry={entry} badgeLabel="Cartão de Crédito" index={6 + i} />
+              )) : (
+                <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  {meta.empty}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div custom={12} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+            <CardHeader>
+              <CardTitle>Listagem de cartões</CardTitle>
+              <CardDescription>Somente itens de cartão de crédito aparecem nesta área.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {creditCards.length > 0 ? creditCards.map((item: any, i: number) => {
+                const dueDate = normalizeDate(item.nextDueDate || item.updatedAt);
+                const days = dueDate ? differenceInDays(dueDate) : null;
+                return (
+                  <AccountsRow
+                    key={item.id}
+                    index={13 + i}
+                    title={item.name || "Cartão"}
+                    subtitle={`${item.bankName || item.brand || "Banco não informado"} • fechamento ${item.closingDay || 1} / vencimento ${item.dueDay || 10}`}
+                    amount={toCurrency(item.limitAmount || item.creditLimit)}
+                    badge="Cartão de Crédito"
+                    days={days}
+                    onDelete={() => onDelete("credit-cards", Number(item.id))}
+                  />
+                );
+              }) : (
+                <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  {meta.empty}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     );
   }
@@ -587,7 +664,111 @@ function ObligationsSectionView({
   if (section === "loans") {
     return (
       <div className="space-y-6">
-        <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+        <TotalBanner label="Saldo total monitorado" total={loanTotal} accent={meta.accent} />
+
+        <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-3 text-2xl tracking-tight">
+                    <div className={`rounded-2xl bg-gradient-to-br p-3 text-white ${meta.accent}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    {meta.label}
+                  </CardTitle>
+                  <CardDescription className="mt-2 text-sm leading-6">{meta.description}</CardDescription>
+                </div>
+                <Badge variant="outline" className="border-border/50">{MONTHS[selectedMonth - 1]} {selectedYear}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <MetricCard index={2} title="Contratos ativos" value={`${loans.length}`} helper="Quantidade de empréstimos acompanhados neste menu." />
+                <MetricCard index={3} title="Saldo total" value={`R$ ${toCurrency(loanTotal)}`} helper="Soma dos valores cadastrados somente para empréstimos." />
+                <MetricCard index={4} title="Parcelas" value="Acompanhamento" helper="Controle separado de contratos, parcelas e instituição financeira." />
+              </div>
+              <div className="rounded-2xl border border-dashed border-border/50 bg-background/70 p-4">
+                <p className="text-sm font-medium text-foreground">{meta.helperTitle}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{meta.helperText}</p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button onClick={() => onOpenDialog(section)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {meta.button}
+                  </Button>
+                  <Button variant="outline" onClick={() => onRefresh()}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Recarregar dados
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div custom={5} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
+                <CalendarClock className="h-5 w-5 text-primary" />
+                Agenda de contratos e parcelas
+              </CardTitle>
+              <CardDescription>
+                Aqui aparecem somente empréstimos, instituições, parcelas e datas relacionadas ao contrato.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loanEvents.length > 0 ? loanEvents.map((entry, i) => (
+                <EventRow key={entry.id} entry={entry} badgeLabel="Empréstimos" index={6 + i} />
+              )) : (
+                <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  {meta.empty}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div custom={12} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
+            <CardHeader>
+              <CardTitle>Listagem de empréstimos</CardTitle>
+              <CardDescription>Somente itens de empréstimos aparecem nesta área.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loans.length > 0 ? loans.map((item: any, i: number) => {
+                const dueDate = normalizeDate(item.nextDueDate || item.startDate);
+                const days = dueDate ? differenceInDays(dueDate) : null;
+                return (
+                  <AccountsRow
+                    key={item.id}
+                    index={13 + i}
+                    title={item.name || "Empréstimo"}
+                    subtitle={`${item.institution || "Instituição não informada"} • parcelas ${item.totalInstallments || 1}`}
+                    amount={toCurrency(item.amount || item.totalAmount)}
+                    badge="Empréstimos"
+                    days={days}
+                    onDelete={() => onDelete("loans", Number(item.id))}
+                  />
+                );
+              }) : (
+                <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+                  {meta.empty}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <TotalBanner label="Total a pagar no período" total={payableTotal} accent={meta.accent} />
+
+      <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible">
+        <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
           <CardHeader>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -599,16 +780,16 @@ function ObligationsSectionView({
                 </CardTitle>
                 <CardDescription className="mt-2 text-sm leading-6">{meta.description}</CardDescription>
               </div>
-              <Badge variant="outline">{MONTHS[selectedMonth - 1]} {selectedYear}</Badge>
+              <Badge variant="outline" className="border-border/50">{MONTHS[selectedMonth - 1]} {selectedYear}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
-              <MetricCard title="Contratos ativos" value={`${loans.length}`} helper="Quantidade de empréstimos acompanhados neste menu." />
-              <MetricCard title="Saldo total" value={`R$ ${toCurrency(loanTotal)}`} helper="Soma dos valores cadastrados somente para empréstimos." />
-              <MetricCard title="Parcelas" value="Acompanhamento" helper="Controle separado de contratos, parcelas e instituição financeira." />
+              <MetricCard index={2} title="Contas no período" value={`${payables.length}`} helper="Quantidade de contas a pagar visíveis neste menu." />
+              <MetricCard index={3} title="Valor total" value={`R$ ${toCurrency(payableTotal)}`} helper="Soma das contas a pagar cadastradas no período selecionado." />
+              <MetricCard index={4} title="Alertas" value={`${overduePayables + dueSoonPayables}`} helper={`${overduePayables} atrasada(s) e ${dueSoonPayables} com vencimento em até 7 dias.`} />
             </div>
-            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/70 p-4">
+            <div className="rounded-2xl border border-dashed border-border/50 bg-background/70 p-4">
               <p className="text-sm font-medium text-foreground">{meta.helperTitle}</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{meta.helperText}</p>
               <div className="mt-4 flex flex-wrap gap-3">
@@ -624,173 +805,61 @@ function ObligationsSectionView({
             </div>
           </CardContent>
         </Card>
+      </motion.div>
 
-        <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+      <motion.div custom={5} variants={cardVariants} initial="hidden" animate="visible">
+        <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
               <CalendarClock className="h-5 w-5 text-primary" />
-              Agenda de contratos e parcelas
+              Próximos vencimentos de contas a pagar
             </CardTitle>
             <CardDescription>
-              Aqui aparecem somente empréstimos, instituições, parcelas e datas relacionadas ao contrato.
+              Aqui aparecem somente vencimentos e movimentos ligados a contas a pagar.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {loanEvents.length > 0 ? loanEvents.map((entry) => (
-              <div key={entry.id} className="rounded-[1.5rem] border border-border/70 bg-muted/20 p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary">Empréstimos</Badge>
-                      <Badge variant="outline">{getStatusLabel(entry.days)}</Badge>
-                    </div>
-                    <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{entry.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{entry.subtitle}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-semibold tracking-tight text-foreground">R$ {toCurrency(entry.amount)}</p>
-                    <p className="text-xs text-muted-foreground">{entry.dueDate ? entry.dueDate.toLocaleDateString("pt-BR") : "Sem data informada"}</p>
-                  </div>
-                </div>
-              </div>
+            {payablesEvents.length > 0 ? payablesEvents.map((entry, i) => (
+              <EventRow key={entry.id} entry={entry} badgeLabel="Contas a Pagar" index={6 + i} />
             )) : (
-              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                 {meta.empty}
               </div>
             )}
           </CardContent>
         </Card>
+      </motion.div>
 
-        <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
+      <motion.div custom={12} variants={cardVariants} initial="hidden" animate="visible">
+        <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
           <CardHeader>
-            <CardTitle>Listagem de empréstimos</CardTitle>
-            <CardDescription>Somente itens de empréstimos aparecem nesta área.</CardDescription>
+            <CardTitle>Listagem de contas a pagar</CardTitle>
+            <CardDescription>Somente itens de contas a pagar aparecem nesta área.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {loans.length > 0 ? loans.map((item: any) => (
-              <AccountsRow
-                key={item.id}
-                title={item.name || "Empréstimo"}
-                subtitle={`${item.institution || "Instituição não informada"} • parcelas ${item.totalInstallments || 1}`}
-                amount={toCurrency(item.amount || item.totalAmount)}
-                badge="Empréstimos"
-                urgency="Acompanhamento ativo"
-                onDelete={() => onDelete("loans", Number(item.id))}
-              />
-            )) : (
-              <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+            {payables.length > 0 ? payables.map((item: any, i: number) => {
+              const dueDate = normalizeDate(item.dueDate);
+              const days = dueDate ? differenceInDays(dueDate) : null;
+              return (
+                <AccountsRow
+                  key={item.id}
+                  index={13 + i}
+                  title={item.title || item.description || item.supplier || "Conta a pagar"}
+                  subtitle={`${item.notes || item.supplier || "Sem observações"} • vencimento ${dueDate ? dueDate.toLocaleDateString("pt-BR") : "não informado"}`}
+                  amount={toCurrency(item.amount)}
+                  badge="Contas a Pagar"
+                  days={days}
+                  onDelete={() => onDelete("payables", Number(item.id))}
+                />
+              );
+            }) : (
+              <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                 {meta.empty}
               </div>
             )}
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-3 text-2xl tracking-tight">
-                <div className={`rounded-2xl bg-gradient-to-br p-3 text-white ${meta.accent}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                {meta.label}
-              </CardTitle>
-              <CardDescription className="mt-2 text-sm leading-6">{meta.description}</CardDescription>
-            </div>
-            <Badge variant="outline">{MONTHS[selectedMonth - 1]} {selectedYear}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <MetricCard title="Contas no período" value={`${payables.length}`} helper="Quantidade de contas a pagar visíveis neste menu." />
-            <MetricCard title="Valor total" value={`R$ ${toCurrency(payableTotal)}`} helper="Soma das contas a pagar cadastradas no período selecionado." />
-            <MetricCard title="Alertas" value={`${overduePayables + dueSoonPayables}`} helper={`${overduePayables} atrasada(s) e ${dueSoonPayables} com vencimento em até 7 dias.`} />
-          </div>
-          <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground">{meta.helperTitle}</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{meta.helperText}</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button onClick={() => onOpenDialog(section)}>
-                <Plus className="mr-2 h-4 w-4" />
-                {meta.button}
-              </Button>
-              <Button variant="outline" onClick={() => onRefresh()}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Recarregar dados
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
-            <CalendarClock className="h-5 w-5 text-primary" />
-            Próximos vencimentos de contas a pagar
-          </CardTitle>
-          <CardDescription>
-            Aqui aparecem somente vencimentos e movimentos ligados a contas a pagar.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {payablesEvents.length > 0 ? payablesEvents.map((entry) => (
-            <div key={entry.id} className="rounded-[1.5rem] border border-border/70 bg-muted/20 p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">Contas a Pagar</Badge>
-                    <Badge variant="outline">{getStatusLabel(entry.days)}</Badge>
-                  </div>
-                  <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{entry.title}</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{entry.subtitle}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold tracking-tight text-foreground">R$ {toCurrency(entry.amount)}</p>
-                  <p className="text-xs text-muted-foreground">{entry.dueDate ? entry.dueDate.toLocaleDateString("pt-BR") : "Sem data informada"}</p>
-                </div>
-              </div>
-            </div>
-          )) : (
-            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-              {meta.empty}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-[2rem] border bg-card/95 shadow-sm">
-        <CardHeader>
-          <CardTitle>Listagem de contas a pagar</CardTitle>
-          <CardDescription>Somente itens de contas a pagar aparecem nesta área.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {payables.length > 0 ? payables.map((item: any) => {
-            const dueDate = normalizeDate(item.dueDate);
-            const days = dueDate ? differenceInDays(dueDate) : null;
-            return (
-              <AccountsRow
-                key={item.id}
-                title={item.title || item.description || item.supplier || "Conta a pagar"}
-                subtitle={`${item.notes || item.supplier || "Sem observações"} • vencimento ${dueDate ? dueDate.toLocaleDateString("pt-BR") : "não informado"}`}
-                amount={toCurrency(item.amount)}
-                badge="Contas a Pagar"
-                urgency={getStatusLabel(days)}
-                onDelete={() => onDelete("payables", Number(item.id))}
-              />
-            );
-          }) : (
-            <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-              {meta.empty}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      </motion.div>
     </div>
   );
 }
@@ -950,31 +1019,33 @@ export default function Obligations() {
   return (
     <DashboardLayout activeSection="contas" onNavigate={(section) => navigate(section === "dashboard" ? "/" : `/${section}`)}>
       <div className="space-y-6">
-        <Card className="overflow-hidden rounded-[2rem] border-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white shadow-xl">
-          <CardContent className="p-6 md:p-8">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="max-w-3xl space-y-3">
-                <Badge variant="secondary" className="w-fit bg-white/10 text-white hover:bg-white/10">Contas</Badge>
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-tight">Dashboard de Contas para análise e controle</h1>
-                  <p className="mt-2 text-sm leading-6 text-white/75">
-                    Cada submenu agora abre sua própria área de controle. Contas a Pagar, Cartão de Crédito e Empréstimos ficaram separados para evitar mistura de informações.
-                  </p>
+        <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="overflow-hidden rounded-2xl border-border/50 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white shadow-xl">
+            <CardContent className="p-6 md:p-8">
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                <div className="max-w-3xl space-y-3">
+                  <Badge variant="secondary" className="w-fit bg-white/10 text-white hover:bg-white/10">Contas</Badge>
+                  <div>
+                    <h1 className="text-3xl font-semibold tracking-tight">Dashboard de Contas para análise e controle</h1>
+                    <p className="mt-2 text-sm leading-6 text-white/75">
+                      Cada submenu agora abre sua própria área de controle. Contas a Pagar, Cartão de Crédito e Empréstimos ficaram separados para evitar mistura de informações.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button variant="secondary" onClick={() => { setDialogMode(activeSection); setDialogOpen(true); }}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {getSectionMeta(activeSection).button}
+                  </Button>
+                  <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={() => refreshAll()}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Atualizar tela
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="secondary" onClick={() => { setDialogMode(activeSection); setDialogOpen(true); }}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  {getSectionMeta(activeSection).button}
-                </Button>
-                <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={() => refreshAll()}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Atualizar tela
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         <ObligationsSectionView
           section={activeSection}

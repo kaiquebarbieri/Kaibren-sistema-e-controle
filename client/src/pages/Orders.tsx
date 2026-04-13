@@ -728,9 +728,201 @@ export default function Orders() {
     );
   }
 
+  const [viewMode, setViewMode] = useState<"distribuidora" | "marketplace">("marketplace");
+  const [mpSearch, setMpSearch] = useState("");
+  const [mpStatus, setMpStatus] = useState("");
+  const [mpAccount, setMpAccount] = useState<string>("all");
+  const [mpPage, setMpPage] = useState(0);
+  const marketplaceOrdersQuery = trpc.marketplaceOrders.list.useQuery({
+    search: mpSearch || undefined,
+    status: mpStatus || undefined,
+    accounts: mpAccount !== "all" ? [mpAccount] : undefined,
+    limit: 20,
+    offset: mpPage * 20,
+  }, { refetchInterval: 120000 });
+  const marketplaceAccountsQuery = trpc.marketplaceOrders.accounts.useQuery();
+
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "agora";
+    if (mins < 60) return `há ${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `há ${hrs}h`;
+    return `há ${Math.floor(hrs / 24)}d`;
+  }
+
+  const statusColors: Record<string, string> = {
+    paid: "bg-emerald-500/10 text-emerald-400",
+    shipped: "bg-blue-500/10 text-blue-400",
+    delivered: "bg-primary/10 text-primary",
+    cancelled: "bg-red-500/10 text-red-400",
+  };
+
   return (
     <DashboardLayout activeSection="pedidos">
       <div className="flex flex-col gap-4 sm:gap-6 bg-background">
+        {/* View mode toggle */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode("distribuidora")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${viewMode === "distribuidora" ? "bg-primary text-primary-foreground" : "border border-border/50 text-muted-foreground hover:text-foreground"}`}
+          >
+            Distribuidora
+          </button>
+          <button
+            onClick={() => setViewMode("marketplace")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${viewMode === "marketplace" ? "bg-primary text-primary-foreground" : "border border-border/50 text-muted-foreground hover:text-foreground"}`}
+          >
+            Marketplace
+          </button>
+        </div>
+
+        {viewMode === "marketplace" && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">Pedidos Marketplace</h1>
+              <p className="text-sm text-muted-foreground">
+                Mostrando {marketplaceOrdersQuery.data?.total ?? 0} pedidos —{" "}
+                {Number(marketplaceOrdersQuery.data?.totalAmount ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </p>
+            </div>
+
+            {/* Filtros */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative flex-1 min-w-[200px] max-w-[400px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={mpSearch}
+                  onChange={e => { setMpSearch(e.target.value); setMpPage(0); }}
+                  placeholder="Buscar produto, comprador ou nº pedido..."
+                  className="w-full rounded-lg border border-border/50 bg-card pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                />
+              </div>
+              <select
+                value={mpStatus}
+                onChange={e => { setMpStatus(e.target.value); setMpPage(0); }}
+                className="rounded-lg border border-border/50 bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              >
+                <option value="">Todos os status</option>
+                <option value="paid">Pago</option>
+                <option value="shipped">Enviado</option>
+                <option value="delivered">Entregue</option>
+                <option value="cancelled">Cancelado</option>
+              </select>
+              <select
+                value={mpAccount}
+                onChange={e => { setMpAccount(e.target.value); setMpPage(0); }}
+                className="rounded-lg border border-border/50 bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                title="Filtrar por conta ML"
+              >
+                <option value="all">Todas as contas</option>
+                {(marketplaceAccountsQuery.data ?? []).map((a: any) => (
+                  <option key={a.id} value={a.name}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {marketplaceOrdersQuery.isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+              <Card className="border-border/50">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/30 text-muted-foreground">
+                          <th className="text-left py-3 pl-4 pr-2 font-medium">Produto</th>
+                          <th className="text-left py-3 px-2 font-medium">Comprador</th>
+                          <th className="text-left py-3 px-2 font-medium">Conta</th>
+                          <th className="text-left py-3 px-2 font-medium">Status</th>
+                          <th className="text-right py-3 px-2 font-medium">Valor</th>
+                          <th className="text-right py-3 pl-2 pr-4 font-medium">Data</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(marketplaceOrdersQuery.data?.orders ?? []).map((order: any) => (
+                          <tr key={order.id} className="border-b border-border/20 hover:bg-muted/20 transition-colors">
+                            <td className="py-3 pl-4 pr-2">
+                              <div className="flex items-center gap-3">
+                                <div className="h-12 w-12 rounded-lg bg-muted/20 overflow-hidden shrink-0">
+                                  {order.productImage ? (
+                                    <img src={order.productImage} alt="" className="h-full w-full object-cover" onError={(e: any) => { e.target.onerror = null; e.target.src = ""; e.target.style.display = "none"; }} />
+                                  ) : (
+                                    <div className="h-full w-full flex items-center justify-center"><ShoppingCart className="h-5 w-5 text-muted-foreground" /></div>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-foreground truncate max-w-[280px]" title={order.productName}>{order.productName}</div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {order.productSku && <span className="text-[10px] font-mono text-muted-foreground">SKU: {order.productSku}</span>}
+                                    <span className="text-xs text-muted-foreground">#{order.id} &middot; {order.quantity}x</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 text-muted-foreground">{order.buyerName}</td>
+                            <td className="py-3 px-2">
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: `${order.accountColor}15`, color: order.accountColor }}>
+                                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: order.accountColor }} />
+                                {order.accountName}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[order.status] || "bg-muted text-muted-foreground"}`}>
+                                {order.statusLabel}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-right font-bold text-foreground">
+                              {Number(order.totalAmount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </td>
+                            <td className="py-3 pl-2 pr-4 text-right text-xs text-muted-foreground">
+                              {new Date(order.createdAt).toLocaleDateString("pt-BR")}
+                              <br />
+                              <span className="text-[10px]">{timeAgo(order.createdAt)}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Paginação */}
+              {(marketplaceOrdersQuery.data?.total ?? 0) > 20 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    Página {mpPage + 1} de {Math.ceil((marketplaceOrdersQuery.data?.total ?? 0) / 20)}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setMpPage(p => Math.max(0, p - 1))}
+                      disabled={mpPage === 0}
+                      className="rounded-lg border border-border/50 px-3 py-1.5 text-sm text-foreground disabled:opacity-40"
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      onClick={() => setMpPage(p => p + 1)}
+                      disabled={(mpPage + 1) * 20 >= (marketplaceOrdersQuery.data?.total ?? 0)}
+                      className="rounded-lg border border-border/50 px-3 py-1.5 text-sm text-foreground disabled:opacity-40"
+                    >
+                      Próxima
+                    </button>
+                  </div>
+                </div>
+              )}
+              </>
+            )}
+          </div>
+        )}
+
+        {viewMode === "distribuidora" && <>
         {/* Header */}
         {editingOrderId && (
           <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-3">
@@ -1555,6 +1747,7 @@ export default function Orders() {
             </div>
           </CardContent>
         </Card>
+        </>}
       </div>
     </DashboardLayout>
   );

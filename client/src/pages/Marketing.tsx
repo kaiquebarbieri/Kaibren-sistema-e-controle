@@ -105,41 +105,237 @@ export default function Marketing() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<"campaigns" | "ads" | "instagram">("campaigns");
+
+  const metaAds = trpc.marketing.metaAds.useQuery();
+  const instagram = trpc.marketing.instagram.useQuery();
 
   return (
     <DashboardLayout activeSection="marketing">
       <div className="space-y-4 sm:space-y-6">
-        {viewMode === "list" && (
-          <CampaignList
-            onCreateNew={() => setShowCreateDialog(true)}
-            onViewDetail={(id) => {
-              setSelectedCampaignId(id);
-              setViewMode("detail");
-            }}
-          />
+        {/* Tab navigation */}
+        <div className="flex items-center gap-1 border-b border-border/50 pb-0">
+          {(["campaigns", "ads", "instagram"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab === "campaigns" ? "Campanhas WhatsApp" : tab === "ads" ? "Meta Ads" : "Instagram"}
+            </button>
+          ))}
+        </div>
+
+        {/* Campaigns tab */}
+        {activeTab === "campaigns" && (
+          <>
+            {viewMode === "list" && (
+              <CampaignList
+                onCreateNew={() => setShowCreateDialog(true)}
+                onViewDetail={(id) => {
+                  setSelectedCampaignId(id);
+                  setViewMode("detail");
+                }}
+              />
+            )}
+
+            {viewMode === "detail" && selectedCampaignId && (
+              <CampaignDetail
+                campaignId={selectedCampaignId}
+                onBack={() => {
+                  setViewMode("list");
+                  setSelectedCampaignId(null);
+                }}
+              />
+            )}
+
+            <CreateCampaignDialog
+              open={showCreateDialog}
+              onOpenChange={setShowCreateDialog}
+              onCreated={(id) => {
+                setSelectedCampaignId(id);
+                setViewMode("detail");
+                setShowCreateDialog(false);
+              }}
+            />
+          </>
         )}
 
-        {viewMode === "detail" && selectedCampaignId && (
-          <CampaignDetail
-            campaignId={selectedCampaignId}
-            onBack={() => {
-              setViewMode("list");
-              setSelectedCampaignId(null);
-            }}
-          />
+        {/* Meta Ads tab */}
+        {activeTab === "ads" && (
+          <MetaAdsPanel data={metaAds.data} isLoading={metaAds.isLoading} />
         )}
 
-        <CreateCampaignDialog
-          open={showCreateDialog}
-          onOpenChange={setShowCreateDialog}
-          onCreated={(id) => {
-            setSelectedCampaignId(id);
-            setViewMode("detail");
-            setShowCreateDialog(false);
-          }}
-        />
+        {/* Instagram tab */}
+        {activeTab === "instagram" && (
+          <InstagramPanel data={instagram.data} isLoading={instagram.isLoading} />
+        )}
       </div>
     </DashboardLayout>
+  );
+}
+
+/* ── Meta Ads Panel ── */
+
+function MetaAdsPanel({ data, isLoading }: { data: any; isLoading: boolean }) {
+  if (isLoading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+
+  const ads = data as any;
+  if (!ads) return null;
+
+  const kpis = [
+    { label: "Gasto Total", value: formatCurrency(ads.totalSpend), color: "text-red-400" },
+    { label: "Impressões", value: ads.totalImpressions?.toLocaleString("pt-BR") ?? "0", color: "text-blue-400" },
+    { label: "Cliques", value: ads.totalClicks?.toLocaleString("pt-BR") ?? "0", color: "text-emerald-400" },
+    { label: "CTR Médio", value: `${(ads.avgCtr ?? 0).toFixed(2)}%`, color: "text-primary" },
+    { label: "CPC Médio", value: formatCurrency(ads.avgCpc ?? 0), color: "text-amber-400" },
+    { label: "ROAS Médio", value: `${(ads.avgRoas ?? 0).toFixed(1)}x`, color: "text-purple-400" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {!ads.configured && (
+        <Card className="border-amber-500/20 bg-amber-500/5">
+          <CardContent className="p-4">
+            <p className="text-sm text-amber-400 font-medium">Meta Ads não configurado</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Configure META_ACCESS_TOKEN e META_AD_ACCOUNT_ID no .env para ver dados reais. Exibindo dados de exemplo.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {kpis.map(kpi => (
+          <Card key={kpi.label} className="border-border/50">
+            <CardContent className="p-3">
+              <div className="text-xs text-muted-foreground">{kpi.label}</div>
+              <div className={`mt-1 text-lg font-bold ${kpi.color}`}>{kpi.value}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Campanhas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/30 text-muted-foreground">
+                  <th className="text-left py-2 pr-4 font-medium">Nome</th>
+                  <th className="text-left py-2 pr-4 font-medium">Status</th>
+                  <th className="text-right py-2 pr-4 font-medium">Orçamento</th>
+                  <th className="text-right py-2 pr-4 font-medium">Gasto</th>
+                  <th className="text-right py-2 pr-4 font-medium">Resultados</th>
+                  <th className="text-right py-2 pr-4 font-medium">Custo/Resultado</th>
+                  <th className="text-right py-2 font-medium">ROAS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(ads.campaigns ?? []).map((c: any) => (
+                  <tr key={c.id} className="border-b border-border/20">
+                    <td className="py-2.5 pr-4 font-medium text-foreground">{c.name}</td>
+                    <td className="py-2.5 pr-4">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        c.status === "ACTIVE" ? "bg-emerald-500/10 text-emerald-400" : "bg-muted text-muted-foreground"
+                      }`}>
+                        {c.status === "ACTIVE" ? "Ativo" : "Pausado"}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-4 text-right text-muted-foreground">{formatCurrency(c.dailyBudget)}/dia</td>
+                    <td className="py-2.5 pr-4 text-right">{formatCurrency(c.spendToday)}</td>
+                    <td className="py-2.5 pr-4 text-right">{c.results}</td>
+                    <td className="py-2.5 pr-4 text-right text-muted-foreground">{formatCurrency(c.costPerResult)}</td>
+                    <td className={`py-2.5 text-right font-medium ${c.roas < 1 && c.roas > 0 ? "text-red-400" : c.roas >= 2 ? "text-emerald-400" : "text-foreground"}`}>
+                      {c.roas > 0 ? `${c.roas.toFixed(1)}x` : "—"}
+                      {c.roas > 0 && c.roas < 1 && <span className="ml-1 text-xs">⚠️</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ── Instagram Panel ── */
+
+function InstagramPanel({ data, isLoading }: { data: any; isLoading: boolean }) {
+  if (isLoading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+
+  const ig = data as any;
+  if (!ig) return null;
+
+  return (
+    <div className="space-y-4">
+      {!ig.configured && (
+        <Card className="border-amber-500/20 bg-amber-500/5">
+          <CardContent className="p-4">
+            <p className="text-sm text-amber-400 font-medium">Instagram não configurado</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Configure INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID no .env. Exibindo dados de exemplo.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="border-border/50">
+          <CardContent className="p-3">
+            <div className="text-xs text-muted-foreground">Seguidores</div>
+            <div className="mt-1 text-xl font-bold text-foreground">{ig.followers?.toLocaleString("pt-BR")}</div>
+            {ig.followersGrowth > 0 && <div className="text-xs text-emerald-400">+{ig.followersGrowth} esta semana</div>}
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3">
+            <div className="text-xs text-muted-foreground">Alcance</div>
+            <div className="mt-1 text-xl font-bold text-blue-400">{ig.reach?.toLocaleString("pt-BR")}</div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3">
+            <div className="text-xs text-muted-foreground">Impressões</div>
+            <div className="mt-1 text-xl font-bold text-primary">{ig.impressions?.toLocaleString("pt-BR")}</div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3">
+            <div className="text-xs text-muted-foreground">Engajamento</div>
+            <div className="mt-1 text-xl font-bold text-purple-400">{ig.engagement?.toFixed(1)}%</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Top 3 Posts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {(ig.topPosts ?? []).map((post: any, idx: number) => (
+              <div key={post.id || idx} className="rounded-lg border border-border/30 bg-muted/30 p-3">
+                <p className="text-sm text-foreground line-clamp-2">{post.caption || "Sem legenda"}</p>
+                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>❤️ {post.likes}</span>
+                  <span>💬 {post.comments}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

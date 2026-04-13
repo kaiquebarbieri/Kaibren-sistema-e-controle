@@ -1,339 +1,196 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import PeriodFilter, { periodLabel, periodToDays, periodToDates, usePeriod } from "@/components/PeriodFilter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowDownRight,
-  ArrowUpRight,
+  ArrowRight,
   BarChart3,
+  Bot,
   Building2,
+  Clock,
   DollarSign,
   Loader2,
+  Package,
+  RefreshCw,
   ShoppingBag,
+  ShoppingCart,
   Trophy,
   TrendingUp,
   Wallet,
+  Zap,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Chart from "chart.js/auto";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart,
+} from "recharts";
 
-const CNPJ_COLORS = [
-  { bg: "rgba(16, 185, 129, 0.7)", border: "rgb(16, 185, 129)" },
-  { bg: "rgba(59, 130, 246, 0.7)", border: "rgb(59, 130, 246)" },
-  { bg: "rgba(249, 115, 22, 0.7)", border: "rgb(249, 115, 22)" },
-  { bg: "rgba(168, 85, 247, 0.7)", border: "rgb(168, 85, 247)" },
-  { bg: "rgba(236, 72, 153, 0.7)", border: "rgb(236, 72, 153)" },
-];
-
-/* ── Helpers ───────────────────────────────────────── */
-
-function formatCurrency(value: string | number | null | undefined) {
-  const amount = Number(value ?? 0);
-  return amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function fmt(value: string | number | null | undefined) {
+  return Number(value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function formatPercent(value: string | number | null | undefined) {
-  const amount = Number(value ?? 0) * 100;
-  return `${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+function fmtPct(value: string | number | null | undefined) {
+  return `${(Number(value ?? 0) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
-/* ── Page Component ────────────────────────────────── */
+const cardVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.05, duration: 0.3 } }),
+};
+
+const CHANNEL_COLORS: Record<string, string> = {
+  total: "#D4AF37",
+  ml: "#3B82F6",
+  shopee: "#F97316",
+  amazon: "#A855F7",
+  distribuidora: "#22C55E",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  total: "Total",
+  ml: "Mercado Livre",
+  shopee: "Shopee",
+  amazon: "Amazon",
+  distribuidora: "Distribuidora",
+};
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload) return null;
+  return (
+    <div className="rounded-lg border border-border/50 bg-[#0E1223] p-3 shadow-lg">
+      <p className="text-xs text-muted-foreground mb-2">{label}</p>
+      {payload.map((entry: any) => (
+        <div key={entry.dataKey} className="flex items-center gap-2 text-sm">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="text-muted-foreground">{CHANNEL_LABELS[entry.dataKey] || entry.dataKey}:</span>
+          <span className="font-medium text-foreground">{fmt(entry.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { user, loading } = useAuth();
+
+  // Redirect user role to operational view
+  useEffect(() => {
+    if (!loading && user && user.role === "user") {
+      window.location.href = "/operacional";
+    }
+  }, [user, loading]);
+
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
-  const chartContainerRef = useRef<HTMLDivElement | null>(null);
-  const chartInstanceRef = useRef<Chart | null>(null);
+  const [accountFilter, setAccountFilter] = useState<string>("all");
+  const [period, setPeriod, customDate, setCustomDate, customDateEnd, setCustomDateEnd] = usePeriod();
+  // Auto-migra valores antigos (4d, yesterday) para "today"
+  useEffect(() => {
+    if (!["today", "yesterday", "7d", "15d", "30d", "custom"].includes(period)) {
+      setPeriod("today");
+    }
+  }, [period, setPeriod]);
+  const { dateFrom, dateTo } = periodToDates(period, customDate, customDateEnd);
 
   const dashboardQuery = trpc.dashboard.monthly.useQuery({
     periodMonth: Number(selectedMonth),
     periodYear: Number(selectedYear),
   });
-
   const evolutionQuery = trpc.dashboard.yearlyEvolution.useQuery();
-  const cnpjRankingQuery = trpc.myCnpjs.ranking.useQuery({
-    periodYear: Number(selectedYear),
-    periodMonth: Number(selectedMonth),
-  });
-  const cnpjEvolutionQuery = trpc.myCnpjs.evolution.useQuery({ periodYear: Number(selectedYear) });
+  const mlSummary = trpc.vendas.mlSummary.useQuery(
+    { dateFrom, dateTo },
+    { refetchInterval: period === "today" ? 120000 : false }
+  );
+  const mlDaily = trpc.vendas.mlDailySales.useQuery({ days: periodToDays(period) || 7 });
+  const revenueQuery = trpc.dashboard.revenueEvolution.useQuery({ days: periodToDays(period) || 7 });
+  const recentOrdersQuery = trpc.marketplaceOrders.recent.useQuery({ limit: 10 }, { refetchInterval: 120000 });
+  const shopeeSummary = trpc.vendas.shopeeSummary.useQuery(undefined, { refetchInterval: 300000 });
+  const mlRefreshMutation = trpc.vendas.mlRefreshTokens.useMutation();
+  const insightsQuery = trpc.vendas.dashboardInsights.useQuery(undefined, { refetchInterval: 300000 });
+  const insights = insightsQuery.data;
+  const [, setLocation] = useLocation();
+  const [refreshStatus, setRefreshStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+
+  const handleRefreshTokens = async () => {
+    setRefreshStatus("loading");
+    try {
+      const result = await mlRefreshMutation.mutateAsync();
+      const allOk = result.results.every((r: any) => r.ok);
+      setRefreshStatus(allOk ? "ok" : "error");
+      mlSummary.refetch();
+      setTimeout(() => setRefreshStatus("idle"), 4000);
+    } catch {
+      setRefreshStatus("error");
+      setTimeout(() => setRefreshStatus("idle"), 4000);
+    }
+  };
 
   const monthly = dashboardQuery.data;
-  const evolution = evolutionQuery.data;
-  const cnpjRanking = cnpjRankingQuery.data;
-  const cnpjEvolution = cnpjEvolutionQuery.data;
+  const ml = mlSummary.data;
+  const mlDays = mlDaily.data;
+  const revenueData = revenueQuery.data;
 
-  const cnpjChartContainerRef = useRef<HTMLDivElement | null>(null);
-  const cnpjChartInstanceRef = useRef<Chart | null>(null);
-
-  /* ── Métricas calculadas ─────────────────────────── */
-
-  // Vendas para clientes
   const vendasDoMes = Number(monthly?.totalVendasClientes ?? 0);
   const lucroLiquido = Number(monthly?.totalLucro ?? 0);
   const margemMedia = Number(monthly?.margemMedia ?? 0);
   const pedidosCliente = Number(monthly?.totalPedidosCliente ?? 0);
-
-  // Compras pessoais
   const comprasDoMesMondial = Number(monthly?.totalComprasPessoais ?? 0);
   const pedidosPessoais = Number(monthly?.totalPedidosPessoais ?? 0);
-
-  // Everton: R$ 0,75 por item em TODAS as compras (pessoais e vendas)
   const comissaoEverton = Number(monthly?.totalComissaoEvertonMondial ?? 0);
-
-  // Imposto gerado nas vendas da distribuidora (apenas vendas para clientes)
   const impostoVendas = vendasDoMes > 0 ? vendasDoMes * 0.0392 : 0;
 
-  /* ── Chart ─────────────────────────────────────── */
+  // Shopee totais
+  const shopeeTodayTotal = Number(shopeeSummary.data?.today ?? 0);
+  const shopeeTodayCount = Number(shopeeSummary.data?.todayCount ?? 0);
+  const shopeeMonthTotal = Number(shopeeSummary.data?.thisMonth ?? 0);
+  const shopeeMonthCount = Number(shopeeSummary.data?.orderCount ?? 0);
 
-  const buildChart = useCallback(() => {
-    if (!chartContainerRef.current || !evolution || evolution.length === 0) return;
+  // Filtro de conta — ML ou Shopee
+  const selectedMlAccount = accountFilter !== "all"
+    ? (ml?.accounts ?? []).find((a: any) => a.name === accountFilter)
+    : null;
+  const selectedShopeeAccount = accountFilter !== "all"
+    ? (shopeeSummary.data?.accounts ?? []).find((a: any) => a.name === accountFilter)
+    : null;
+  const selectedAccount = selectedMlAccount || selectedShopeeAccount || (accountFilter !== "all" ? { name: accountFilter } : null);
 
-    // Destroy previous chart
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.destroy();
-      chartInstanceRef.current = null;
-    }
+  const mlPeriodTotal = selectedMlAccount
+    ? Number(selectedMlAccount.today?.total ?? 0)
+    : Number(ml?.totals?.today?.total ?? 0);
+  const mlPeriodCount = selectedMlAccount
+    ? Number(selectedMlAccount.today?.count ?? 0)
+    : Number(ml?.totals?.today?.count ?? 0);
+  const mlMonthTotalFiltered = selectedMlAccount
+    ? Number(selectedMlAccount.month?.total ?? 0)
+    : Number(ml?.totals?.month?.total ?? 0);
 
-    // Remove any existing canvas and create a fresh one
-    const container = chartContainerRef.current;
-    container.innerHTML = "";
-    const canvas = document.createElement("canvas");
-    container.appendChild(canvas);
+  // Total marketplace = ML + Shopee (respeitando filtro de conta e período)
+  const marketplacePeriodTotal = selectedShopeeAccount
+    ? Number(selectedShopeeAccount.today ?? 0)
+    : selectedMlAccount
+    ? mlPeriodTotal
+    : mlPeriodTotal + shopeeTodayTotal;
+  const marketplacePeriodCount = selectedShopeeAccount
+    ? Number(selectedShopeeAccount.todayCount ?? 0)
+    : selectedMlAccount
+    ? mlPeriodCount
+    : mlPeriodCount + shopeeTodayCount;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  // Label do período para exibir nos KPIs
+  const isSingleDay =
+    period === "today" ||
+    (period === "custom" && !!customDate && (customDate === customDateEnd || !customDateEnd));
+  const periodLabelText = periodLabel(period, customDate, customDateEnd);
 
-    const isMobileView = window.innerWidth < 768;
-
-    chartInstanceRef.current = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: evolution.map(m => {
-          const parts = m.label.split("/");
-          return isMobileView ? parts[0] : m.label;
-        }),
-        datasets: [
-          {
-            label: "Vendas",
-            data: evolution.map(m => Number(m.vendas)),
-            backgroundColor: "rgba(16, 185, 129, 0.7)",
-            borderColor: "rgb(16, 185, 129)",
-            borderWidth: 1,
-            borderRadius: 4,
-          },
-          {
-            label: "Lucro",
-            data: evolution.map(m => Number(m.lucro)),
-            backgroundColor: "rgba(59, 130, 246, 0.7)",
-            borderColor: "rgb(59, 130, 246)",
-            borderWidth: 1,
-            borderRadius: 4,
-          },
-          {
-            label: "Compras",
-            data: evolution.map(m => Number(m.compras)),
-            backgroundColor: "rgba(249, 115, 22, 0.7)",
-            borderColor: "rgb(249, 115, 22)",
-            borderWidth: 1,
-            borderRadius: 4,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: "index",
-          intersect: false,
-        },
-        plugins: {
-          legend: {
-            position: isMobileView ? "bottom" : "top",
-            labels: {
-              usePointStyle: true,
-              pointStyle: "circle",
-              padding: isMobileView ? 8 : 16,
-              font: { size: isMobileView ? 10 : 13, weight: "bold" as const },
-            },
-          },
-          tooltip: {
-            backgroundColor: "rgba(0,0,0,0.85)",
-            titleFont: { size: 12 },
-            bodyFont: { size: 11 },
-            padding: 10,
-            cornerRadius: 8,
-            callbacks: {
-              label: (context: any) => {
-                const value = Number(context.raw ?? 0);
-                return `${context.dataset.label}: ${value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { size: isMobileView ? 9 : 11 },
-              maxRotation: isMobileView ? 45 : 0,
-            },
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: "rgba(0,0,0,0.06)" },
-            ticks: {
-              font: { size: isMobileView ? 9 : 11 },
-              callback: (value: any) => {
-                const num = Number(value);
-                if (num >= 1000) return `R$ ${(num / 1000).toFixed(0)}k`;
-                return `R$ ${num}`;
-              },
-            },
-          },
-        },
-      },
-    });
-  }, [evolution]);
-
-  useEffect(() => {
-    buildChart();
-    return () => {
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.destroy();
-        chartInstanceRef.current = null;
-      }
-    };
-  }, [buildChart]);
-
-  // Rebuild chart on window resize for mobile/desktop switch
-  useEffect(() => {
-    const handleResize = () => {
-      buildChart();
-      buildCnpjChart();
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [buildChart]);
-
-  /* ── CNPJ Evolution Chart ─────────────────────── */
-
-  const buildCnpjChart = useCallback(() => {
-    if (!cnpjChartContainerRef.current || !cnpjEvolution || cnpjEvolution.length === 0) return;
-
-    if (cnpjChartInstanceRef.current) {
-      cnpjChartInstanceRef.current.destroy();
-      cnpjChartInstanceRef.current = null;
-    }
-
-    const container = cnpjChartContainerRef.current;
-    container.innerHTML = "";
-    const canvas = document.createElement("canvas");
-    container.appendChild(canvas);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const isMobileView = window.innerWidth < 768;
-    const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const labels = Array.from({ length: currentMonth }, (_, i) => monthNames[i]);
-
-    // Group data by CNPJ
-    const cnpjMap = new Map<number, { name: string; data: number[] }>();
-    cnpjEvolution.forEach((row: any) => {
-      const id = row.cnpjId as number;
-      if (!cnpjMap.has(id)) {
-        cnpjMap.set(id, {
-          name: (row.nomeFantasia || row.razaoSocial || "CNPJ") as string,
-          data: new Array(currentMonth).fill(0),
-        });
-      }
-      const entry = cnpjMap.get(id)!;
-      const monthIdx = (row.periodMonth as number) - 1;
-      if (monthIdx >= 0 && monthIdx < currentMonth) {
-        entry.data[monthIdx] = Number(row.totalCompras);
-      }
-    });
-
-    const datasets = Array.from(cnpjMap.entries()).map(([_, entry], idx) => ({
-      label: entry.name,
-      data: entry.data,
-      backgroundColor: CNPJ_COLORS[idx % CNPJ_COLORS.length].bg,
-      borderColor: CNPJ_COLORS[idx % CNPJ_COLORS.length].border,
-      borderWidth: 2,
-      borderRadius: 4,
-      tension: 0.3,
-      fill: false,
-    }));
-
-    cnpjChartInstanceRef.current = new Chart(ctx, {
-      type: "line",
-      data: { labels, datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: {
-            position: isMobileView ? "bottom" : "top",
-            labels: {
-              usePointStyle: true,
-              pointStyle: "circle",
-              padding: isMobileView ? 8 : 16,
-              font: { size: isMobileView ? 10 : 13, weight: "bold" as const },
-            },
-          },
-          tooltip: {
-            backgroundColor: "rgba(0,0,0,0.85)",
-            padding: 10,
-            cornerRadius: 8,
-            callbacks: {
-              label: (context: any) => {
-                const value = Number(context.raw ?? 0);
-                return `${context.dataset.label}: ${value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { size: isMobileView ? 9 : 11 } },
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: "rgba(0,0,0,0.06)" },
-            ticks: {
-              font: { size: isMobileView ? 9 : 11 },
-              callback: (value: any) => {
-                const num = Number(value);
-                if (num >= 1000) return `R$ ${(num / 1000).toFixed(0)}k`;
-                return `R$ ${num}`;
-              },
-            },
-          },
-        },
-      },
-    });
-  }, [cnpjEvolution]);
-
-  useEffect(() => {
-    buildCnpjChart();
-    return () => {
-      if (cnpjChartInstanceRef.current) {
-        cnpjChartInstanceRef.current.destroy();
-        cnpjChartInstanceRef.current = null;
-      }
-    };
-  }, [buildCnpjChart]);
-
-  /* ── Render ────────────────────────────────────── */
+  // Faturamento total = marketplace (ML + Shopee) + distribuidora
+  const faturamentoTotal = isSingleDay
+    ? marketplacePeriodTotal
+    : (selectedShopeeAccount ? Number(selectedShopeeAccount.total ?? 0) : mlMonthTotalFiltered + shopeeMonthTotal) + (selectedAccount ? 0 : vendasDoMes);
 
   if (loading) {
     return (
@@ -344,247 +201,538 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md border-0 shadow-xl">
-          <CardHeader>
-            <CardTitle>Sistema CK Distribuidora</CardTitle>
-            <CardDescription>Faça login para acessar o dashboard.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" onClick={() => (window.location.href = getLoginUrl())}>
-              Entrar no sistema
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    window.location.href = "/login";
+    return null;
   }
 
   const months = [
-    { value: "01", label: "Janeiro" },
-    { value: "02", label: "Fevereiro" },
-    { value: "03", label: "Março" },
-    { value: "04", label: "Abril" },
-    { value: "05", label: "Maio" },
-    { value: "06", label: "Junho" },
-    { value: "07", label: "Julho" },
-    { value: "08", label: "Agosto" },
-    { value: "09", label: "Setembro" },
-    { value: "10", label: "Outubro" },
-    { value: "11", label: "Novembro" },
-    { value: "12", label: "Dezembro" },
+    { value: "01", label: "Janeiro" }, { value: "02", label: "Fevereiro" },
+    { value: "03", label: "Março" }, { value: "04", label: "Abril" },
+    { value: "05", label: "Maio" }, { value: "06", label: "Junho" },
+    { value: "07", label: "Julho" }, { value: "08", label: "Agosto" },
+    { value: "09", label: "Setembro" }, { value: "10", label: "Outubro" },
+    { value: "11", label: "Novembro" }, { value: "12", label: "Dezembro" },
   ];
+
+  const kpis = [
+    { icon: DollarSign, label: `Faturamento Marketplaces — ${periodLabelText}`, value: fmt(marketplacePeriodTotal), sub: `${marketplacePeriodCount} pedidos (ML + Shopee)`, color: "text-emerald-400", bg: "border-emerald-500/20 bg-emerald-500/5" },
+    { icon: ShoppingCart, label: `Pedidos Marketplaces — ${periodLabelText}`, value: String(marketplacePeriodCount), sub: `ML: ${mlPeriodCount} | Shopee: ${shopeeTodayCount}`, color: "text-primary", bg: "border-primary/20 bg-primary/5" },
+    { icon: TrendingUp, label: "Margem Média", value: fmtPct(margemMedia), sub: "Distribuidora", color: "text-blue-400", bg: "border-blue-500/20 bg-blue-500/5" },
+    { icon: AlertTriangle, label: "Vendas Mês (Dist.)", value: fmt(vendasDoMes), sub: `${pedidosCliente} pedidos`, color: "text-amber-400", bg: "border-amber-500/20 bg-amber-500/5" },
+  ];
+
+  const allMlAccounts = ml?.accounts ?? [];
+  const allShopeeAccounts = shopeeSummary.data?.accounts ?? [];
+  const mlAccounts = selectedMlAccount ? [selectedMlAccount] : (selectedShopeeAccount ? [] : allMlAccounts);
+  const shopeeAccounts = selectedShopeeAccount ? [selectedShopeeAccount] : (selectedMlAccount ? [] : allShopeeAccounts);
+
+  // Build chart data from revenue snapshots or ML daily data
+  // Quando o filtro de conta estiver ativo, ignoramos revenueData (que é agregado)
+  // e montamos a série apenas com a conta selecionada a partir de mlDays.
+  const chartData = (!selectedAccount && (revenueData ?? []).length > 0)
+    ? revenueData
+    : (mlDays ?? []).map((d: any) => {
+        const [, m, day] = d.date.split("-");
+        const accountsForDay = selectedAccount
+          ? [d.accounts?.[selectedAccount.name]].filter(Boolean)
+          : Object.values(d.accounts as Record<string, any>);
+        const total = accountsForDay.reduce((s: number, a: any) => s + (a?.total ?? 0), 0);
+        return {
+          date: `${day}/${m}`,
+          total,
+          ml: total,
+          shopee: 0,
+          amazon: 0,
+          distribuidora: 0,
+        };
+      });
 
   return (
     <DashboardLayout activeSection="dashboard">
-      <div className="flex flex-col gap-4 sm:gap-6 bg-background">
-        {/* ── Header ─────────────────────────────── */}
-        <div className="overflow-hidden rounded-2xl sm:rounded-[28px] border border-border/60 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-5 sm:px-6 sm:py-6 text-white shadow-sm lg:px-8 lg:py-8">
-          <div className="space-y-4 sm:space-y-6">
-            <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-2 sm:space-y-3">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400" />
-                  <span className="text-xs sm:text-sm font-medium text-emerald-400">Dashboard de Performance</span>
-                </div>
-                <h1 className="text-xl sm:text-3xl font-semibold tracking-tight">Resultados e evolução mensal</h1>
-                <p className="max-w-xl text-xs sm:text-sm leading-5 sm:leading-6 text-slate-300">
-                  Acompanhe suas vendas, lucro líquido, compras do mês e a evolução mês a mês.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 sm:gap-3">
-                <div className="flex items-center gap-2">
-                  <Label className="text-slate-300 text-xs sm:text-sm">Mês</Label>
-                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                    <SelectTrigger className="w-[120px] sm:w-[140px] border-white/10 bg-white/10 text-white text-sm h-9 sm:h-10">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map(m => (
-                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-slate-300 text-xs sm:text-sm">Ano</Label>
-                  <Input
-                    value={selectedYear}
-                    onChange={e => setSelectedYear(e.target.value)}
-                    className="w-[70px] sm:w-[90px] border-white/10 bg-white/10 text-white placeholder:text-slate-400 text-sm h-9 sm:h-10"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* ── Cards principais ──────── */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
-              {/* Vendas do mês */}
-              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-300">
-                  <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-400" />
-                  <span className="truncate">Vendas do mês</span>
-                </div>
-                <div className="mt-1.5 sm:mt-2 text-lg sm:text-2xl font-bold text-white">{formatCurrency(vendasDoMes)}</div>
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-400">{pedidosCliente} pedido(s)</div>
-              </div>
-
-              {/* Lucro líquido */}
-              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-300">
-                  <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-400" />
-                  <span className="truncate">Lucro líquido</span>
-                </div>
-                <div className="mt-1.5 sm:mt-2 text-lg sm:text-2xl font-bold text-white">{formatCurrency(lucroLiquido)}</div>
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-400">Após impostos e Everton</div>
-              </div>
-
-              {/* Compras pessoais */}
-              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-300">
-                  <ShoppingBag className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-400" />
-                  <span className="truncate">Compras pessoais</span>
-                </div>
-                <div className="mt-1.5 sm:mt-2 text-lg sm:text-2xl font-bold text-white">{formatCurrency(comprasDoMesMondial)}</div>
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-400">{pedidosPessoais} compra(s)</div>
-              </div>
-
-              {/* Everton Mondial - card independente com nome dele */}
-              <div className="rounded-xl sm:rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 sm:p-4">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wide text-amber-300">
-                  <Wallet className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-400" />
-                  <span className="truncate">Everton Mondial</span>
-                </div>
-                <div className="mt-1.5 sm:mt-2 text-lg sm:text-2xl font-bold text-white">{formatCurrency(comissaoEverton)}</div>
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-400">R$ 0,75 por item</div>
-              </div>
-
-              {/* Imposto das vendas - card independente separado */}
-              <div className="rounded-xl sm:rounded-2xl border border-red-500/30 bg-red-500/10 p-3 sm:p-4">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wide text-red-300">
-                  <ArrowDownRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-400" />
-                  <span className="truncate">Imposto vendas</span>
-                </div>
-                <div className="mt-1.5 sm:mt-2 text-lg sm:text-2xl font-bold text-white">{formatCurrency(impostoVendas)}</div>
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-400">Apenas vendas clientes</div>
-              </div>
-
-              {/* Margem média */}
-              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-300">
-                  <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-400" />
-                  <span className="truncate">Margem média</span>
-                </div>
-                <div className="mt-1.5 sm:mt-2 text-lg sm:text-2xl font-bold text-white">{formatPercent(margemMedia)}</div>
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-400">Pedidos de cliente</div>
-              </div>
-            </div>
+      <div className="flex flex-col gap-4 sm:gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">Visão geral do seu negócio</p>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <PeriodFilter
+              value={period}
+              onChange={setPeriod}
+              customDate={customDate}
+              customDateEnd={customDateEnd}
+              onCustomDate={setCustomDate}
+              onCustomDateEnd={setCustomDateEnd}
+            />
+            <Select value={accountFilter} onValueChange={setAccountFilter}>
+              <SelectTrigger
+                className="w-[180px] border-border/50 bg-card text-sm h-9"
+                title="Filtrar por conta"
+              >
+                <SelectValue placeholder="Todas as contas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as contas</SelectItem>
+                {(ml?.accounts ?? []).map((a: any) => (
+                  <SelectItem key={a.name} value={a.name}>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                      {a.name}
+                    </span>
+                  </SelectItem>
+                ))}
+                {(shopeeSummary.data?.accounts ?? []).map((a: any) => (
+                  <SelectItem key={a.name} value={a.name}>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                      {a.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              onClick={handleRefreshTokens}
+              disabled={refreshStatus === "loading"}
+              title="Renovar tokens do Mercado Livre"
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border transition-colors ${
+                refreshStatus === "ok" ? "border-emerald-500/50 text-emerald-400" :
+                refreshStatus === "error" ? "border-red-500/50 text-red-400" :
+                "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshStatus === "loading" ? "animate-spin" : ""}`} />
+              {refreshStatus === "ok" ? "Renovado" : refreshStatus === "error" ? "Erro" : "ML Token"}
+            </button>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-[130px] border-border/50 bg-card text-sm h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger className="w-[90px] border-border/50 bg-card text-sm h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["2024", "2025", "2026"].map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        {/* ── Gráfico de evolução ────────────────── */}
-        <Card className="border-border/60 shadow-sm">
-          <CardHeader className="px-4 sm:px-6 pb-2 sm:pb-4">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
-              <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" /> Evolução mês a mês
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Vendas, lucro e compras de {selectedYear}.</CardDescription>
-          </CardHeader>
-          <CardContent className="px-2 sm:px-6">
-            {evolutionQuery.isLoading ? (
-              <div className="flex items-center justify-center" style={{ height: 280 }}>
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div
-                ref={chartContainerRef}
-                className="relative w-full h-[260px] sm:h-[340px]"
-              />
-            )}
-          </CardContent>
-        </Card>
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {kpis.map((kpi, i) => (
+            <motion.div key={kpi.label} custom={i} variants={cardVariants} initial="hidden" animate="visible">
+              <Card className={`border ${kpi.bg}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <kpi.icon className={`h-4 w-4 ${kpi.color}`} />
+                    <span className="text-xs text-muted-foreground truncate">{kpi.label}</span>
+                  </div>
+                  <div className="mt-2 text-xl sm:text-2xl font-bold text-foreground">{kpi.value}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{kpi.sub}</div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
 
-        {/* ── Ranking de CNPJs ────────────────── */}
-        <Card className="border-border/60 shadow-sm">
-          <CardHeader className="px-4 sm:px-6 pb-2 sm:pb-4">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
-              <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" /> Ranking dos meus CNPJs
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">
-              Compras pessoais por CNPJ em {months.find(m => m.value === selectedMonth)?.label}/{selectedYear}
-            </CardDescription>
+        {/* ML por canal */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {mlAccounts.map((acc, i) => {
+            const colors = ["text-primary border-primary/20 bg-primary/5", "text-blue-400 border-blue-500/20 bg-blue-500/5", "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"];
+            return (
+              <motion.div key={acc.name} custom={i + 4} variants={cardVariants} initial="hidden" animate="visible">
+                <Card className={`border ${colors[i]?.split(" ").slice(1).join(" ") ?? ""}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">{acc.name}</span>
+                      <ShoppingBag className={`h-4 w-4 ${colors[i]?.split(" ")[0] ?? "text-muted-foreground"}`} />
+                    </div>
+                    <div className="mt-2 text-lg font-bold">{fmt(acc.today?.total ?? 0)}</div>
+                    <div className="text-xs text-muted-foreground">{acc.today?.count ?? 0} vendas — {periodLabelText}</div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Shopee */}
+        {shopeeAccounts.length > 0 && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {shopeeAccounts.map((acc: any, i: number) => (
+              <motion.div key={acc.name} custom={i + 7} variants={cardVariants} initial="hidden" animate="visible">
+                <Card className="border border-orange-500/20 bg-orange-500/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">{acc.name}</span>
+                      <ShoppingBag className="h-4 w-4 text-orange-400" />
+                    </div>
+                    <div className="mt-2 text-lg font-bold">{fmt(acc.today ?? 0)}</div>
+                    <div className="text-xs text-muted-foreground">{acc.todayCount ?? 0} vendas hoje — Total: {fmt(acc.total)}</div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* ══════ ÚLTIMAS VENDAS ══════ */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4 text-primary" /> Últimas Vendas
+                {accountFilter !== "all" && <span className="text-xs text-muted-foreground font-normal">— {accountFilter}</span>}
+                {recentOrdersQuery.data && (
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    {(recentOrdersQuery.data ?? []).filter((o: any) => accountFilter === "all" ? true : o.accountName === accountFilter).length} pedidos
+                  </span>
+                )}
+              </CardTitle>
+              <button
+                onClick={() => setLocation("/pedidos")}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                Ver todos <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </CardHeader>
-          <CardContent className="px-4 sm:px-6">
-            {cnpjRankingQuery.isLoading ? (
+          <CardContent className="p-0">
+            {recentOrdersQuery.isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : !cnpjRanking || cnpjRanking.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Building2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm">Nenhuma compra pessoal com CNPJ vinculado neste período.</p>
-                <p className="text-xs mt-1">Cadastre seus CNPJs e vincule nas compras pessoais.</p>
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div className="space-y-3">
-                {(() => {
-                  const totalGeral = cnpjRanking.reduce((sum: number, r: any) => sum + Number(r.totalCompras), 0);
-                  return cnpjRanking.map((r: any, idx: number) => {
-                    const total = Number(r.totalCompras);
-                    const pct = totalGeral > 0 ? (total / totalGeral) * 100 : 0;
-                    const color = CNPJ_COLORS[idx % CNPJ_COLORS.length];
-                    return (
-                      <div key={r.cnpjId} className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-muted/50">
-                        <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full font-bold text-sm sm:text-base text-white" style={{ backgroundColor: color.border }}>
-                          {idx + 1}
+              <div className="divide-y divide-border/20">
+                {(recentOrdersQuery.data ?? []).filter((order: any) =>
+                  accountFilter === "all" ? true : order.accountName === accountFilter
+                ).map((order: any) => (
+                  <div key={order.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/10 transition-colors">
+                    {/* Imagem do produto */}
+                    <div className="h-12 w-12 rounded-lg bg-muted/20 overflow-hidden shrink-0">
+                      {order.productImage ? (
+                        <img
+                          src={order.productImage}
+                          alt={order.productName}
+                          className="h-full w-full object-cover"
+                          onError={(e: any) => { e.target.style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center">
+                          <Package className="h-5 w-5 text-muted-foreground" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm sm:text-base truncate">{r.nomeFantasia || r.razaoSocial}</div>
-                          <div className="text-[10px] sm:text-xs text-muted-foreground">{r.cnpj} &middot; {r.totalPedidos} pedido(s)</div>
-                          <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color.border }} />
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold text-sm sm:text-lg">{formatCurrency(total)}</div>
-                          <div className="text-[10px] sm:text-xs text-muted-foreground">{pct.toFixed(1)}%</div>
-                        </div>
+                      )}
+                    </div>
+
+                    {/* Produto info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate" title={order.productName}>
+                        {order.productName.length > 40 ? order.productName.slice(0, 40) + "…" : order.productName}
                       </div>
-                    );
-                  });
-                })()}
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {order.productSku && (
+                          <span className="text-[10px] text-muted-foreground font-mono">SKU: {order.productSku}</span>
+                        )}
+                        <span className="text-xs text-muted-foreground">{order.buyerName}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {(() => {
+                            const diff = Date.now() - new Date(order.createdAt).getTime();
+                            const mins = Math.floor(diff / 60000);
+                            if (mins < 1) return "agora";
+                            if (mins < 60) return `há ${mins}min`;
+                            const hrs = Math.floor(mins / 60);
+                            if (hrs < 24) return `há ${hrs}h`;
+                            return `há ${Math.floor(hrs / 24)}d`;
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Conta badge */}
+                    <span
+                      className="hidden sm:inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0"
+                      style={{ backgroundColor: `${order.accountColor}15`, color: order.accountColor }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: order.accountColor }} />
+                      {order.accountName}
+                    </span>
+
+                    {/* Status */}
+                    <span className={`hidden sm:inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0 ${
+                      order.status === "paid" ? "bg-emerald-500/10 text-emerald-400" :
+                      order.status === "shipped" ? "bg-blue-500/10 text-blue-400" :
+                      order.status === "delivered" ? "bg-primary/10 text-primary" :
+                      "bg-red-500/10 text-red-400"
+                    }`}>
+                      {order.statusLabel}
+                    </span>
+
+                    {/* Valor */}
+                    <div className="text-sm font-bold text-foreground shrink-0">
+                      {fmt(order.totalAmount)}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* ── Gráfico de evolução por CNPJ ────────────────── */}
-        <Card className="border-border/60 shadow-sm">
-          <CardHeader className="px-4 sm:px-6 pb-2 sm:pb-4">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
-              <Building2 className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" /> Evolução de compras por CNPJ
+        {/* Gráfico principal — Performance de Vendas (recharts) */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BarChart3 className="h-4 w-4 text-primary" /> Performance de Vendas — {periodLabel(period)}
             </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Performance de compras pessoais de cada CNPJ em {selectedYear}.</CardDescription>
           </CardHeader>
-          <CardContent className="px-2 sm:px-6">
-            {cnpjEvolutionQuery.isLoading ? (
-              <div className="flex items-center justify-center" style={{ height: 280 }}>
+          <CardContent>
+            {mlDaily.isLoading ? (
+              <div className="flex items-center justify-center h-[320px]">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : !cnpjEvolution || cnpjEvolution.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Building2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm">Nenhuma compra pessoal com CNPJ vinculado em {selectedYear}.</p>
-              </div>
             ) : (
-              <div
-                ref={cnpjChartContainerRef}
-                className="relative w-full h-[260px] sm:h-[340px]"
-              />
+              <ResponsiveContainer width="100%" height={320}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    {Object.entries(CHANNEL_COLORS).map(([key, color]) => (
+                      <linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={color} stopOpacity={0.1} />
+                        <stop offset="95%" stopColor={color} stopOpacity={0} />
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: "#94A3B8", fontSize: 11 }} axisLine={{ stroke: "#334155" }} />
+                  <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} axisLine={{ stroke: "#334155" }} tickFormatter={(v) => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ paddingTop: 8 }} formatter={(value: string) => <span style={{ color: "#94A3B8", fontSize: 12 }}>{CHANNEL_LABELS[value] || value}</span>} />
+                  <Area type="monotone" dataKey="total" stroke="#D4AF37" strokeWidth={3} fill="url(#grad-total)" dot={{ r: 4, fill: "#D4AF37" }} activeDot={{ r: 6 }} />
+                  <Area type="monotone" dataKey="ml" stroke="#3B82F6" strokeWidth={1.5} fill="url(#grad-ml)" dot={{ r: 3, fill: "#3B82F6" }} activeDot={{ r: 5 }} />
+                  <Area type="monotone" dataKey="shopee" stroke="#F97316" strokeWidth={1.5} fill="url(#grad-shopee)" dot={{ r: 3, fill: "#F97316" }} activeDot={{ r: 5 }} />
+                  <Area type="monotone" dataKey="amazon" stroke="#A855F7" strokeWidth={1.5} fill="url(#grad-amazon)" dot={{ r: 3, fill: "#A855F7" }} activeDot={{ r: 5 }} />
+                  <Area type="monotone" dataKey="distribuidora" stroke="#22C55E" strokeWidth={1.5} fill="url(#grad-distribuidora)" dot={{ r: 3, fill: "#22C55E" }} activeDot={{ r: 5 }} />
+                </AreaChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
+
+        {/* ══════ RANKING + PICOS ══════ */}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          {/* Top Contas */}
+          <motion.div custom={20} variants={cardVariants} initial="hidden" animate="visible">
+            <Card className="border-border/50 h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-primary" /> Top Contas do Período
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(() => {
+                  const allAccounts = [
+                    { name: "CLICKMULTII", total: allMlAccounts.find(a => a.name === "CLICKMULTII")?.month?.total ?? 0, color: "#3B82F6" },
+                    { name: "DUOULTILIDADE", total: allMlAccounts.find(a => a.name === "DUOULTILIDADE")?.month?.total ?? 0, color: "#1D4ED8" },
+                    { name: "KAIBRENLTDA", total: allMlAccounts.find(a => a.name === "KAIBRENLTDA")?.month?.total ?? 0, color: "#60A5FA" },
+                    ...(allShopeeAccounts ?? []).map((a: any) => ({
+                      name: a.name, total: a.total ?? 0, color: "#F97316",
+                    })),
+                  ];
+                  const accounts = (accountFilter !== "all"
+                    ? allAccounts.filter(a => a.name === accountFilter)
+                    : allAccounts
+                  ).sort((a, b) => b.total - a.total);
+                  const maxTotal = accounts[0]?.total || 1;
+                  return accounts.map((acc, i) => (
+                    <div key={acc.name}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <span className="font-bold text-foreground">{i + 1}.</span> {acc.name}
+                        </span>
+                        <span className="text-sm font-bold text-foreground">{fmt(acc.total)}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(acc.total / maxTotal) * 100}%`, backgroundColor: acc.color }} />
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Horário de Pico */}
+          <motion.div custom={21} variants={cardVariants} initial="hidden" animate="visible">
+            <Card className="border-border/50 h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-400" /> Horário de Pico
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-xs text-muted-foreground">Melhor faixa horária</span>
+                    <div className="text-xl font-bold text-foreground mt-0.5">{insights?.peakHour.range ?? "—"}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Receita nesse horário</span>
+                    <div className="text-lg font-bold text-primary mt-0.5">{fmt(insights?.peakHour.avgValue ?? 0)}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Dia da semana com mais vendas</span>
+                    <div className="text-sm font-semibold text-foreground mt-0.5 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground" /> {insights?.peakHour.bestDay ?? "—"}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Produto Mais Vendido */}
+          <motion.div custom={22} variants={cardVariants} initial="hidden" animate="visible">
+            <Card className="border-border/50 h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Package className="h-4 w-4 text-emerald-400" /> Produto Mais Vendido
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-lg bg-muted/30 flex items-center justify-center">
+                      <Package className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-foreground line-clamp-2">{insights?.topProduct.name ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{insights?.topProduct.sku ?? "—"}</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs text-muted-foreground">Quantidade vendida</span>
+                      <div className="text-lg font-bold text-foreground mt-0.5">{insights?.topProduct.qty ?? 0} un.</div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Receita gerada</span>
+                      <div className="text-lg font-bold text-emerald-400 mt-0.5">{fmt(insights?.topProduct.revenue ?? 0)}</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* ══════ DISTRIBUIDORA ══════ */}
+        <div className="mt-2">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 mb-3">
+            <Building2 className="h-5 w-5 text-primary" /> Distribuidora
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {[
+              { icon: DollarSign, label: "Vendas Dist.", value: fmt(vendasDoMes), sub: `${pedidosCliente} pedidos`, color: "text-emerald-400" },
+              { icon: TrendingUp, label: "Lucro Líquido", value: fmt(lucroLiquido), sub: "Após impostos", color: "text-blue-400" },
+              { icon: Wallet, label: "Everton Mondial", value: fmt(comissaoEverton), sub: "R$ 0,75/item", color: "text-amber-400" },
+              { icon: ArrowDownRight, label: "Imposto Vendas", value: fmt(impostoVendas), sub: "3,92%", color: "text-red-400" },
+            ].map((c, i) => (
+              <motion.div key={c.label} custom={i + 7} variants={cardVariants} initial="hidden" animate="visible">
+                <Card className="border-border/50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2">
+                      <c.icon className={`h-4 w-4 ${c.color}`} />
+                      <span className="text-xs text-muted-foreground">{c.label}</span>
+                    </div>
+                    <div className="mt-2 text-lg font-bold">{c.value}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{c.sub}</div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* Card: Distribuidora — Vendas do mês */}
+        <motion.div custom={11} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building2 className="h-5 w-5 text-primary" />
+                    <span className="text-sm font-semibold text-primary">Distribuidora — Vendas do mês</span>
+                  </div>
+                  <div className="text-3xl font-bold text-foreground">{fmt(vendasDoMes)}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{pedidosCliente} pedidos finalizados</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground mb-1">Compras pessoais</div>
+                  <div className="text-lg font-bold text-foreground">{fmt(comprasDoMesMondial)}</div>
+                  <div className="text-xs text-muted-foreground">{pedidosPessoais} pedidos</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Subtotal geral: Marketplace + Distribuidora */}
+        <motion.div custom={12} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Trophy className="h-5 w-5 text-emerald-400" />
+                <span className="text-sm font-semibold text-emerald-400">Faturamento Total do Mês</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Marketplace (ML{selectedAccount ? ` · ${selectedAccount.name}` : ""}) — {periodLabelText}
+                  </div>
+                  <div className="text-xl font-bold text-blue-400">{fmt(mlPeriodTotal)}</div>
+                </div>
+                {!isSingleDay && !selectedAccount && (
+                  <div>
+                    <div className="text-xs text-muted-foreground">Distribuidora</div>
+                    <div className="text-xl font-bold text-emerald-400">{fmt(vendasDoMes)}</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-xs text-muted-foreground">Total {isSingleDay ? periodLabelText : "Geral"}</div>
+                  <div className="text-2xl font-bold text-primary">{fmt(faturamentoTotal)}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Noah diz */}
+        <motion.div custom={13} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Bot className="h-5 w-5 text-primary" />
+                <span className="text-sm font-semibold text-primary">Noah diz:</span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse-dot" />
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {mlPeriodCount > 0
+                  ? selectedAccount
+                    ? `${periodLabelText} — conta ${selectedAccount.name}: ${mlPeriodCount} vendas totalizando ${fmt(mlPeriodTotal)}.`
+                    : `${periodLabelText}: ${mlPeriodCount} vendas no ML totalizando ${fmt(mlPeriodTotal)}. A conta ${allMlAccounts.length > 0 ? [...allMlAccounts].sort((a: any, b: any) => (b.today?.total ?? 0) - (a.today?.total ?? 0))[0]?.name : "—"} está liderando.`
+                  : `Nenhuma venda encontrada no Mercado Livre para ${periodLabelText}${selectedAccount ? ` na conta ${selectedAccount.name}` : ""}.`
+                }
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     </DashboardLayout>
   );

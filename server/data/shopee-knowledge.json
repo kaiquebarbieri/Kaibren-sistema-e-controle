@@ -1,0 +1,105 @@
+{
+  "lastUpdated": "2026-04-12",
+  "version": 2,
+  "source": "seller.shopee.com.br + WebSearch abril/2026",
+  "sections": {
+    "taxasComissoes2026": {
+      "title": "Taxas e Comissões Shopee 2026 (vigente desde 01/03/2026)",
+      "updatedAt": "2026-04-12",
+      "data": {
+        "mudancaMar2026": "MUDANÇA GRANDE em março/2026: comissão agora é por FAIXA DE PREÇO. CPF e CNPJ pagam a MESMA tabela. Teto de R$105 de comissão ACABOU. Frete grátis agora é OBRIGATÓRIO.",
+        "tabelaFaixas": [
+          { "faixa": "Até R$7,99", "comissao": "50% do valor do produto", "taxaFixa": "Nenhuma" },
+          { "faixa": "R$8,00 a R$79,99", "comissao": "20%", "taxaFixa": "R$4 por item" },
+          { "faixa": "R$80,00 a R$99,99", "comissao": "14%", "taxaFixa": "R$16 por item" },
+          { "faixa": "R$100,00 a R$199,99", "comissao": "14%", "taxaFixa": "R$20 por item" },
+          { "faixa": "Acima de R$200,00", "comissao": "14%", "taxaFixa": "R$26 por item" }
+        ],
+        "freteGratis": "OBRIGATÓRIO para todos os vendedores ativos desde março/2026 — não é mais opcional. O custo do frete grátis JÁ ESTÁ EMBUTIDO na comissão por faixa (antes era +6% separado, agora está incluso nos 20%/14%)",
+        "campanhasDestaque": "+2,5% adicional sobre a comissão durante o período da promoção",
+        "subsidioPix": "Subsídio Pix de até 8% dependendo da faixa de preço (Shopee banca, não desconta do vendedor)",
+        "cpfAdicional": "Vendedores CPF com mais de 450 pedidos em 90 dias pagam +R$3/item adicional",
+        "resumo": "CÁLCULO LUCRO REAL: Preço Venda - Comissão (20% ou 14%) - Taxa Fixa (R$4 a R$26) - Custo Produto - Custo Ad = Lucro. ATENÇÃO: produtos abaixo de R$80 pagam 20% + R$4, margem é MUITO apertada!",
+        "alerta": "CUIDADO: produtos abaixo de R$79,90 podem gerar PREJUÍZO se anunciados com ads. A comissão de 20% + R$4 fixo come quase toda a margem. Só anunciar se margem bruta > 40%."
+      }
+    },
+    "gmvMax": {
+      "title": "GMV Max — Novo Sistema de Ads",
+      "updatedAt": "2026-04-12",
+      "data": {
+        "oQueE": "Modo de anúncios com lance automático inteligente e meta de ROAS. Distribui ads em search, discovery, prêmios da loja e moedas Shopee.",
+        "migracaoManual": "Desde julho 2025, campanhas manuais estão migrando para GMV Max automaticamente. Notificação 14 dias antes. Múltiplas campanhas manuais do mesmo produto são combinadas em uma GMV Max.",
+        "regra1Produto": "Cada campanha GMV Max = 1 produto. Ativar GMV Max pausa ads padrão do mesmo produto.",
+        "faseAprendizado": "NÃO editar campanha nos primeiros 7 dias — algoritmo está otimizando. ROAS vai flutuar, é normal.",
+        "roasTarget": {
+          "recomendado": "Usar valores recomendados pela Shopee (baseados no histórico da loja + concorrência)",
+          "produtosNovos": "Começar com ROAS target BAIXO para ganhar tráfego",
+          "produtosPopulares": "Usar ROAS histórico como referência",
+          "cuidado": "ROAS target muito alto limita entrega e volume de dados. Se histórico é 10x, não colocar 14x."
+        },
+        "quandoUsar": "Para maximizar GMV e ROAS com controle de retorno",
+        "quandoNaoUsar": "Se o objetivo é maximizar alcance e gastar todo o budget, usar modo automático",
+        "budgetRecomendado": "Ilimitado e sem data de fim (para não limitar o algoritmo)",
+        "posicao": "GMV Max NÃO garante posição — depende de qualidade da audiência e competitividade do lance"
+      }
+    },
+    "otimizacaoAds": {
+      "title": "Melhores Práticas de Otimização",
+      "updatedAt": "2026-04-12",
+      "data": {
+        "roasMinimo": "Com novas taxas de março/2026, ROAS mínimo para lucro depende da faixa: produtos <R$80 (20%+R$4) precisam de ROAS > 6x para ter lucro. Produtos >R$80 (14%+taxa fixa) precisam de ROAS > 4x.",
+        "ajustes": "Manter ajustes em torno de 20%. Evitar múltiplas alterações diárias.",
+        "tempoMinimo": "Exibir anúncio por no mínimo 2 semanas antes de decidir parar.",
+        "keywords": {
+          "roasAlto": "Para keywords com ROAS > 5, aumentar lance em +R$0.05",
+          "ctrBaixo": "Pausar keywords com CTR < 1.5% se budget limitado",
+          "pausa": "Pausar ads com CTR < 0.8% após 14 dias — problema de imagem ou título"
+        },
+        "fotos": {
+          "fundoBranco": true,
+          "boaIluminacao": true,
+          "produtoCentralizado": "Produto deve ocupar pelo menos 80% da área",
+          "impacto": "Foto ruim = CTR baixo = dinheiro jogado fora"
+        },
+        "titulos": {
+          "formato": "Marca + Modelo + Material + Características. Ex: 'Copo Liquidificador Mondial Turbo 550w L-550 Original'",
+          "regra": "Informativo, conciso e fácil de entender. Para Mondial sempre incluir modelo exato."
+        },
+        "testeAB": "Criar variações alterando imagens ou títulos, rodar 2 semanas, comparar CTR, adotar vencedor"
+      }
+    },
+    "metricas": {
+      "title": "Métricas Importantes",
+      "updatedAt": "2026-04-12",
+      "data": {
+        "roas": "Receita / Gasto em Ads. Direto = produto clicado. Amplo = qualquer produto da loja.",
+        "ctr": "Cliques / Impressões × 100. Abaixo de 1% = anúncio com baixa atratividade.",
+        "cpc": "Custo por Clique. Gasto / Cliques totais.",
+        "cr": "Taxa de Conversão. Pedidos / Cliques.",
+        "vendas2026": "A partir de jan/2026, 'GMV' foi renomeado para 'Vendas' e exclui descontos — visão mais precisa do faturamento real.",
+        "roasIdeal": {
+          "minimo": "2x (empata investimento, mas PERDE dinheiro com taxas)",
+          "saudavel": "5x+ (recomendação Shopee)",
+          "kaibrenAbaixo80": "6x+ MÍNIMO (comissão 20% + R$4 = margem apertadíssima)",
+          "kaibrenAcima80": "4x+ (comissão 14% + taxa fixa = margem razoável)"
+        }
+      }
+    },
+    "novidadesPlataforma2026": {
+      "title": "Novidades da Plataforma 2026",
+      "updatedAt": "2026-04-12",
+      "data": [
+        "MARÇO/2026 — Nova tabela de comissão por FAIXA DE PREÇO (mudança gigante!)",
+        "MARÇO/2026 — Frete grátis agora é OBRIGATÓRIO para todos os vendedores",
+        "MARÇO/2026 — CPF e CNPJ pagam a MESMA tabela de comissão",
+        "MARÇO/2026 — Teto de R$105 de comissão percentual foi ELIMINADO",
+        "MARÇO/2026 — Subsídio Pix de até 8% (Shopee paga)",
+        "MARÇO/2026 — Produtos abaixo de R$80 pagam 20% + R$4 (pressiona margem)",
+        "JAN/2026 — GMV renomeado para 'Vendas' — exclui descontos",
+        "JUL/2025 — Migração forçada de ads manuais para GMV Max",
+        "Shopee Vídeo — formato tipo Reels para mostrar produtos dinamicamente",
+        "Campanhas de Destaque cobram +2,5% adicional"
+      ]
+    }
+  }
+}

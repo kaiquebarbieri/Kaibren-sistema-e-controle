@@ -128,10 +128,16 @@ export default function Products() {
       ? "Tabela que paga à Mondial."
       : "Tabela de revenda para o cliente.";
 
+  function formatMoneyDisplay(value: string | number | null | undefined): string {
+    const num = Number(String(value ?? "0").replace(",", "."));
+    if (isNaN(num) || num === 0) return "0,00";
+    return num.toFixed(2).replace(".", ",");
+  }
+
   function getEditingValues(product: ProductRow): ProductEditValues {
     return editingValues[product.id] ?? {
-      valorProduto: String(product.valorProduto ?? "0"),
-      precoFinal: String(product.precoFinal ?? product.precoDesejado ?? "0"),
+      valorProduto: formatMoneyDisplay(product.valorProduto),
+      precoFinal: formatMoneyDisplay(product.precoFinal ?? product.precoDesejado),
     };
   }
 
@@ -318,124 +324,59 @@ export default function Products() {
               ) : (
                 <>
                   {/* Mobile: card list */}
-                  <div className="space-y-3 lg:hidden">
+                  <div className="space-y-2 lg:hidden">
                     {visibleProducts.map(product => {
                       const editing = getEditingValues(product);
+                      const valor = priceView === "cost"
+                        ? formatCurrency(product.tabelaNovaCk)
+                        : formatCurrency(product.precoFinal);
                       return (
-                        <div key={product.id} className="rounded-xl border border-border/60 bg-card p-3 shadow-sm">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SKU {product.sku}</div>
-                              <h3 className="text-sm font-medium leading-5 text-foreground mt-0.5">{product.titulo}</h3>
-                            </div>
-                            <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending} className="shrink-0 h-8 px-2 text-xs">
-                              <Save className="h-3.5 w-3.5" />
-                            </Button>
+                        <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card px-4 py-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] font-mono text-muted-foreground">{product.sku}</div>
+                            <div className="text-sm font-medium text-foreground leading-5 mt-0.5">{product.titulo}</div>
                           </div>
-
-                          <div className="mt-3 grid gap-2 grid-cols-2">
-                            <div className="space-y-1">
-                              <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{selectedValueLabel}</Label>
-                              <div className="flex items-center rounded-md border border-input bg-background px-2 h-9">
-                                <span className="mr-1 text-xs text-muted-foreground">R$</span>
-                                <Input
-                                  className="border-0 px-0 shadow-none focus-visible:ring-0 h-8 text-sm"
-                                  value={getPrimaryValue(product, editing)}
-                                  onChange={event => setPrimaryValue(product.id, editing, event.target.value)}
-                                  placeholder="0,00"
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{priceView === "cost" ? "Revenda" : "Mondial"}</Label>
-                              <div className="rounded-md border border-input bg-muted/30 px-2 py-1.5 text-sm font-medium text-foreground h-9 flex items-center">
-                                {priceView === "cost" ? formatCurrency(editing.precoFinal) : formatCurrency(editing.valorProduto)}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-2 grid gap-2 grid-cols-2 rounded-lg bg-muted/40 p-2">
-                            <div>
-                              <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Lucro</div>
-                              <div className="text-xs font-semibold text-foreground">{formatCurrency(product.lucro)}</div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Margem</div>
-                              <div className="text-xs font-semibold text-foreground">{formatPercent(product.margemFinal)}</div>
-                            </div>
+                          <div className="shrink-0 text-right">
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{priceView === "cost" ? "Custo" : "Venda"}</div>
+                            <div className="text-base font-bold text-foreground">{valor}</div>
                           </div>
                         </div>
                       );
                     })}
                   </div>
 
-                  {/* Desktop: table */}
-                  <div className="hidden rounded-2xl border border-border/60 lg:block">
-                    <div className="border-b border-border/60 bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-                      Arraste a barra horizontal inferior para o lado e veja todas as colunas da tabela.
-                    </div>
-                    <div className="max-w-full overflow-x-scroll overflow-y-hidden border-t border-border/40 pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-                      <div className="min-w-[1180px]">
-                        <div className="max-h-[620px] overflow-y-auto">
-                          <Table className="min-w-[1180px]">
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>SKU</TableHead>
-                                <TableHead className="min-w-[420px]">Título do produto</TableHead>
-                                <TableHead className="min-w-[220px]">{selectedValueLabel}</TableHead>
-                                <TableHead className="min-w-[220px]">{priceView === "cost" ? "Valor de revenda" : "Valor Mondial"}</TableHead>
-                                <TableHead>Lucro Atual</TableHead>
-                                <TableHead>Margem Atual</TableHead>
-                                <TableHead className="text-right">Salvar</TableHead>
+                  {/* Desktop: table limpa — SKU | Nome | Valor */}
+                  <div className="hidden rounded-2xl border border-border/60 lg:block overflow-hidden">
+                    <div className="max-h-[680px] overflow-y-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="w-28 text-xs font-semibold uppercase tracking-wide">SKU</TableHead>
+                            <TableHead className="text-xs font-semibold uppercase tracking-wide">Produto</TableHead>
+                            <TableHead className="w-44 text-right text-xs font-semibold uppercase tracking-wide">
+                              {priceView === "cost" ? "Custo Mondial" : "Preço de Venda"}
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {visibleProducts.map((product, idx) => {
+                            const valor = priceView === "cost"
+                              ? formatCurrency(product.tabelaNovaCk)
+                              : formatCurrency(product.precoFinal);
+                            return (
+                              <TableRow key={product.id} className={idx % 2 === 0 ? "" : "bg-muted/20"}>
+                                <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">{product.sku}</TableCell>
+                                <TableCell className="text-sm font-medium text-foreground leading-5">{product.titulo}</TableCell>
+                                <TableCell className="text-right">
+                                  <span className={`text-sm font-bold ${priceView === "cost" ? "text-blue-400" : "text-emerald-400"}`}>
+                                    {valor}
+                                  </span>
+                                </TableCell>
                               </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {visibleProducts.map(product => {
-                                const editing = getEditingValues(product);
-                                return (
-                                  <TableRow key={product.id}>
-                                    <TableCell className="font-medium whitespace-nowrap">{product.sku}</TableCell>
-                                    <TableCell className="min-w-[420px] max-w-[420px] whitespace-normal break-words leading-5">{product.titulo}</TableCell>
-                                    <TableCell>
-                                      <div className="min-w-[220px] space-y-1">
-                                        <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{selectedValueLabel}</div>
-                                        <div className="flex items-center rounded-md border border-input bg-background px-3">
-                                          <span className="mr-2 text-sm text-muted-foreground">R$</span>
-                                          <Input
-                                            className="border-0 px-0 shadow-none focus-visible:ring-0"
-                                            value={getPrimaryValue(product, editing)}
-                                            onChange={event => setPrimaryValue(product.id, editing, event.target.value)}
-                                            placeholder="0,00"
-                                          />
-                                        </div>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>
-                                      <div className="min-w-[220px] space-y-1">
-                                        <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                                          {priceView === "cost" ? "Valor de revenda" : "Valor Mondial"}
-                                        </div>
-                                        <div className="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-medium text-foreground">
-                                          {priceView === "cost" ? formatCurrency(editing.precoFinal) : formatCurrency(editing.valorProduto)}
-                                        </div>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>{formatCurrency(product.lucro)}</TableCell>
-                                    <TableCell>{formatPercent(product.margemFinal)}</TableCell>
-                                    <TableCell className="text-right whitespace-nowrap">
-                                      <Button size="sm" onClick={() => handleSaveProduct(product)} disabled={updatePricingMutation.isPending}>
-                                        <Save className="mr-2 h-4 w-4" />
-                                        Salvar
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              })}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </div>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
                     </div>
                   </div>
                 </>

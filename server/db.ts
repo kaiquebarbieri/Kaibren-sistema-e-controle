@@ -27,6 +27,13 @@ import {
   InsertLoanInstallment,
   InsertLoanRetentionEntry,
   InsertPayableAccount,
+  InsertTeamMember,
+  mlCatalogProducts,
+  MLCatalogProduct,
+  InsertMLCatalogProduct,
+  InsertTeamTask,
+  InsertTeamRecord,
+  InsertTeamCharge,
   bankStatements,
   bankTransactions,
   fixedCosts,
@@ -45,6 +52,10 @@ import {
   productUploads,
   products,
   users,
+  teamMembers,
+  teamTasks,
+  teamRecords,
+  teamCharges,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -102,6 +113,32 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+// Pool dedicado para rawQuery (independente do drizzle)
+let _rawPool: mysql.Pool | null = null;
+function getRawPool() {
+  if (!_rawPool && process.env.DATABASE_URL) {
+    _rawPool = mysql.createPool({
+      uri: process.env.DATABASE_URL,
+      waitForConnections: true,
+      connectionLimit: 5,
+    });
+  }
+  return _rawPool;
+}
+
+// Raw SQL query usando o pool diretamente (retorna rows como objetos)
+export async function rawQuery<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  const pool = getRawPool();
+  if (!pool) return [];
+  try {
+    const [rows] = await pool.execute(sql, params);
+    return rows as T[];
+  } catch (err: any) {
+    console.warn("[DB rawQuery] erro:", err.message, "| SQL:", sql.slice(0, 80));
+    return [];
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -180,6 +217,28 @@ export async function getUserByOpenId(openId: string) {
 
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get user: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get user: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -1231,4 +1290,166 @@ export async function getDREData(year: number, month: number, cnpjId?: number) {
     },
     snapshot: snapshot[0] || null,
   };
+}
+
+// ── Team / Equipe ───────────────────────────────────────
+
+export async function listTeamMembers() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(teamMembers).where(eq(teamMembers.active, 1)).orderBy(teamMembers.name);
+}
+
+export async function createTeamMember(data: { name: string; whatsapp: string; usesWhatsappOnly?: number; tasks: string[] }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(teamMembers).values({
+    name: data.name,
+    whatsapp: data.whatsapp,
+    usesWhatsappOnly: data.usesWhatsappOnly ?? 0,
+  }).$returningId();
+  const memberId = result[0]?.id ?? 0;
+
+  if (data.tasks.length > 0) {
+    await db.insert(teamTasks).values(
+      data.tasks.map(desc => ({ memberId, description: desc })),
+    );
+  }
+
+  return memberId;
+}
+
+export async function getTeamMemberById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(teamMembers).where(eq(teamMembers.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listTeamTasks(memberId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(teamTasks).where(and(eq(teamTasks.memberId, memberId), eq(teamTasks.active, 1)));
+}
+
+export async function upsertTeamRecord(data: { memberId: number; taskId?: number; date: string; status: "pendente" | "cumprido" | "nao_cumprido"; photoPath?: string; observation?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if record exists for member + date
+  const existing = await db.select().from(teamRecords).where(
+    and(eq(teamRecords.memberId, data.memberId), eq(teamRecords.date, data.date)),
+  ).limit(1);
+
+  if (existing.length > 0) {
+    await db.update(teamRecords).set({
+      status: data.status,
+      photoPath: data.photoPath ?? existing[0].photoPath,
+      observation: data.observation ?? existing[0].observation,
+      taskId: data.taskId ?? existing[0].taskId,
+    }).where(eq(teamRecords.id, existing[0].id));
+    return existing[0].id;
+  }
+
+  const result = await db.insert(teamRecords).values({
+    memberId: data.memberId,
+    taskId: data.taskId,
+    date: data.date,
+    status: data.status,
+    photoPath: data.photoPath,
+    observation: data.observation,
+  }).$returningId();
+  return result[0]?.id ?? 0;
+}
+
+export async function getTeamRecords(memberId: number, limit = 30) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(teamRecords)
+    .where(eq(teamRecords.memberId, memberId))
+    .orderBy(desc(teamRecords.date))
+    .limit(limit);
+}
+
+export async function getTeamDashboard() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const today = new Date().toISOString().slice(0, 10);
+
+  const members = await db.select().from(teamMembers).where(eq(teamMembers.active, 1));
+  const allTasks = await db.select().from(teamTasks).where(eq(teamTasks.active, 1));
+  const todayRecords = await db.select().from(teamRecords).where(eq(teamRecords.date, today));
+
+  // Week records (last 7 days)
+  const weekDates: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    weekDates.push(d.toISOString().slice(0, 10));
+  }
+  const weekRecords = await db.select().from(teamRecords).where(
+    sql`${teamRecords.date} >= ${weekDates[0]} AND ${teamRecords.date} <= ${weekDates[6]}`,
+  );
+
+  return members.map(member => {
+    const memberTasks = allTasks.filter(t => t.memberId === member.id);
+    const todayRecord = todayRecords.find(r => r.memberId === member.id);
+    const memberWeek = weekDates.map(date => {
+      const rec = weekRecords.find(r => r.memberId === member.id && r.date === date);
+      return { date, status: rec?.status ?? "pendente" };
+    });
+
+    return {
+      ...member,
+      tasks: memberTasks,
+      today: todayRecord ?? null,
+      week: memberWeek,
+    };
+  });
+}
+
+export async function createTeamCharge(data: InsertTeamCharge) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(teamCharges).values(data);
+}
+
+// ── Catálogo ML ───────────────────────────────────────────────────────────────────────────
+export async function listMLCatalogProducts(accountName?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (accountName) conditions.push(eq(mlCatalogProducts.accountName, accountName));
+  const rows = conditions.length
+    ? await db.select().from(mlCatalogProducts).where(and(...conditions)).orderBy(desc(mlCatalogProducts.updatedAt))
+    : await db.select().from(mlCatalogProducts).orderBy(desc(mlCatalogProducts.updatedAt));
+  return rows;
+}
+
+export async function upsertMLCatalogProduct(data: InsertMLCatalogProduct) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(mlCatalogProducts).values(data).onDuplicateKeyUpdate({
+    set: {
+      title: sql`VALUES(title)`,
+      accountName: sql`VALUES(accountName)`,
+      imageUrl: sql`VALUES(imageUrl)`,
+      salePrice: sql`VALUES(salePrice)`,
+      status: sql`VALUES(status)`,
+      lastSyncAt: sql`VALUES(lastSyncAt)`,
+      updatedAt: sql`NOW()`,
+    },
+  });
+}
+
+export async function updateMLCatalogProductCosts(id: number, costPrice: string, packagingCost: string, platformFeePercent: string = "0", taxPercent: string = "0") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(mlCatalogProducts).set({ costPrice, packagingCost, platformFeePercent, taxPercent }).where(eq(mlCatalogProducts.id, id));
+}
+
+export async function deleteMLCatalogProduct(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(mlCatalogProducts).where(eq(mlCatalogProducts.id, id));
 }
