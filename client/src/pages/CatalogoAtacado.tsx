@@ -49,6 +49,45 @@ const DEFAULT_FAIXAS = [
 ];
 
 /* ════════════════════════════════════
+   COMISSÃO EVERTON (gerente Mondial)
+   Regra: custo < R$ 5,00 → R$ 0,40 / custo >= R$ 5,00 → R$ 0,90
+════════════════════════════════════ */
+function calcEverton(custo: number): number {
+  if (custo <= 0) return 0;
+  return custo < 5 ? 0.40 : 0.90;
+}
+
+/* ════════════════════════════════════
+   EMBALAGEM por tipo de produto
+   Botão (sem bolha)              → R$ 0,30
+   Pequeno c/ bolha (puxador,
+     acoplamento)                  → R$ 0,95  (etiqueta 0,15 + saco 0,20 + bolha 0,60)
+   Médio (hélice, base)            → R$ 1,00
+   Grande c/ caixa (cuba, cesto,
+     copo liquidificador, motor)   → R$ 3,45  (etiqueta 0,15 + caixa 2,65 + bolha 0,65)
+   Demais categorias retornam null — Kaique precisa confirmar antes de calcular.
+════════════════════════════════════ */
+type TipoEmbalagem = "botao" | "pequeno" | "medio" | "grande" | null;
+
+function detectTipoEmbalagem(titulo: string): TipoEmbalagem {
+  const t = titulo.toLowerCase();
+  if (t.includes("botão") || t.includes("botões") || t.includes("botao") || t.includes("botoes") || t.includes("anel") || t.includes("plug")) return "botao";
+  if (t.includes("puxador") || t.includes("acoplamento") || t.includes("acoplador") || t.includes("cabo") || t.includes("alça") || t.includes("alca") || t.includes("kit")) return "pequeno";
+  if (t.includes("hélice") || t.includes("helice") || t.includes("base") || t.includes("resistência") || t.includes("resistencia") || t.includes("caixa")) return "medio";
+  if (t.includes("cuba") || t.includes("cesto") || t.includes("copo") || t.includes("motor") || t.includes("comedouro")) return "grande";
+  return null;
+}
+
+function calcEmbalagem(titulo: string): number | null {
+  const tipo = detectTipoEmbalagem(titulo);
+  if (tipo === "botao") return 0.30;
+  if (tipo === "pequeno") return 0.95;
+  if (tipo === "medio") return 1.00;
+  if (tipo === "grande") return 3.45;
+  return null;
+}
+
+/* ════════════════════════════════════
    DETECTOR DE CATEGORIA
 ════════════════════════════════════ */
 function detectCategoria(titulo: string): string {
@@ -312,18 +351,26 @@ export default function CatalogoAtacado() {
   function exportarCatalogo() {
     if (!produtos.length) return;
     const ws = XLSX.utils.json_to_sheet(
-      produtos.map((p) => ({
+      produtos.map((p) => {
+        const everton = calcEverton(p.custo);
+        const embalagem = calcEmbalagem(p.titulo);
+        const custoTotal = p.custo > 0 ? p.custo + everton + (embalagem ?? 0) : 0;
+        return {
         SKU: p.sku,
         Produto: p.titulo,
         Categoria: p.categoria,
         "Custo (pago)": p.custo > 0 ? `R$ ${p.custo.toFixed(2)}` : "-",
+        "Everton": everton > 0 ? `R$ ${everton.toFixed(2)}` : "-",
+        "Embalagem": embalagem !== null ? `R$ ${embalagem.toFixed(2)}` : "?",
+        "Custo Total": custoTotal > 0 ? `R$ ${custoTotal.toFixed(2)}` : "-",
         "Venda Balcão": `R$ ${p.venda.toFixed(2)}`,
-        "Margem %": p.custo > 0 ? `${(((p.venda - p.custo) / p.venda) * 100).toFixed(1)}%` : "-",
+        "Margem %": custoTotal > 0 ? `${(((p.venda - custoTotal) / p.venda) * 100).toFixed(1)}%` : "-",
         "10–24un (-10%)":  `R$ ${(p.venda * 0.90).toFixed(2)}`,
         "25–49un (-15%)":  `R$ ${(p.venda * 0.85).toFixed(2)}`,
         "50–99un (-20%)":  `R$ ${(p.venda * 0.80).toFixed(2)}`,
         "100+un (-25%)":   `R$ ${(p.venda * 0.75).toFixed(2)}`,
-      }))
+        };
+      })
     );
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Catálogo CK Atacados");
@@ -528,6 +575,9 @@ export default function CatalogoAtacado() {
                           <th className="text-left p-3 text-xs text-muted-foreground font-medium">Produto</th>
                           <th className="text-left p-3 text-xs text-muted-foreground font-medium hidden md:table-cell">Categoria</th>
                           <th className="text-right p-3 text-xs text-muted-foreground font-medium">Custo</th>
+                          <th className="text-right p-3 text-[10px] text-muted-foreground font-medium hidden lg:table-cell" title="Comissão do Everton (gerente Mondial). <R$5 = R$0,40 / ≥R$5 = R$0,90">Everton</th>
+                          <th className="text-right p-3 text-[10px] text-muted-foreground font-medium hidden lg:table-cell" title="Embalagem: botão R$0,30 / pequeno c/bolha R$0,95 / grande c/caixa R$3,45">Embal.</th>
+                          <th className="text-right p-3 text-[10px] text-muted-foreground font-medium hidden lg:table-cell" title="Custo total real (custo + Everton + embalagem)">Custo Total</th>
                           <th className="text-right p-3 text-xs text-muted-foreground font-medium">Venda</th>
                           {faixaSel > 0 && (
                             <th className="text-right p-3 text-xs text-muted-foreground font-medium hidden md:table-cell">
@@ -541,15 +591,21 @@ export default function CatalogoAtacado() {
                       <tbody>
                         {filtrados.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="text-center p-8 text-muted-foreground text-xs">
+                            <td colSpan={11} className="text-center p-8 text-muted-foreground text-xs">
                               Nenhum produto encontrado
                             </td>
                           </tr>
                         ) : (
                           filtrados.map((p, i) => {
                             const isEdit = editIdx === i;
-                            const margem = p.custo > 0 && p.venda > 0
-                              ? ((p.venda - p.custo) / p.venda) * 100
+                            const everton = calcEverton(p.custo);
+                            const embalagem = calcEmbalagem(p.titulo);
+                            const custoTotal = p.custo > 0
+                              ? p.custo + everton + (embalagem ?? 0)
+                              : 0;
+                            // Margem usa custo TOTAL real (custo + Everton + embalagem)
+                            const margem = custoTotal > 0 && p.venda > 0
+                              ? ((p.venda - custoTotal) / p.venda) * 100
                               : null;
                             const precoFaixa = p.venda * faixa.mult;
                             const noCarrinho = carrinho[p.sku] || 0;
@@ -593,6 +649,29 @@ export default function CatalogoAtacado() {
                                       {p.custo > 0 ? `R$${p.custo.toFixed(2)}` : "—"}
                                     </span>
                                   )}
+                                </td>
+
+                                {/* Everton */}
+                                <td className="p-3 text-right hidden lg:table-cell">
+                                  <span className={`text-[11px] ${everton > 0 ? "text-purple-400" : "text-muted-foreground/40"}`}>
+                                    {everton > 0 ? `R$${everton.toFixed(2)}` : "—"}
+                                  </span>
+                                </td>
+
+                                {/* Embalagem */}
+                                <td className="p-3 text-right hidden lg:table-cell">
+                                  {embalagem !== null ? (
+                                    <span className="text-[11px] text-cyan-400">R${embalagem.toFixed(2)}</span>
+                                  ) : (
+                                    <span className="text-[11px] text-amber-400" title="Categoria não mapeada — me avise qual bucket aplicar">?</span>
+                                  )}
+                                </td>
+
+                                {/* Custo Total */}
+                                <td className="p-3 text-right hidden lg:table-cell">
+                                  <span className={`text-xs font-bold ${custoTotal > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                                    {custoTotal > 0 ? `R$${custoTotal.toFixed(2)}` : "—"}
+                                  </span>
                                 </td>
 
                                 {/* Venda */}
