@@ -15,6 +15,10 @@ const presets: PresetOption[] = [
   { label: "Últimos 7 dias",  value: "7d",        days: 7 },
   { label: "Últimos 15 dias", value: "15d",       days: 15 },
   { label: "Últimos 30 dias", value: "30d",       days: 30 },
+  { label: "Últimos 90 dias", value: "90d",       days: 90 },
+  { label: "Mês atual",       value: "month",     days: 0 },
+  { label: "Mês anterior",    value: "prevMonth", days: 0 },
+  { label: "Este ano",        value: "year",      days: 0 },
 ];
 
 const MONTHS_SHORT = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
@@ -98,6 +102,16 @@ function RangeCalendar({ initialStart, initialEnd, onApply, onCancel }: Calendar
       const from = new Date(Date.now() - 3 * 60 * 60 * 1000);
       from.setDate(from.getDate() - 89);
       return { start: dateToISO(from), end: todayStr };
+    }},
+    { label: "Mês", getRange: () => {
+      const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      return { start: dateToISO(first), end: todayStr };
+    }},
+    { label: "Ano", getRange: () => {
+      const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      const first = new Date(d.getFullYear(), 0, 1);
+      return { start: dateToISO(first), end: todayStr };
     }},
   ];
 
@@ -446,16 +460,31 @@ export default function PeriodFilter({
 
 // ── Hooks e utilitarios ──────────────────────────────────────────
 
-export function usePeriod() {
-  const [period, setPeriod] = useState(() => {
-    try { return localStorage.getItem(STORAGE_KEY) || "7d"; } catch { return "7d"; }
+export function usePeriod(storageKey?: string, defaultPeriod: string = "7d") {
+  const key = storageKey ?? STORAGE_KEY;
+  const keyDate = `${key}-date`;
+  const keyDateEnd = `${key}-date-end`;
+  const [period, setPeriodState] = useState(() => {
+    try { return localStorage.getItem(key) || defaultPeriod; } catch { return defaultPeriod; }
   });
-  const [customDate, setCustomDate] = useState(() => {
-    try { return localStorage.getItem(STORAGE_KEY_DATE) || ""; } catch { return ""; }
+  const [customDate, setCustomDateState] = useState(() => {
+    try { return localStorage.getItem(keyDate) || ""; } catch { return ""; }
   });
-  const [customDateEnd, setCustomDateEnd] = useState(() => {
-    try { return localStorage.getItem(STORAGE_KEY_DATE_END) || ""; } catch { return ""; }
+  const [customDateEnd, setCustomDateEndState] = useState(() => {
+    try { return localStorage.getItem(keyDateEnd) || ""; } catch { return ""; }
   });
+  const setPeriod = (v: string) => {
+    setPeriodState(v);
+    try { localStorage.setItem(key, v); } catch {}
+  };
+  const setCustomDate = (v: string) => {
+    setCustomDateState(v);
+    try { localStorage.setItem(keyDate, v); } catch {}
+  };
+  const setCustomDateEnd = (v: string) => {
+    setCustomDateEndState(v);
+    try { localStorage.setItem(keyDateEnd, v); } catch {}
+  };
   return [period, setPeriod, customDate, setCustomDate, customDateEnd, setCustomDateEnd] as const;
 }
 
@@ -493,7 +522,26 @@ export function periodToDates(
     return { dateFrom: customDate, dateTo: customDateEnd || customDate };
   }
 
-  // 7d / 15d / 30d
+  if (period === "month") {
+    const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const first = new Date(d.getFullYear(), d.getMonth(), 1);
+    return { dateFrom: dateToISO(first), dateTo: today };
+  }
+
+  if (period === "prevMonth") {
+    const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const first = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    const last = new Date(d.getFullYear(), d.getMonth(), 0);
+    return { dateFrom: dateToISO(first), dateTo: dateToISO(last) };
+  }
+
+  if (period === "year") {
+    const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const first = new Date(d.getFullYear(), 0, 1);
+    return { dateFrom: dateToISO(first), dateTo: today };
+  }
+
+  // 7d / 15d / 30d / 90d
   const days = periodToDays(period);
   if (days > 0) {
     const from = new Date(Date.now() - 3 * 60 * 60 * 1000);
@@ -502,4 +550,22 @@ export function periodToDates(
   }
 
   return { dateFrom: today, dateTo: today };
+}
+
+/**
+ * Versão pra mandar pro backend: range [start, end) — end EXCLUSIVO.
+ * Garante range >= 1 dia mesmo pra "Hoje" (start = 00:00 hoje, end = 00:00 amanhã).
+ */
+export function periodToDateRange(
+  period: string,
+  customDate?: string,
+  customDateEnd?: string,
+): { start: Date; end: Date } {
+  const { dateFrom, dateTo } = periodToDates(period, customDate, customDateEnd);
+  const start = new Date(`${dateFrom}T00:00:00-03:00`);
+  const endIncl = new Date(`${dateTo}T00:00:00-03:00`);
+  // end exclusivo = dia seguinte ao dateTo
+  const end = new Date(endIncl);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
 }

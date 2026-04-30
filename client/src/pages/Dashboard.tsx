@@ -15,6 +15,7 @@ import {
   Clock,
   DollarSign,
   Loader2,
+  Megaphone,
   Package,
   RefreshCw,
   ShoppingBag,
@@ -109,10 +110,19 @@ export default function Dashboard() {
   const mlDaily = trpc.vendas.mlDailySales.useQuery({ days: periodToDays(period) || 7 });
   const revenueQuery = trpc.dashboard.revenueEvolution.useQuery({ days: periodToDays(period) || 7 });
   const recentOrdersQuery = trpc.marketplaceOrders.recent.useQuery({ limit: 10 }, { refetchInterval: 120000 });
-  const shopeeSummary = trpc.vendas.shopeeSummary.useQuery(undefined, { refetchInterval: 300000 });
+  const shopeeSummary = trpc.vendas.shopeeSummary.useQuery(
+    { dateFrom, dateTo },
+    { refetchInterval: period === "today" ? 120000 : false }
+  );
   const mlRefreshMutation = trpc.vendas.mlRefreshTokens.useMutation();
   const insightsQuery = trpc.vendas.dashboardInsights.useQuery(undefined, { refetchInterval: 300000 });
   const insights = insightsQuery.data;
+  // Catálogo ML — margem real dos anúncios ativos (custo + Everton + embalagem + taxas + impostos)
+  const mlCatalogQuery = trpc.listMLCatalog.useQuery();
+  // Investimento em ads — Meta (Facebook/Instagram) + ML Ads + Shopee Ads
+  const metaAdsQuery = trpc.marketing.metaAds.useQuery(undefined, { staleTime: 600_000 });
+  const mlAdsQuery = trpc.mlAds.dashboard.useQuery(undefined, { staleTime: 600_000 });
+  const shopeeAdsQuery = trpc.shopeeAds.dashboard.useQuery(undefined, { staleTime: 600_000 });
   const [, setLocation] = useLocation();
   const [refreshStatus, setRefreshStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
 
@@ -137,7 +147,50 @@ export default function Dashboard() {
 
   const vendasDoMes = Number(monthly?.totalVendasClientes ?? 0);
   const lucroLiquido = Number(monthly?.totalLucro ?? 0);
-  const margemMedia = Number(monthly?.margemMedia ?? 0);
+  // Imposto Simples Nacional efetivo — abr/2026: 9,3% (TODO: ler de company_tax_rates quando preenchido)
+  const IMPOSTO_PERCENT = 9.3;
+
+  // Taxas reais Mercado Livre (Clássico Eletrônicos) — fonte: marketplace_fees
+  // - Comissão 13% sobre venda
+  // - Taxa fixa por faixa: R$6,25 (12,50-29), R$6,50 (29-50), R$6,75 (50-79), zero acima
+  // - Frete grátis obrigatório acima de R$79 → vendedor paga ~R$16 (estimativa peso médio)
+  const mlFeesFor = (sale: number): number => {
+    if (sale <= 0) return 0;
+    const commission = sale * 0.13;
+    let fixedFee = 0;
+    if (sale >= 12.50 && sale < 29) fixedFee = 6.25;
+    else if (sale >= 29 && sale < 50) fixedFee = 6.50;
+    else if (sale >= 50 && sale < 79) fixedFee = 6.75;
+    const frete = sale >= 79 ? 16 : 0;
+    return commission + fixedFee + frete;
+  };
+
+  // Margem real dos marketplaces — (sale - taxas_ml - imposto - custo - everton - embalagem) / sale
+  // dos anúncios ML ativos com costPrice > 0
+  const mlMargemReal = (() => {
+    const list = mlCatalogQuery.data ?? [];
+    const ativos = list.filter((p: any) => p.status === "active" && Number(p.salePrice) > 0 && Number(p.costPrice) > 0);
+    if (!ativos.length) return { pct: 0, count: 0 };
+    const calcEverton = (custo: number) => custo <= 0 ? 0 : (custo < 5 ? 0.40 : 0.90);
+    let totalPct = 0;
+    for (const p of ativos) {
+      const sale = Number(p.salePrice);
+      const custo = Number(p.costPrice);
+      const cost = custo + Number(p.packagingCost) + calcEverton(custo);
+      // Usa platformFeePercent do anúncio quando > 0, senão calcula pelas faixas reais ML
+      const fee = Number(p.platformFeePercent) > 0
+        ? sale * (Number(p.platformFeePercent) / 100)
+        : mlFeesFor(sale);
+      const taxPctEff = Number(p.taxPercent) > 0 ? Number(p.taxPercent) : IMPOSTO_PERCENT;
+      const tax = sale * (taxPctEff / 100);
+      const margin = ((sale - fee - tax - cost) / sale) * 100;
+      totalPct += margin;
+    }
+    return { pct: totalPct / ativos.length, count: ativos.length };
+  })();
+  const margemMedia = mlMargemReal.pct;
+  const margemAnunciosCount = mlMargemReal.count;
+
   const pedidosCliente = Number(monthly?.totalPedidosCliente ?? 0);
   const comprasDoMesMondial = Number(monthly?.totalComprasPessoais ?? 0);
   const pedidosPessoais = Number(monthly?.totalPedidosPessoais ?? 0);
@@ -169,6 +222,11 @@ export default function Dashboard() {
     ? Number(selectedMlAccount.month?.total ?? 0)
     : Number(ml?.totals?.month?.total ?? 0);
 
+  // Imposto a pagar — todas as vendas do mês selecionado (ML + Shopee) × IMPOSTO_PERCENT
+  // (imposto é sempre mensal — Simples Nacional)
+  const faturamentoMesMarketplaces = mlMonthTotalFiltered + shopeeMonthTotal;
+  const impostoAPagar = faturamentoMesMarketplaces * (IMPOSTO_PERCENT / 100);
+
   // Total marketplace = ML + Shopee (respeitando filtro de conta e período)
   const marketplacePeriodTotal = selectedShopeeAccount
     ? Number(selectedShopeeAccount.today ?? 0)
@@ -186,6 +244,39 @@ export default function Dashboard() {
     period === "today" ||
     (period === "custom" && !!customDate && (customDate === customDateEnd || !customDateEnd));
   const periodLabelText = periodLabel(period, customDate, customDateEnd);
+
+  // Lucro estimado do PERÍODO selecionado = faturamento_periodo × margem_media (margem já desconta tudo MENOS ads)
+  const lucroEstimadoPeriodoAntesAds = marketplacePeriodTotal * (margemMedia / 100);
+
+  // Investimento em Ads — Meta (lifetime no summary) + ML (29 dias) + Shopee (7 ou 14 dias)
+  // Como cada API retorna janela diferente, fazemos rateio por dia pra alinhar com o período do filtro.
+  const periodDays = periodToDays(period) || 7;
+
+  const metaSpend30d = Number(metaAdsQuery.data?.totalSpend ?? 0); // Meta retorna lifetime; tratamos como mensal aproximado
+  const mlAdsAccounts: any[] = (mlAdsQuery.data as any)?.accounts ?? (Array.isArray(mlAdsQuery.data) ? (mlAdsQuery.data as any) : []);
+  const mlSpend29d = mlAdsAccounts.reduce((acc, a: any) => acc + Number(a?.adsData?.totalCost ?? 0), 0);
+  const shopeeSpend14d = Number((shopeeAdsQuery.data as any)?.kpis?.expense14d ?? 0);
+  const shopeeSpend7d = Number((shopeeAdsQuery.data as any)?.kpis?.expense7d ?? 0);
+
+  // Estima gasto no período selecionado (rateio diário)
+  const adsMetaPeriodo = metaSpend30d * Math.min(periodDays, 30) / 30;
+  const adsMLPeriodo = mlSpend29d * Math.min(periodDays, 29) / 29;
+  const adsShopeePeriodo = periodDays <= 7
+    ? shopeeSpend7d * periodDays / 7
+    : (shopeeSpend14d * Math.min(periodDays, 14) / 14);
+
+  // Filtro por conta ML/Shopee — se selecionou Shopee, esconde ML/Meta etc
+  let adsTotalPeriodo = adsMetaPeriodo + adsMLPeriodo + adsShopeePeriodo;
+  let adsLabel = "Meta + ML + Shopee";
+  if (selectedShopeeAccount) {
+    adsTotalPeriodo = adsShopeePeriodo;
+    adsLabel = "Shopee";
+  } else if (selectedMlAccount) {
+    adsTotalPeriodo = adsMLPeriodo;
+    adsLabel = "Mercado Livre";
+  }
+
+  const lucroEstimadoPeriodo = lucroEstimadoPeriodoAntesAds - adsTotalPeriodo;
 
   // Faturamento total = marketplace (ML + Shopee) + distribuidora
   const faturamentoTotal = isSingleDay
@@ -217,8 +308,11 @@ export default function Dashboard() {
   const kpis = [
     { icon: DollarSign, label: `Faturamento Marketplaces — ${periodLabelText}`, value: fmt(marketplacePeriodTotal), sub: `${marketplacePeriodCount} pedidos (ML + Shopee)`, color: "text-emerald-400", bg: "border-emerald-500/20 bg-emerald-500/5" },
     { icon: ShoppingCart, label: `Pedidos Marketplaces — ${periodLabelText}`, value: String(marketplacePeriodCount), sub: `ML: ${mlPeriodCount} | Shopee: ${shopeeTodayCount}`, color: "text-primary", bg: "border-primary/20 bg-primary/5" },
-    { icon: TrendingUp, label: "Margem Média", value: fmtPct(margemMedia), sub: "Distribuidora", color: "text-blue-400", bg: "border-blue-500/20 bg-blue-500/5" },
+    { icon: TrendingUp, label: "Margem Média", value: fmtPct(margemMedia / 100), sub: margemAnunciosCount > 0 ? `Marketplaces — ${margemAnunciosCount} anúncios` : "Sem dados ainda", color: margemMedia >= 30 ? "text-emerald-400" : margemMedia >= 15 ? "text-amber-400" : "text-blue-400", bg: margemMedia >= 30 ? "border-emerald-500/20 bg-emerald-500/5" : "border-blue-500/20 bg-blue-500/5" },
     { icon: AlertTriangle, label: "Vendas Mês (Dist.)", value: fmt(vendasDoMes), sub: `${pedidosCliente} pedidos`, color: "text-amber-400", bg: "border-amber-500/20 bg-amber-500/5" },
+    { icon: AlertTriangle, label: `Imposto a Pagar — ${IMPOSTO_PERCENT}%`, value: fmt(impostoAPagar), sub: `Marketplaces ${months.find(m => m.value === selectedMonth)?.label ?? ""} (${fmt(faturamentoMesMarketplaces)})`, color: "text-red-400", bg: "border-red-500/20 bg-red-500/5" },
+    { icon: Megaphone, label: `Investimento em Ads — ${periodLabelText}`, value: fmt(adsTotalPeriodo), sub: adsLabel, color: "text-purple-400", bg: "border-purple-500/20 bg-purple-500/5" },
+    { icon: TrendingUp, label: `Lucro Líquido — ${periodLabelText}`, value: fmt(lucroEstimadoPeriodo), sub: `Margem ${margemMedia.toFixed(1)}% − Ads ${fmt(adsTotalPeriodo)}`, color: lucroEstimadoPeriodo > 0 ? "text-emerald-400" : "text-red-400", bg: lucroEstimadoPeriodo > 0 ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5" },
   ];
 
   const allMlAccounts = ml?.accounts ?? [];
@@ -375,7 +469,7 @@ export default function Dashboard() {
                       <ShoppingBag className="h-4 w-4 text-orange-400" />
                     </div>
                     <div className="mt-2 text-lg font-bold">{fmt(acc.today ?? 0)}</div>
-                    <div className="text-xs text-muted-foreground">{acc.todayCount ?? 0} vendas hoje — Total: {fmt(acc.total)}</div>
+                    <div className="text-xs text-muted-foreground">{acc.todayCount ?? 0} vendas — {periodLabelText}</div>
                   </CardContent>
                 </Card>
               </motion.div>

@@ -23,6 +23,7 @@ import {
 import { useIsMobile } from "@/hooks/useMobile";
 import { useTheme } from "@/hooks/useTheme";
 import {
+  Activity,
   BarChart3,
   Bot,
   CreditCard,
@@ -35,12 +36,12 @@ import {
   LogOut,
   Megaphone,
   Menu,
-  Mic,
   Moon,
   Sun,
   MessageSquare,
   Package,
   PanelLeft,
+  Plug,
   ReceiptText,
   Settings,
   Shield,
@@ -71,14 +72,21 @@ type MenuItem = {
 
 const menuItems: MenuItem[] = [
   { icon: BarChart3, label: "Dashboard", section: "dashboard", href: "/", roles: ["admin", "user"] },
-  { icon: Mic, label: "Noah Voice", section: "noah-voice", href: "/noah", roles: ["admin"] },
   { icon: Layers, label: "Meu Dia", section: "operacional", href: "/operacional", roles: ["user"] },
   { icon: ShoppingCart, label: "Vendas", section: "pedidos", href: "/pedidos", roles: ["admin", "user"] },
+  { icon: BarChart3, label: "Análise de Vendas", section: "analise-vendas", href: "/analise-vendas", indent: true, parentSection: "pedidos", roles: ["admin"] },
+  { icon: Target, label: "Metas", section: "metas", href: "/metas", indent: true, parentSection: "pedidos", roles: ["admin"] },
   { icon: ShoppingBag, label: "Shopee Ads", section: "shopee", href: "/shopee", roles: ["admin"] },
+  { icon: Target, label: "ML Ads", section: "ml-ads", href: "/ml-ads", roles: ["admin"] },
   { icon: Package, label: "Produtos", section: "produtos", href: "/produtos", roles: ["admin", "user"] },
   { icon: Package, label: "Catálogo ML", section: "catalogo-ml", href: "/catalogo-ml", indent: true, parentSection: "produtos", roles: ["admin"] },
+  { icon: BarChart3, label: "Análise de Margem", section: "analise-margem", href: "/analise-margem", indent: true, parentSection: "produtos", roles: ["admin"] },
   { icon: ShoppingBag, label: "Lista Compras Mondial", section: "lista-compras", href: "/lista-compras", indent: true, parentSection: "produtos", roles: ["admin"] },
+  { icon: Layers, label: "Catálogo Atacado", section: "catalogo-atacado", href: "/catalogo-atacado", indent: true, parentSection: "produtos", roles: ["admin"] },
+  { icon: Bot, label: "Catálogo Anúncios (Sam)", section: "catalogo-anuncios", href: "/produtos/catalogo-anuncios", indent: true, parentSection: "produtos", roles: ["admin"] },
   { icon: Wallet, label: "Financeiro", section: "financeiro", href: "/financeiro", roles: ["admin"] },
+  { icon: Activity, label: "Saúde da Empresa", section: "saude-empresa", href: "/financeiro/saude-empresa", indent: true, parentSection: "financeiro", roles: ["admin"] },
+  { icon: BarChart3, label: "DRE Gerencial", section: "dre-gerencial", href: "/financeiro/dre", indent: true, parentSection: "financeiro", roles: ["admin"] },
   { icon: Wallet, label: "Custos Fixos", section: "custos-fixos", href: "/financeiro/custos-fixos", indent: true, parentSection: "financeiro", roles: ["admin"] },
   { icon: FileText, label: "Extratos", section: "extratos", href: "/extratos", indent: true, parentSection: "financeiro", roles: ["admin"] },
   { icon: ReceiptText, label: "Obrigações", section: "contas", href: "/contas/contas-a-pagar", indent: true, parentSection: "financeiro", roles: ["admin"] },
@@ -90,12 +98,12 @@ const menuItems: MenuItem[] = [
   { icon: Target, label: "Facebook Ads", section: "facebook-ads", href: "/marketing/facebook-ads", roles: ["admin"], hiddenFromMenu: true },
   { icon: Instagram, label: "Instagram", section: "instagram", href: "/marketing/instagram", roles: ["admin"], hiddenFromMenu: true },
   { icon: MessageSquare, label: "Mensagens ML", section: "mensagens", href: "/mensagens", roles: ["admin", "user"] },
+  { icon: Bot, label: "Atendimento Shopee", section: "atendimento-shopee", href: "/atendimento-shopee", roles: ["admin"] },
   { icon: Warehouse, label: "Estoque", section: "estoque", href: "/estoque", roles: ["admin"] },
   { icon: Users, label: "Equipe", section: "equipe", href: "/equipe", roles: ["admin"] },
   { icon: BarChart3, label: "Relatório Executivo", section: "relatorios-exec", href: "/relatorios-exec", roles: ["admin"] },
   { icon: Shield, label: "Auditoria", section: "auditoria", href: "/auditoria", roles: ["admin"] },
   { icon: FileText, label: "Relatórios", section: "relatorios", href: "/relatorios", roles: ["admin"], hiddenFromMenu: true },
-  { icon: Layers, label: "Catálogo CK Atacados", section: "catalogo-atacado", href: "/catalogo-atacado", roles: ["admin"], hiddenFromMenu: true },
   { icon: Globe, label: "Afiliado Nutra 🇺🇸", section: "afiliado-nutra", href: "/afiliado-nutra", roles: ["admin"], hiddenFromMenu: true },
   { icon: Bot, label: "Agentes", section: "agentes", href: "/agentes", roles: ["admin"], hiddenFromMenu: true },
   { icon: Bot, label: "🦾 Noah — CEO", section: "agente-noah", href: "/agentes/noah", indent: true, parentSection: "agentes", badge: "dot-green", roles: ["admin"], hiddenFromMenu: true },
@@ -105,11 +113,8 @@ const menuItems: MenuItem[] = [
   { icon: Bot, label: "⚖️ Rex — Fiscal", section: "agente-rex", href: "/agentes/rex", indent: true, parentSection: "agentes", roles: ["admin"], hiddenFromMenu: true },
   { icon: Bot, label: "🛒 Sam — Vendas", section: "agente-sam", href: "/agentes/sam", indent: true, parentSection: "agentes", roles: ["admin"], hiddenFromMenu: true },
   { icon: Bot, label: "🧑‍⚖️ Bruno — Jurídico", section: "agente-bruno", href: "/agentes/bruno", indent: true, parentSection: "agentes", roles: ["admin"], hiddenFromMenu: true },
+  { icon: Plug, label: "Integrações", section: "integracoes", href: "/integracoes", roles: ["admin"] },
   { icon: Settings, label: "Configurações", section: "configuracoes", href: "/configuracoes", roles: ["admin"] },
-  { icon: ShoppingCart, label: "Marketplaces", section: "config-marketplaces", href: "/configuracoes?tab=Marketplaces", indent: true, parentSection: "configuracoes", roles: ["admin"] },
-  { icon: Target, label: "Marketing", section: "config-marketing", href: "/configuracoes?tab=Marketing", indent: true, parentSection: "configuracoes", roles: ["admin"] },
-  { icon: Megaphone, label: "Comunicação", section: "config-comunicacao", href: "/configuracoes?tab=Comunicacao", indent: true, parentSection: "configuracoes", roles: ["admin"] },
-  { icon: Settings, label: "Sistema", section: "config-sistema", href: "/configuracoes?tab=Sistema", indent: true, parentSection: "configuracoes", roles: ["admin"] },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -195,13 +200,16 @@ function getSupportContent(activeSection: string): SupportContent {
 function isItemActive(item: MenuItem, activeSection: string) {
   if (item.section === activeSection) return true;
   if (item.section === "financeiro") {
-    return ["financeiro", "custos-fixos", "extratos", "contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection);
+    return ["financeiro", "saude-empresa", "dre-gerencial", "custos-fixos", "extratos", "contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection);
   }
   if (item.section === "contas") {
     return ["contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection);
   }
   if (item.section === "produtos") {
-    return ["produtos", "catalogo-ml", "lista-compras"].includes(activeSection);
+    return ["produtos", "catalogo-ml", "catalogo-anuncios", "lista-compras", "analise-margem", "catalogo-atacado"].includes(activeSection);
+  }
+  if (item.section === "pedidos") {
+    return ["pedidos", "analise-vendas", "metas"].includes(activeSection);
   }
   if (item.section === "marketing") {
     return ["marketing", "facebook-ads", "instagram", "studio"].includes(activeSection);
@@ -283,10 +291,11 @@ function DashboardLayoutContent({
   const role = (user?.role === "admin" ? "admin" : "user") as AppRole;
   const supportContent = useMemo(() => getSupportContent(activeSection), [activeSection]);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => ({
-    financeiro: ["financeiro", "custos-fixos", "extratos", "contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection),
+    financeiro: ["financeiro", "saude-empresa", "dre-gerencial", "custos-fixos", "extratos", "contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection),
     contas: ["contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection),
     marketing: ["marketing", "facebook-ads", "instagram", "studio"].includes(activeSection),
-    produtos: ["produtos", "catalogo-ml", "lista-compras"].includes(activeSection),
+    produtos: ["produtos", "catalogo-ml", "catalogo-anuncios", "lista-compras", "analise-margem", "catalogo-atacado"].includes(activeSection),
+    pedidos: ["pedidos", "analise-vendas", "metas"].includes(activeSection),
     agentes: activeSection === "agentes" || activeSection.startsWith("agente-"),
     configuracoes: activeSection === "configuracoes" || activeSection.startsWith("config-"),
   }));
@@ -311,14 +320,17 @@ function DashboardLayoutContent({
   }, [isCollapsed]);
 
   useEffect(() => {
-    if (["financeiro", "custos-fixos", "extratos", "contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection)) {
+    if (["financeiro", "saude-empresa", "dre-gerencial", "custos-fixos", "extratos", "contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection)) {
       setExpandedSections((current) => ({ ...current, financeiro: true }));
     }
     if (["contas", "contas-a-pagar", "cartao-de-credito", "emprestimos"].includes(activeSection)) {
       setExpandedSections((current) => ({ ...current, contas: true }));
     }
-    if (["produtos", "catalogo-ml", "lista-compras"].includes(activeSection)) {
+    if (["produtos", "catalogo-ml", "catalogo-anuncios", "lista-compras", "analise-margem", "catalogo-atacado"].includes(activeSection)) {
       setExpandedSections((current) => ({ ...current, produtos: true }));
+    }
+    if (["pedidos", "analise-vendas", "metas"].includes(activeSection)) {
+      setExpandedSections((current) => ({ ...current, pedidos: true }));
     }
     if (["marketing", "facebook-ads", "instagram", "studio"].includes(activeSection)) {
       setExpandedSections((current) => ({ ...current, marketing: true }));
@@ -574,7 +586,7 @@ function DashboardLayoutContent({
             <SidebarMenu className="gap-0.5">
               {visibleMenuItems.map(item => {
                 const isActive = isItemActive(item, activeSection);
-                const isExpandable = ["produtos", "financeiro", "contas", "marketing", "agentes", "configuracoes"].includes(item.section);
+                const isExpandable = ["produtos", "financeiro", "contas", "marketing", "agentes", "pedidos"].includes(item.section);
                 const isExpanded = expandedSections[item.section];
                 return (
                   <SidebarMenuItem key={item.label}>

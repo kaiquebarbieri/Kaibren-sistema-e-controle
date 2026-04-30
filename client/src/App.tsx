@@ -18,6 +18,8 @@ const Products = lazy(() => import("@/pages/Products"));
 const BankStatements = lazy(() => import("@/pages/BankStatements"));
 const Finance = lazy(() => import("@/pages/Finance"));
 const CustosFixos = lazy(() => import("@/pages/CustosFixos"));
+const DreGerencial = lazy(() => import("@/pages/DreGerencial"));
+const SaudeEmpresa = lazy(() => import("@/pages/SaudeEmpresa"));
 const Obligations = lazy(() => import("@/pages/Obligations"));
 const Agent = lazy(() => import("@/pages/Agent"));
 const Team = lazy(() => import("@/pages/Team"));
@@ -32,6 +34,7 @@ const AgentDetail = lazy(() => import("@/pages/AgentDetail"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
 const ListaCompras = lazy(() => import("@/pages/ListaCompras"));
 const Settings = lazy(() => import("@/pages/Settings"));
+const Integrations = lazy(() => import("@/pages/Integrations"));
 const CatalogoML = lazy(() => import("@/pages/CatalogoML"));
 const Operacional = lazy(() => import("@/pages/Operacional"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
@@ -39,7 +42,12 @@ const RelatoriosExec = lazy(() => import("@/pages/RelatoriosExec"));
 const Auditoria = lazy(() => import("@/pages/Auditoria"));
 const Mensagens = lazy(() => import("@/pages/Mensagens"));
 const ShopeeIntelligence = lazy(() => import("@/pages/ShopeeIntelligence"));
-const NoahVoice = lazy(() => import("@/pages/NoahVoice"));
+const MLAds = lazy(() => import("@/pages/MLAds"));
+const AnaliseMargem = lazy(() => import("@/pages/AnaliseMargem"));
+const AnaliseVendas = lazy(() => import("@/pages/AnaliseVendas"));
+const Metas = lazy(() => import("@/pages/Metas"));
+const AtendimentoShopee = lazy(() => import("@/pages/AtendimentoShopee"));
+const CatalogoAnuncios = lazy(() => import("@/pages/CatalogoAnuncios"));
 
 function PageLoader() {
   return (
@@ -71,6 +79,9 @@ function Router() {
         <Route path={"/operacional"}>{() => <Operacional />}</Route>
         <Route path={"/clientes"}>{() => <Customers />}</Route>
         <Route path={"/produtos"}>{() => <Products />}</Route>
+        <Route path={"/analise-margem"}>{() => <AdminOnly><AnaliseMargem /></AdminOnly>}</Route>
+        <Route path={"/analise-vendas"}>{() => <AdminOnly><AnaliseVendas /></AdminOnly>}</Route>
+        <Route path={"/metas"}>{() => <AdminOnly><Metas /></AdminOnly>}</Route>
         <Route path={"/pedidos"}>{() => <Orders />}</Route>
         <Route path={"/marketing"}>{() => <AdminOnly><Marketing /></AdminOnly>}</Route>
         <Route path={"/marketing/facebook-ads"}>{() => <AdminOnly><FacebookAds /></AdminOnly>}</Route>
@@ -81,6 +92,8 @@ function Router() {
         <Route path={"/extratos/:id"}>{() => <AdminOnly><BankStatements /></AdminOnly>}</Route>
         <Route path={"/financeiro"}>{() => <AdminOnly><Finance /></AdminOnly>}</Route>
         <Route path={"/financeiro/custos-fixos"}>{() => <AdminOnly><CustosFixos /></AdminOnly>}</Route>
+        <Route path={"/financeiro/dre"}>{() => <AdminOnly><DreGerencial /></AdminOnly>}</Route>
+        <Route path={"/financeiro/saude-empresa"}>{() => <AdminOnly><SaudeEmpresa /></AdminOnly>}</Route>
         <Route path={"/equipe"}>{() => <AdminOnly><Team /></AdminOnly>}</Route>
         <Route path={"/agente"}>{() => <AdminOnly><Agent /></AdminOnly>}</Route>
         <Route path={"/agentes"}>{() => <AdminOnly><Agentes /></AdminOnly>}</Route>
@@ -95,9 +108,12 @@ function Router() {
         <Route path={"/auditoria"}>{() => <AdminOnly><Auditoria /></AdminOnly>}</Route>
         <Route path={"/mensagens"}>{() => <Mensagens />}</Route>
         <Route path={"/shopee"}>{() => <AdminOnly><ShopeeIntelligence /></AdminOnly>}</Route>
-        <Route path={"/noah"}>{() => <AdminOnly><NoahVoice /></AdminOnly>}</Route>
+        <Route path={"/atendimento-shopee"}>{() => <AdminOnly><AtendimentoShopee /></AdminOnly>}</Route>
+        <Route path={"/produtos/catalogo-anuncios"}>{() => <AdminOnly><CatalogoAnuncios /></AdminOnly>}</Route>
+        <Route path={"/ml-ads"}>{() => <AdminOnly><MLAds /></AdminOnly>}</Route>
         <Route path={"/catalogo-ml"}>{() => <AdminOnly><CatalogoML /></AdminOnly>}</Route>
         <Route path={"/configuracoes"}>{() => <AdminOnly><Settings /></AdminOnly>}</Route>
+        <Route path={"/integracoes"}>{() => <AdminOnly><Integrations /></AdminOnly>}</Route>
         <Route path={"/contas"}>{() => <AdminOnly><Obligations /></AdminOnly>}</Route>
         <Route path={"/contas/:tab"}>{() => <AdminOnly><Obligations /></AdminOnly>}</Route>
         <Route path={"/obrigacoes"}>{() => <AdminOnly><Obligations /></AdminOnly>}</Route>
