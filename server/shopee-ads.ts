@@ -16,7 +16,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getConnectedShops, shopeeApiFetch, type ShopeeShop } from "./shopee";
 import { invokeLLM } from "./_core/llm";
-import { getDb } from "./db";
+import { getDb, rawQuery } from "./db";
 import { products } from "../drizzle/schema";
 import { sql } from "drizzle-orm";
 
@@ -74,6 +74,25 @@ async function shopeeAdsPost(path: string, shop: ShopeeShop, body: any): Promise
   const data = await res.json();
   if (data.error) throw new Error(`Shopee Ads ${path}: ${data.error} - ${data.message || ""}`);
   return data;
+}
+
+// ---------- Shop selection ----------
+
+/** Lista metadata pública das lojas conectadas (sem expor tokens). */
+export async function listConnectedShopsPublic(): Promise<Array<{ shopId: string; shopName: string; slug: string }>> {
+  const shops = await getConnectedShops();
+  return shops.map(s => ({ shopId: s.shopId, shopName: s.shopName, slug: s.slug }));
+}
+
+/** Resolve a shop pelo shopId; cai pra primeira conectada se não achar; null se nenhuma. */
+async function pickShop(shopId?: string): Promise<ShopeeShop | null> {
+  const shops = await getConnectedShops();
+  if (shops.length === 0) return null;
+  if (shopId) {
+    const found = shops.find(s => s.shopId === shopId);
+    if (found) return found;
+  }
+  return shops[0];
 }
 
 // ---------- Helpers ----------
@@ -167,11 +186,14 @@ function loadShopeeKnowledge(): string {
 // ---------- Dados de Ads ----------
 
 /** Saldo total de créditos de ads */
-export async function getAdsBalance(): Promise<{ balance: number; timestamp: number } | null> {
-  const shops = await getConnectedShops();
-  if (shops.length === 0) return null;
+export async function getAdsBalance(shop?: ShopeeShop): Promise<{ balance: number; timestamp: number } | null> {
+  if (!shop) {
+    const shops = await getConnectedShops();
+    if (shops.length === 0) return null;
+    shop = shops[0];
+  }
   try {
-    const data = await shopeeAdsGet("/ads/get_total_balance", shops[0]);
+    const data = await shopeeAdsGet("/ads/get_total_balance", shop);
     return {
       balance: data.response?.total_balance ?? 0,
       timestamp: data.response?.data_timestamp ?? 0,
@@ -183,10 +205,12 @@ export async function getAdsBalance(): Promise<{ balance: number; timestamp: num
 }
 
 /** Lista de campanhas com settings e detalhes dos produtos */
-export async function getAdsCampaigns(): Promise<any[]> {
-  const shops = await getConnectedShops();
-  if (shops.length === 0) return [];
-  const shop = shops[0];
+export async function getAdsCampaigns(shop?: ShopeeShop): Promise<any[]> {
+  if (!shop) {
+    const shops = await getConnectedShops();
+    if (shops.length === 0) return [];
+    shop = shops[0];
+  }
 
   try {
     // 1. Buscar IDs de campanhas
@@ -234,18 +258,20 @@ export async function getAdsCampaigns(): Promise<any[]> {
 }
 
 /** Performance diária dos ads (shop-level) — últimos N dias */
-export async function getAdsDailyPerformance(days: number = 14): Promise<any[]> {
-  const shops = await getConnectedShops();
-  if (shops.length === 0) return [];
+export async function getAdsDailyPerformance(days: number = 29, shop?: ShopeeShop): Promise<any[]> {
+  if (!shop) {
+    const shops = await getConnectedShops();
+    if (shops.length === 0) return [];
+    shop = shops[0];
+  }
 
   const now = new Date();
-  const endDate = new Date(now);
-  endDate.setDate(endDate.getDate() - 1); // ontem (API não aceita hoje em alguns cenários)
+  const endDate = new Date(now); // incluir hoje — API retorna o que tiver disponível
   const startDate = new Date(now);
   startDate.setDate(startDate.getDate() - days);
 
   try {
-    const data = await shopeeAdsGet("/ads/get_all_cpc_ads_daily_performance", shops[0], {
+    const data = await shopeeAdsGet("/ads/get_all_cpc_ads_daily_performance", shop, {
       start_date: formatDateDD(startDate),
       end_date: formatDateDD(endDate),
     });
@@ -257,9 +283,9 @@ export async function getAdsDailyPerformance(days: number = 14): Promise<any[]> 
 }
 
 /** Performance diária por campanha */
-export async function getCampaignDailyPerformance(campaignIds: string, days: number = 14): Promise<any[]> {
-  const shops = await getConnectedShops();
-  if (shops.length === 0) return [];
+export async function getCampaignDailyPerformance(campaignIds: string, days: number = 14, shopId?: string): Promise<any[]> {
+  const shop = await pickShop(shopId);
+  if (!shop) return [];
 
   const now = new Date();
   const endDate = new Date(now);
@@ -268,7 +294,7 @@ export async function getCampaignDailyPerformance(campaignIds: string, days: num
   startDate.setDate(startDate.getDate() - days);
 
   try {
-    const data = await shopeeAdsGet("/ads/get_product_campaign_daily_performance", shops[0], {
+    const data = await shopeeAdsGet("/ads/get_product_campaign_daily_performance", shop, {
       start_date: formatDateDD(startDate),
       end_date: formatDateDD(endDate),
       campaign_id_list: campaignIds,
@@ -315,11 +341,11 @@ async function getItemsDetails(itemIds: number[], shop: ShopeeShop): Promise<Map
 }
 
 /** Itens recomendados para anunciar */
-export async function getRecommendedItems(): Promise<any[]> {
-  const shops = await getConnectedShops();
-  if (shops.length === 0) return [];
+export async function getRecommendedItems(shopId?: string): Promise<any[]> {
+  const shop = await pickShop(shopId);
+  if (!shop) return [];
   try {
-    const data = await shopeeAdsGet("/ads/get_recommended_item_list", shops[0]);
+    const data = await shopeeAdsGet("/ads/get_recommended_item_list", shop);
     return data.response || [];
   } catch (err: any) {
     console.error("[Shopee Ads] Recommended items error:", err.message);
@@ -328,11 +354,11 @@ export async function getRecommendedItems(): Promise<any[]> {
 }
 
 /** Keywords recomendadas para um item */
-export async function getRecommendedKeywords(itemId: number): Promise<any[]> {
-  const shops = await getConnectedShops();
-  if (shops.length === 0) return [];
+export async function getRecommendedKeywords(itemId: number, shopId?: string): Promise<any[]> {
+  const shop = await pickShop(shopId);
+  if (!shop) return [];
   try {
-    const data = await shopeeAdsGet("/ads/get_recommended_keyword_list", shops[0], {
+    const data = await shopeeAdsGet("/ads/get_recommended_keyword_list", shop, {
       item_id: String(itemId),
     });
     return data.response?.suggested_keywords || [];
@@ -342,13 +368,50 @@ export async function getRecommendedKeywords(itemId: number): Promise<any[]> {
   }
 }
 
+// ---------- Vendas diarias Shopee do DB (para calcular organico) ----------
+
+async function getDailyShopeeSalesFromDb(days: number, shopName?: string): Promise<Array<{ date: string; gmv: number; orders: number }>> {
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startStr = startDate.toISOString().slice(0, 10);
+
+    const params: any[] = [startStr];
+    let accountFilter = "";
+    if (shopName) {
+      accountFilter = " AND accountName = ?";
+      params.push(shopName);
+    }
+
+    const rows = await rawQuery<{ date: string; gmv: number; orders: number }>(
+      `SELECT DATE_FORMAT(platformCreatedAt, '%d-%m-%Y') as date,
+              ROUND(COALESCE(SUM(totalAmount), 0), 2) as gmv,
+              COUNT(*) as orders
+       FROM marketplace_orders
+       WHERE platform = 'shopee' AND status != 'cancelled' AND platformCreatedAt >= ?${accountFilter}
+       GROUP BY DATE_FORMAT(platformCreatedAt, '%d-%m-%Y'), DATE(platformCreatedAt)
+       ORDER BY DATE(platformCreatedAt)`,
+      params,
+    );
+
+    return rows.map(r => ({ date: String(r.date), gmv: Number(r.gmv), orders: Number(r.orders) }));
+  } catch (err: any) {
+    console.error("[Shopee Ads] DB daily sales error:", err.message);
+    return [];
+  }
+}
+
 // ---------- Dashboard completo ----------
 
-export async function getShopeeAdsDashboard() {
-  const [balance, campaigns, dailyPerf] = await Promise.all([
-    getAdsBalance(),
-    getAdsCampaigns(),
-    getAdsDailyPerformance(14),
+export async function getShopeeAdsDashboard(shopId?: string) {
+  const shop = await pickShop(shopId);
+  if (!shop) return null;
+
+  const [balance, campaigns, dailyPerf, dailySalesDb] = await Promise.all([
+    getAdsBalance(shop),
+    getAdsCampaigns(shop),
+    getAdsDailyPerformance(29, shop),
+    getDailyShopeeSalesFromDb(29, shop.shopName),
   ]);
 
   // Calcular totais dos últimos 7 e 30 dias a partir de dailyPerf
@@ -445,6 +508,7 @@ export async function getShopeeAdsDashboard() {
       broadRoas: Math.round((d.broad_roas || 0) * 10) / 10,
       cpc: d.clicks > 0 ? Math.round((d.expense / d.clicks) * 100) / 100 : 0,
     })),
+    dailySalesDb: dailySalesDb,
     alerts,
     totalCampaigns: campaigns.length,
     activeCampaigns: activeCampaigns.length,
