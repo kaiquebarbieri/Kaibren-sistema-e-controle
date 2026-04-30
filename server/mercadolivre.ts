@@ -8,7 +8,7 @@ import { getDb } from "./db";
 import { marketplaceOrders, revenueSnapshots, mlCatalogProducts } from "../drizzle/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 
-type MLAccount = {
+export type MLAccount = {
   name: string;
   userId: string;
   accessToken: string;
@@ -140,7 +140,7 @@ export function startMLTokenCron() {
   console.log("[ML Cron] Token auto-renewal iniciado (intervalo: 5h)");
 }
 
-async function mlFetch(account: MLAccount, url: string, retried = false): Promise<any> {
+export async function mlFetch(account: MLAccount, url: string, retried = false): Promise<any> {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${account.accessToken}` },
   });
@@ -438,90 +438,106 @@ export async function getMLSalesSummary(customDateFrom?: string, customDateTo?: 
 
   // Usar horário de Brasília (UTC-3)
   const now = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  const todayStr = customDateFrom || now.toISOString().slice(0, 10);
-  const endStr = customDateTo || todayStr;
 
-  // Week start (domingo)
+  // Períodos padrão (quando sem filtro customizado)
+  const todayStr = now.toISOString().slice(0, 10);
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay());
-  const weekStr = customDateFrom || weekStart.toISOString().slice(0, 10);
+  const weekStr = weekStart.toISOString().slice(0, 10);
+  const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
-  // Month start
-  const monthStr = customDateFrom || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  // Se período customizado, usar como range único para today/week/month
+  const periodFrom = customDateFrom || todayStr;
+  const periodTo = customDateTo || todayStr;
 
-  let todayData: any[], weekData: any[], monthData: any[];
-  let apiWorked = true;
+  const db = await getDb();
+  if (!db) return { accounts: [], totals: { today: { total: 0, count: 0 }, week: { total: 0, count: 0 }, month: { total: 0, count: 0 } } };
 
   try {
-    [todayData, weekData, monthData] = await Promise.all([
-      getMLOrdersPaginated(undefined, todayStr, endStr, "paid"),
-      getMLOrdersPaginated(undefined, weekStr, endStr, "paid"),
-      getMLOrdersPaginated(undefined, monthStr, endStr, "paid"),
-    ]);
-  } catch {
-    apiWorked = false;
-    todayData = []; weekData = []; monthData = [];
-  }
+    // ── Fonte primária: banco de dados (tem TODOS os pedidos, sem limite de 500) ──
+    const rows = await db.select({
+      accountName: marketplaceOrders.accountName,
+      periodTotal: sql<number>`COALESCE(SUM(CASE WHEN ${marketplaceOrders.platformCreatedAt} >= ${periodFrom + " 00:00:00"} AND ${marketplaceOrders.platformCreatedAt} <= ${periodTo + " 23:59:59"} THEN ${marketplaceOrders.totalAmount} ELSE 0 END), 0)`,
+      periodCount: sql<number>`SUM(CASE WHEN ${marketplaceOrders.platformCreatedAt} >= ${periodFrom + " 00:00:00"} AND ${marketplaceOrders.platformCreatedAt} <= ${periodTo + " 23:59:59"} THEN 1 ELSE 0 END)`,
+      todayTotal: sql<number>`COALESCE(SUM(CASE WHEN DATE(${marketplaceOrders.platformCreatedAt}) = ${todayStr} THEN ${marketplaceOrders.totalAmount} ELSE 0 END), 0)`,
+      todayCount: sql<number>`SUM(CASE WHEN DATE(${marketplaceOrders.platformCreatedAt}) = ${todayStr} THEN 1 ELSE 0 END)`,
+      weekTotal: sql<number>`COALESCE(SUM(CASE WHEN ${marketplaceOrders.platformCreatedAt} >= ${weekStr + " 00:00:00"} THEN ${marketplaceOrders.totalAmount} ELSE 0 END), 0)`,
+      weekCount: sql<number>`SUM(CASE WHEN ${marketplaceOrders.platformCreatedAt} >= ${weekStr + " 00:00:00"} THEN 1 ELSE 0 END)`,
+      monthTotal: sql<number>`COALESCE(SUM(CASE WHEN ${marketplaceOrders.platformCreatedAt} >= ${monthStr + " 00:00:00"} THEN ${marketplaceOrders.totalAmount} ELSE 0 END), 0)`,
+      monthCount: sql<number>`SUM(CASE WHEN ${marketplaceOrders.platformCreatedAt} >= ${monthStr + " 00:00:00"} THEN 1 ELSE 0 END)`,
+    })
+      .from(marketplaceOrders)
+      .where(and(
+        eq(marketplaceOrders.platform, "ml"),
+        eq(marketplaceOrders.status, "paid"),
+      ))
+      .groupBy(marketplaceOrders.accountName);
 
-  // Se API não retornou nada, tentar fallback do banco
-  const totalFromApi = (todayData ?? []).reduce((s: number, a: any) => s + (a.orders?.length ?? 0), 0)
-    + (weekData ?? []).reduce((s: number, a: any) => s + (a.orders?.length ?? 0), 0);
+    // Quando customDateFrom é passado, today/week/month = período customizado
+    const useCustom = !!customDateFrom;
 
-  if (!apiWorked || totalFromApi === 0) {
-    const dbSummary = await getSummaryFromDB();
-    if (dbSummary) {
-      console.log("[ML] Using DB fallback for summary");
-      setCache(cacheKey, dbSummary);
-      return dbSummary;
-    }
-  }
+    const accounts = rows.map((r: any) => ({
+      name: r.accountName as string,
+      today: { total: Number(useCustom ? r.periodTotal : r.todayTotal), count: Number(useCustom ? r.periodCount : r.todayCount) },
+      week: { total: Number(useCustom ? r.periodTotal : r.weekTotal), count: Number(useCustom ? r.periodCount : r.weekCount) },
+      month: { total: Number(useCustom ? r.periodTotal : r.monthTotal), count: Number(useCustom ? r.periodCount : r.monthCount) },
+    }));
 
-  const accounts = getAccounts().map((acc) => {
-    const todayAcc = (todayData ?? []).find((d: any) => d.account === acc.name);
-    const weekAcc = (weekData ?? []).find((d: any) => d.account === acc.name);
-    const monthAcc = (monthData ?? []).find((d: any) => d.account === acc.name);
-
-    const todayTotal = (todayAcc?.orders ?? []).reduce((s: number, o: any) => s + o.totalAmount, 0);
-    const weekTotal = (weekAcc?.orders ?? []).reduce((s: number, o: any) => s + o.totalAmount, 0);
-    const monthTotal = (monthAcc?.orders ?? []).reduce((s: number, o: any) => s + o.totalAmount, 0);
-
-    return {
-      name: acc.name,
-      today: { total: todayTotal, count: todayAcc?.orders?.length ?? 0 },
-      week: { total: weekTotal, count: weekAcc?.orders?.length ?? 0 },
-      month: { total: monthTotal, count: monthAcc?.orders?.length ?? 0 },
+    const totals = {
+      today: { total: accounts.reduce((s, a) => s + a.today.total, 0), count: accounts.reduce((s, a) => s + a.today.count, 0) },
+      week: { total: accounts.reduce((s, a) => s + a.week.total, 0), count: accounts.reduce((s, a) => s + a.week.count, 0) },
+      month: { total: accounts.reduce((s, a) => s + a.month.total, 0), count: accounts.reduce((s, a) => s + a.month.count, 0) },
     };
-  });
 
-  const totals = {
-    today: {
-      total: accounts.reduce((s, a) => s + a.today.total, 0),
-      count: accounts.reduce((s, a) => s + a.today.count, 0),
-    },
-    week: {
-      total: accounts.reduce((s, a) => s + a.week.total, 0),
-      count: accounts.reduce((s, a) => s + a.week.count, 0),
-    },
-    month: {
-      total: accounts.reduce((s, a) => s + a.month.total, 0),
-      count: accounts.reduce((s, a) => s + a.month.count, 0),
-    },
-  };
+    const result = { accounts, totals };
+    setCache(cacheKey, result);
 
-  const result = { accounts, totals };
-  setCache(cacheKey, result);
-
-  // Persistir snapshot de receita de hoje
-  if (totals.today.total > 0) {
-    persistRevenueSnapshot(todayStr, "ml", totals.today.total, totals.today.count).catch(() => {});
-    for (const acc of accounts) {
-      if (acc.today.total > 0) {
-        persistRevenueSnapshot(todayStr, `ml_${acc.name.toLowerCase()}`, acc.today.total, acc.today.count).catch(() => {});
+    // Persistir snapshot de receita de hoje
+    if (totals.today.total > 0 && !customDateFrom) {
+      persistRevenueSnapshot(todayStr, "ml", totals.today.total, totals.today.count).catch(() => {});
+      for (const acc of accounts) {
+        if (acc.today.total > 0) {
+          persistRevenueSnapshot(todayStr, `ml_${acc.name.toLowerCase()}`, acc.today.total, acc.today.count).catch(() => {});
+        }
       }
     }
-  }
 
-  return result;
+    return result;
+  } catch (err) {
+    console.error("[ML] Summary DB error, falling back to API:", err);
+    // Fallback: usar API paginada (limitada a 500 por conta)
+    try {
+      const [todayData, weekData, monthData] = await Promise.all([
+        getMLOrdersPaginated(undefined, periodFrom, periodTo, "paid"),
+        getMLOrdersPaginated(undefined, customDateFrom || weekStr, periodTo, "paid"),
+        getMLOrdersPaginated(undefined, customDateFrom || monthStr, periodTo, "paid"),
+      ]);
+
+      const accounts = getAccounts().map((acc) => {
+        const todayAcc = (todayData ?? []).find((d: any) => d.account === acc.name);
+        const weekAcc = (weekData ?? []).find((d: any) => d.account === acc.name);
+        const monthAcc = (monthData ?? []).find((d: any) => d.account === acc.name);
+        return {
+          name: acc.name,
+          today: { total: (todayAcc?.orders ?? []).reduce((s: number, o: any) => s + o.totalAmount, 0), count: todayAcc?.orders?.length ?? 0 },
+          week: { total: (weekAcc?.orders ?? []).reduce((s: number, o: any) => s + o.totalAmount, 0), count: weekAcc?.orders?.length ?? 0 },
+          month: { total: (monthAcc?.orders ?? []).reduce((s: number, o: any) => s + o.totalAmount, 0), count: monthAcc?.orders?.length ?? 0 },
+        };
+      });
+
+      const totals = {
+        today: { total: accounts.reduce((s, a) => s + a.today.total, 0), count: accounts.reduce((s, a) => s + a.today.count, 0) },
+        week: { total: accounts.reduce((s, a) => s + a.week.total, 0), count: accounts.reduce((s, a) => s + a.week.count, 0) },
+        month: { total: accounts.reduce((s, a) => s + a.month.total, 0), count: accounts.reduce((s, a) => s + a.month.count, 0) },
+      };
+
+      const result = { accounts, totals };
+      setCache(cacheKey, result);
+      return result;
+    } catch {
+      return { accounts: [], totals: { today: { total: 0, count: 0 }, week: { total: 0, count: 0 }, month: { total: 0, count: 0 } } };
+    }
+  }
 }
 
 // ── Sincroniza anúncios ativos das contas ML no catálogo ────────────────────

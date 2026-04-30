@@ -39,11 +39,38 @@ function fmt(v: string | number | null | undefined) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const IMPOSTO_PERCENT = 9.3;
+
+// Comissão Everton (gerente Mondial): custo < R$5 → R$0,40 / ≥ R$5 → R$0,90
+function calcEverton(custo: number): number {
+  if (custo <= 0) return 0;
+  return custo < 5 ? 0.40 : 0.90;
+}
+
+// Taxas reais ML (Clássico Eletrônicos): comissão 13% + taxa fixa por faixa + frete grátis acima R$79
+function calcMlFees(sale: number): number {
+  if (sale <= 0) return 0;
+  const commission = sale * 0.13;
+  let fixedFee = 0;
+  if (sale >= 12.50 && sale < 29) fixedFee = 6.25;
+  else if (sale >= 29 && sale < 50) fixedFee = 6.50;
+  else if (sale >= 50 && sale < 79) fixedFee = 6.75;
+  const frete = sale >= 79 ? 16 : 0;
+  return commission + fixedFee + frete;
+}
+
 function calcMargin(salePrice: string, costPrice: string, packagingCost: string, platformFeePercent?: string, taxPercent?: string) {
   const sale = Number(salePrice);
-  const cost = Number(costPrice) + Number(packagingCost);
-  const platformFee = sale * (Number(platformFeePercent ?? "0") / 100);
-  const tax = sale * (Number(taxPercent ?? "0") / 100);
+  const custoBase = Number(costPrice);
+  const everton = calcEverton(custoBase);
+  const cost = custoBase + Number(packagingCost) + everton;
+  // Comissão: usa platformFeePercent se > 0, senão calcula pelas faixas reais ML
+  const platformFee = Number(platformFeePercent ?? "0") > 0
+    ? sale * (Number(platformFeePercent) / 100)
+    : calcMlFees(sale);
+  // Imposto: usa taxPercent do anúncio se > 0, senão usa Simples Nacional global
+  const taxPctEff = Number(taxPercent ?? "0") > 0 ? Number(taxPercent) : IMPOSTO_PERCENT;
+  const tax = sale * (taxPctEff / 100);
   if (sale <= 0) return null;
   const lucroReal = sale - platformFee - tax - cost;
   return (lucroReal / sale) * 100;
@@ -84,6 +111,9 @@ function EditCostsRow({ product, onSave, onCancel }: {
       </TableCell>
       <TableCell className="py-2">
         <Input value={cost} onChange={e => setCost(e.target.value)} className="h-7 w-24 text-xs" placeholder="Custo" />
+      </TableCell>
+      <TableCell className="py-2 text-right text-xs text-purple-400/60">
+        {calcEverton(Number(cost) || 0) > 0 ? fmt(calcEverton(Number(cost) || 0)) : "—"}
       </TableCell>
       <TableCell className="py-2">
         <Input value={pkg} onChange={e => setPkg(e.target.value)} className="h-7 w-24 text-xs" placeholder="Embalagem" />
@@ -219,6 +249,7 @@ export default function CatalogoML() {
                     <TableHead className="text-zinc-400 text-xs">Produto</TableHead>
                     <TableHead className="text-zinc-400 text-xs">Conta</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Custo</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right" title="Comissão Everton: <R$5=R$0,40 / ≥R$5=R$0,90">Everton</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Embalagem</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Taxa %</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Imposto %</TableHead>
@@ -258,7 +289,8 @@ export default function CatalogoML() {
                           </span>
                         </TableCell>
                         <TableCell className="py-2 text-right text-xs text-zinc-300">{fmt(p.costPrice)}</TableCell>
-                        <TableCell className="py-2 text-right text-xs text-zinc-300">{fmt(p.packagingCost)}</TableCell>
+                        <TableCell className="py-2 text-right text-xs text-purple-400">{calcEverton(Number(p.costPrice)) > 0 ? fmt(calcEverton(Number(p.costPrice))) : "—"}</TableCell>
+                        <TableCell className="py-2 text-right text-xs text-cyan-400">{fmt(p.packagingCost)}</TableCell>
                         <TableCell className="py-2 text-right text-xs text-zinc-400">{Number(p.platformFeePercent ?? 0).toFixed(1)}%</TableCell>
                         <TableCell className="py-2 text-right text-xs text-zinc-400">{Number(p.taxPercent ?? 0).toFixed(1)}%</TableCell>
                         <TableCell className="py-2 text-right text-xs text-white font-medium">{fmt(p.salePrice)}</TableCell>
