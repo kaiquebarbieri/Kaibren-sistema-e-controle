@@ -131,6 +131,27 @@ async function getMLItemThumbnail(account: MLAccount, itemId: string): Promise<{
   }
 }
 
+// ---------- Buscar endereço do shipment ML ----------
+
+const shipmentAddressCache = new Map<string, { city: string | null; state: string | null }>();
+
+async function getMLShipmentAddress(account: MLAccount, shippingId: string): Promise<{ city: string | null; state: string | null }> {
+  const cached = shipmentAddressCache.get(shippingId);
+  if (cached) return cached;
+  try {
+    const data = await mlFetch(account, `https://api.mercadolibre.com/shipments/${shippingId}`);
+    const ra = data?.receiver_address ?? {};
+    const result = {
+      city: ra?.city?.name ?? null,
+      state: ra?.state?.name ?? null,
+    };
+    shipmentAddressCache.set(shippingId, result);
+    return result;
+  } catch {
+    return { city: null, state: null };
+  }
+}
+
 // ---------- Status mapping ----------
 
 const ML_STATUS_MAP: Record<string, string> = {
@@ -178,6 +199,12 @@ async function fetchAndSaveMLOrders(account: MLAccount, limit: number, statusFil
       const totalQty = orderItems.reduce((s, it) => s + it.quantity, 0);
       const externalId = `ML-${o.id}`;
 
+      // /orders/search só retorna shipping.id — cidade/estado vem do /shipments/{id}
+      const shippingId = o.shipping?.id ? String(o.shipping.id) : null;
+      const address = shippingId
+        ? await getMLShipmentAddress(account, shippingId)
+        : { city: null, state: null };
+
       const order: MarketplaceOrder = {
         id: externalId,
         platform: "ml",
@@ -186,8 +213,8 @@ async function fetchAndSaveMLOrders(account: MLAccount, limit: number, statusFil
         status: o.status ?? "unknown",
         statusLabel: ML_STATUS_MAP[o.status] ?? o.status ?? "?",
         buyerName: o.buyer?.nickname ?? "Comprador",
-        buyerCity: undefined,
-        buyerState: undefined,
+        buyerCity: address.city ?? undefined,
+        buyerState: address.state ?? undefined,
         productName: firstItem?.name ?? "Produto",
         productImage: firstItem?.image ?? "",
         productSku: firstItem?.sku ?? "",
@@ -225,11 +252,13 @@ async function fetchAndSaveMLOrders(account: MLAccount, limit: number, statusFil
               platformCreatedAt: new Date(order.createdAt),
             });
           } else {
-            // Atualizar status se mudou
+            // Atualizar status se mudou + backfill cidade/estado
             await db.update(marketplaceOrders).set({
               status: order.status,
               statusLabel: order.statusLabel,
               trackingCode: order.trackingCode || null,
+              buyerCity: order.buyerCity || null,
+              buyerState: order.buyerState || null,
             }).where(eq(marketplaceOrders.externalId, externalId));
           }
         }
@@ -332,39 +361,65 @@ async function getOrdersFromDB(opts: {
 
 // ---------- API pública ----------
 
+// Flag para evitar syncs concorrentes
+let _syncInProgress = false;
+
+/** Sync background: busca da API ML + Shopee e salva no banco. Nunca bloqueia response. */
+async function syncOrdersBackground(limit: number) {
+  if (_syncInProgress) return;
+  _syncInProgress = true;
+  try {
+    const accounts = getMLAccounts();
+    await Promise.allSettled([
+      // Shopee
+      fetchAndSaveShopeeOrders(7).catch(() => null),
+      // ML — todas as contas em paralelo
+      ...accounts.map(acc =>
+        fetchAndSaveMLOrders(acc, Math.ceil(limit / accounts.length) + 3, "paid").catch(() => [])
+      ),
+    ]);
+    // Invalidar cache para que próximo hit pegue dados frescos do DB
+    cache.delete(`marketplace:recent:${limit}`);
+  } catch {
+    // non-fatal
+  } finally {
+    _syncInProgress = false;
+  }
+}
+
 export async function getRecentOrders(limit = 10): Promise<MarketplaceOrder[]> {
   const cacheKey = `marketplace:recent:${limit}`;
   const cached = getCached<MarketplaceOrder[]>(cacheKey);
   if (cached) return cached;
 
+  // DB-first: retornar do banco imediatamente (rápido, ~10ms)
+  const dbResult = await getOrdersFromDB({ limit });
+  if (dbResult && dbResult.orders.length > 0) {
+    setCache(cacheKey, dbResult.orders);
+    // Disparar sync em background para atualizar dados — não bloqueia o response
+    syncOrdersBackground(limit);
+    return dbResult.orders;
+  }
+
+  // Banco vazio (primeira vez): sync síncrono necessário
   const accounts = getMLAccounts();
-
-  // Sincronizar Shopee em paralelo (non-blocking)
-  try { await fetchAndSaveShopeeOrders(7); } catch (e) { /* non-fatal */ }
-
   if (accounts.length > 0) {
-    // Buscar da API do ML (só pedidos pagos) e salvar no banco
     const allOrders: MarketplaceOrder[] = [];
-    for (const acc of accounts) {
-      const orders = await fetchAndSaveMLOrders(acc, Math.ceil(limit / accounts.length) + 3, "paid");
-      allOrders.push(...orders);
-    }
-    // Agora buscar do banco (inclui ML + Shopee)
-    const dbResult = await getOrdersFromDB({ limit });
-    if (dbResult && dbResult.orders.length > 0) {
-      setCache(cacheKey, dbResult.orders);
-      return dbResult.orders;
+    await Promise.allSettled([
+      fetchAndSaveShopeeOrders(7).catch(() => null),
+      ...accounts.map(async (acc) => {
+        const orders = await fetchAndSaveMLOrders(acc, Math.ceil(limit / accounts.length) + 3, "paid");
+        allOrders.push(...orders);
+      }),
+    ]);
+    const dbResult2 = await getOrdersFromDB({ limit });
+    if (dbResult2 && dbResult2.orders.length > 0) {
+      setCache(cacheKey, dbResult2.orders);
+      return dbResult2.orders;
     }
     const sorted = allOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, limit);
     setCache(cacheKey, sorted);
     return sorted;
-  }
-
-  // Sem ML configurado: tentar banco (pode ter Shopee), senão mock
-  const dbResult = await getOrdersFromDB({ limit });
-  if (dbResult && dbResult.orders.length > 0) {
-    setCache(cacheKey, dbResult.orders);
-    return dbResult.orders;
   }
 
   return getMockOrders().slice(0, limit);
@@ -394,6 +449,494 @@ export async function getFilteredOrders(opts: {
   // Fallback mock
   const mock = getMockOrders();
   return { orders: mock.slice(0, opts.limit ?? 20), total: mock.length, totalAmount: mock.reduce((s, o) => s + o.totalAmount, 0) };
+}
+
+// ---------- Análise de Vendas detalhada (estilo GeFinance) ----------
+
+export type DetailedOrder = MarketplaceOrder & {
+  carrier: string;
+  totalCusto: number;
+  valorProdVendido: number;
+  desconto: number;
+  totalProdVendidos: number;
+  freteRecebido: number;
+  stVenda: number;
+  ipiVenda: number;
+  totalVenda: number;
+  repasse: number;
+  comissao: number;
+  rebateComissao: number;
+  comissaoFinal: number;
+  bonus: number;
+  fretePago: number;
+  rebateFrete: number;
+  difFrete: number;
+  imposto: number;
+  brinde: number;
+  embalagem: number;
+  valorLiquido: number;
+  margem: number;
+  percentCusto: number;
+  percentVenda: number;
+};
+
+export type DetailedTotals = {
+  orders: number;
+  totalCusto: number;
+  valorProdVendido: number;
+  desconto: number;
+  totalProdVendidos: number;
+  freteRecebido: number;
+  stVenda: number;
+  ipiVenda: number;
+  totalVenda: number;
+  repasse: number;
+  comissao: number;
+  rebateComissao: number;
+  comissaoFinal: number;
+  bonus: number;
+  fretePago: number;
+  rebateFrete: number;
+  difFrete: number;
+  imposto: number;
+  brinde: number;
+  embalagem: number;
+  valorLiquido: number;
+  margem: number;
+  percentCusto: number;
+  percentVenda: number;
+};
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function carrierFor(platform: string, status: string): string {
+  if (platform === "shopee") return "Shopee Xpress";
+  if (platform === "ml") return "MEL Distribution";
+  return "—";
+}
+
+function mlCommissionRate(totalVenda: number): number {
+  return 0.13;
+}
+
+function mlShippingCost(totalVenda: number): number {
+  if (totalVenda < 19) return 0;
+  if (totalVenda < 30) return 6.9;
+  if (totalVenda < 50) return 7.8;
+  if (totalVenda < 80) return 8.55;
+  if (totalVenda < 150) return 14.9;
+  return 19.9;
+}
+
+function shopeeShippingCost(totalVenda: number): number {
+  if (totalVenda < 20) return 7.37;
+  if (totalVenda < 40) return 9.62;
+  if (totalVenda < 80) return 12.04;
+  return 15.5;
+}
+
+async function getProductCostMap(): Promise<Record<string, number>> {
+  try {
+    const db = await getDb();
+    if (!db) return {};
+    const { products } = await import("../drizzle/schema");
+    const rows = await db.select({ sku: products.sku, valorProduto: products.valorProduto }).from(products);
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.sku) map[r.sku] = Number(r.valorProduto ?? 0);
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function enrichOrder(o: MarketplaceOrder, costMap: Record<string, number>): DetailedOrder {
+  const items = o.items ?? [];
+
+  let totalCusto = 0;
+  let valorProdVendido = 0;
+  for (const it of items) {
+    const cost = (it.sku && costMap[it.sku]) ? costMap[it.sku] : 0;
+    totalCusto += cost * (it.quantity ?? 0);
+    valorProdVendido += (it.unitPrice ?? 0) * (it.quantity ?? 0);
+  }
+  totalCusto = round2(totalCusto);
+  valorProdVendido = round2(valorProdVendido);
+
+  const totalAmount = Number(o.totalAmount ?? 0);
+
+  // Desconto: Shopee mostra desconto do marketplace (bruto → líquido)
+  let desconto = 0;
+  if (o.platform === "shopee" && valorProdVendido > totalAmount) {
+    desconto = round2(totalAmount - valorProdVendido);
+  }
+
+  const totalProdVendidos = round2(valorProdVendido + desconto);
+  const freteRecebido = 0;
+  const stVenda = 0;
+  const ipiVenda = 0;
+  const totalVenda = round2(totalProdVendidos + freteRecebido + stVenda + ipiVenda);
+
+  // Comissão
+  const commissionPct = o.platform === "shopee" ? 0.28 : mlCommissionRate(totalVenda);
+  const comissao = round2(-(totalVenda * commissionPct));
+  const rebateComissao = 0;
+  const comissaoFinal = round2(comissao + rebateComissao);
+
+  const bonus = 0;
+
+  // Frete
+  const fretePagoRaw = o.platform === "shopee" ? shopeeShippingCost(totalVenda) : mlShippingCost(totalVenda);
+  const fretePago = round2(-fretePagoRaw);
+  const rebateFrete = o.platform === "shopee" ? round2(fretePagoRaw) : 0;
+  const difFrete = round2(freteRecebido + fretePago + rebateFrete);
+
+  const imposto = 0;
+  const brinde = 0;
+  const embalagem = 0;
+
+  const repasse = round2(totalVenda + comissaoFinal + difFrete);
+  const valorLiquido = round2(repasse + imposto + bonus + brinde + embalagem);
+  const margem = round2(valorLiquido - totalCusto);
+
+  const percentCusto = valorProdVendido > 0 ? totalCusto / valorProdVendido : 0;
+  const percentVenda = valorProdVendido > 0 ? margem / valorProdVendido : 0;
+
+  return {
+    ...o,
+    carrier: carrierFor(o.platform, o.status),
+    totalCusto,
+    valorProdVendido,
+    desconto,
+    totalProdVendidos,
+    freteRecebido,
+    stVenda,
+    ipiVenda,
+    totalVenda,
+    repasse,
+    comissao,
+    rebateComissao,
+    comissaoFinal,
+    bonus,
+    fretePago,
+    rebateFrete,
+    difFrete,
+    imposto,
+    brinde,
+    embalagem,
+    valorLiquido,
+    margem,
+    percentCusto,
+    percentVenda,
+  };
+}
+
+export type DetailedSortKey =
+  | "createdAt"
+  | "id"
+  | "buyerName"
+  | "accountName"
+  | "buyerCity"
+  | "buyerState"
+  | "statusLabel"
+  | "totalCusto"
+  | "valorProdVendido"
+  | "desconto"
+  | "totalProdVendidos"
+  | "freteRecebido"
+  | "totalVenda"
+  | "repasse"
+  | "comissao"
+  | "comissaoFinal"
+  | "fretePago"
+  | "rebateFrete"
+  | "difFrete"
+  | "imposto"
+  | "valorLiquido"
+  | "margem"
+  | "percentCusto"
+  | "percentVenda";
+
+export type DetailedCondition =
+  | "margem-negativa"
+  | "custo-faltante"
+  | "tarifa-faltante"
+  | "imposto-faltante";
+
+function matchesCondition(o: DetailedOrder, condition: DetailedCondition): boolean {
+  switch (condition) {
+    case "margem-negativa":
+      return o.margem < 0;
+    case "custo-faltante":
+      return o.totalCusto === 0 && o.valorProdVendido > 0;
+    case "tarifa-faltante":
+      return o.comissao === 0 && o.totalVenda > 0;
+    case "imposto-faltante":
+      return o.imposto === 0 && o.totalVenda > 100;
+  }
+}
+
+function compareDetailed(a: DetailedOrder, b: DetailedOrder, key: DetailedSortKey, dir: "asc" | "desc"): number {
+  const mul = dir === "asc" ? 1 : -1;
+  if (key === "createdAt") {
+    return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * mul;
+  }
+  const av = (a as any)[key];
+  const bv = (b as any)[key];
+  if (typeof av === "number" && typeof bv === "number") return (av - bv) * mul;
+  const as = String(av ?? "").toLowerCase();
+  const bs = String(bv ?? "").toLowerCase();
+  if (as < bs) return -1 * mul;
+  if (as > bs) return 1 * mul;
+  return 0;
+}
+
+export async function getDetailedOrders(opts: {
+  accounts?: string[];
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  condition?: DetailedCondition;
+  sortBy?: DetailedSortKey;
+  sortDir?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}): Promise<{ orders: DetailedOrder[]; total: number; totals: DetailedTotals }> {
+  const limit = opts.limit ?? 10;
+  const offset = opts.offset ?? 0;
+  const sortBy = opts.sortBy ?? "createdAt";
+  const sortDir = opts.sortDir ?? "desc";
+
+  // Puxar TODOS os pedidos do periodo (filtros SQL aplicaveis) e enriquecer
+  const allFiltered = await getOrdersFromDB({
+    accounts: opts.accounts,
+    status: opts.status,
+    dateFrom: opts.dateFrom,
+    dateTo: opts.dateTo,
+    search: opts.search,
+    limit: 10000,
+    offset: 0,
+  });
+  const costMap = await getProductCostMap();
+  let allEnriched = (allFiltered?.orders ?? []).map((o) => enrichOrder(o, costMap));
+
+  // Filtro por condicao (derivado — pos enrichment)
+  if (opts.condition) {
+    allEnriched = allEnriched.filter((o) => matchesCondition(o, opts.condition!));
+  }
+
+  // Ordenacao (campo derivado ou nao)
+  allEnriched.sort((a, b) => compareDetailed(a, b, sortBy, sortDir));
+
+  // Paginacao em memoria apos filtro + sort
+  const total = allEnriched.length;
+  const enriched = allEnriched.slice(offset, offset + limit);
+
+  const totals: DetailedTotals = {
+    orders: allEnriched.length,
+    totalCusto: 0,
+    valorProdVendido: 0,
+    desconto: 0,
+    totalProdVendidos: 0,
+    freteRecebido: 0,
+    stVenda: 0,
+    ipiVenda: 0,
+    totalVenda: 0,
+    repasse: 0,
+    comissao: 0,
+    rebateComissao: 0,
+    comissaoFinal: 0,
+    bonus: 0,
+    fretePago: 0,
+    rebateFrete: 0,
+    difFrete: 0,
+    imposto: 0,
+    brinde: 0,
+    embalagem: 0,
+    valorLiquido: 0,
+    margem: 0,
+    percentCusto: 0,
+    percentVenda: 0,
+  };
+
+  for (const o of allEnriched) {
+    totals.totalCusto += o.totalCusto;
+    totals.valorProdVendido += o.valorProdVendido;
+    totals.desconto += o.desconto;
+    totals.totalProdVendidos += o.totalProdVendidos;
+    totals.freteRecebido += o.freteRecebido;
+    totals.stVenda += o.stVenda;
+    totals.ipiVenda += o.ipiVenda;
+    totals.totalVenda += o.totalVenda;
+    totals.repasse += o.repasse;
+    totals.comissao += o.comissao;
+    totals.rebateComissao += o.rebateComissao;
+    totals.comissaoFinal += o.comissaoFinal;
+    totals.bonus += o.bonus;
+    totals.fretePago += o.fretePago;
+    totals.rebateFrete += o.rebateFrete;
+    totals.difFrete += o.difFrete;
+    totals.imposto += o.imposto;
+    totals.brinde += o.brinde;
+    totals.embalagem += o.embalagem;
+    totals.valorLiquido += o.valorLiquido;
+    totals.margem += o.margem;
+  }
+
+  // Percentuais sobre totais agregados
+  totals.percentCusto = totals.valorProdVendido > 0 ? totals.totalCusto / totals.valorProdVendido : 0;
+  totals.percentVenda = totals.valorProdVendido > 0 ? totals.margem / totals.valorProdVendido : 0;
+
+  // Arredondar
+  for (const k of Object.keys(totals) as (keyof DetailedTotals)[]) {
+    if (k === "orders" || k === "percentCusto" || k === "percentVenda") continue;
+    totals[k] = round2(totals[k] as number) as never;
+  }
+
+  return {
+    orders: enriched,
+    total,
+    totals,
+  };
+}
+
+// ---------- Análise de Produtos (Curva ABC dupla) ----------
+
+export type ProductAnalysisRow = {
+  sku: string;
+  productName: string;
+  productImage: string;
+  vendas: number;
+  faturamento: number;
+  ticketMedio: number;
+  curvaFaturamento: "A" | "B" | "C";
+  margem: number;
+  margemPct: number;
+  curvaMargem: "A" | "B" | "C";
+  share: number;
+};
+
+export type ProductAnalysisTotals = {
+  produtos: number;
+  vendas: number;
+  faturamento: number;
+  margem: number;
+  ticketMedio: number;
+};
+
+export async function getProductAnalysis(opts: {
+  accounts?: string[];
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+}): Promise<{ products: ProductAnalysisRow[]; totals: ProductAnalysisTotals }> {
+  // Buscar TODOS os pedidos do período (sem paginação)
+  const allFiltered = await getOrdersFromDB({
+    accounts: opts.accounts,
+    status: opts.status,
+    dateFrom: opts.dateFrom,
+    dateTo: opts.dateTo,
+    search: opts.search,
+    limit: 10000,
+    offset: 0,
+  });
+  const base = allFiltered?.orders ?? [];
+  const costMap = await getProductCostMap();
+  const enriched = base.map((o) => enrichOrder(o, costMap));
+
+  type Agg = {
+    sku: string;
+    productName: string;
+    productImage: string;
+    vendas: number;
+    faturamento: number;
+    margem: number;
+  };
+  const bySku = new Map<string, Agg>();
+
+  for (const o of enriched) {
+    const items = o.items ?? [];
+    const orderGross = items.reduce((s, it) => s + (it.unitPrice ?? 0) * (it.quantity ?? 0), 0) || 1;
+    for (const it of items) {
+      const revenue = (it.unitPrice ?? 0) * (it.quantity ?? 0);
+      const weight = revenue / orderGross;
+      const key = (it.sku && it.sku.trim()) || it.name || "—";
+      const existing = bySku.get(key);
+      const row: Agg = existing ?? {
+        sku: it.sku || "—",
+        productName: it.name || "Produto",
+        productImage: it.image || "",
+        vendas: 0,
+        faturamento: 0,
+        margem: 0,
+      };
+      row.vendas += it.quantity ?? 0;
+      row.faturamento += revenue;
+      row.margem += o.margem * weight;
+      if (!existing) bySku.set(key, row);
+    }
+  }
+
+  const list = Array.from(bySku.values()).map((a) => ({
+    ...a,
+    faturamento: round2(a.faturamento),
+    margem: round2(a.margem),
+    ticketMedio: a.vendas > 0 ? round2(a.faturamento / a.vendas) : 0,
+    margemPct: a.faturamento > 0 ? a.margem / a.faturamento : 0,
+  }));
+
+  const totalFaturamento = list.reduce((s, r) => s + r.faturamento, 0);
+  const totalMargem = list.reduce((s, r) => s + r.margem, 0);
+
+  // Curva ABC por faturamento (ordena desc)
+  const byFat = [...list].sort((a, b) => b.faturamento - a.faturamento);
+  let accF = 0;
+  const curvaF = new Map<string, "A" | "B" | "C">();
+  for (const r of byFat) {
+    accF += r.faturamento;
+    const pct = totalFaturamento > 0 ? accF / totalFaturamento : 0;
+    curvaF.set(r.productName + "|" + r.sku, pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C");
+  }
+
+  // Curva ABC por margem
+  const byMg = [...list].sort((a, b) => b.margem - a.margem);
+  let accM = 0;
+  const curvaM = new Map<string, "A" | "B" | "C">();
+  for (const r of byMg) {
+    accM += r.margem;
+    const pct = totalMargem > 0 ? accM / totalMargem : 0;
+    curvaM.set(r.productName + "|" + r.sku, pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C");
+  }
+
+  const products: ProductAnalysisRow[] = byFat.map((r) => ({
+    sku: r.sku,
+    productName: r.productName,
+    productImage: r.productImage,
+    vendas: r.vendas,
+    faturamento: r.faturamento,
+    ticketMedio: r.ticketMedio,
+    curvaFaturamento: curvaF.get(r.productName + "|" + r.sku) ?? "C",
+    margem: r.margem,
+    margemPct: r.margemPct,
+    curvaMargem: curvaM.get(r.productName + "|" + r.sku) ?? "C",
+    share: totalFaturamento > 0 ? r.faturamento / totalFaturamento : 0,
+  }));
+
+  const totalVendas = list.reduce((s, r) => s + r.vendas, 0);
+  const totals: ProductAnalysisTotals = {
+    produtos: products.length,
+    vendas: totalVendas,
+    faturamento: round2(totalFaturamento),
+    margem: round2(totalMargem),
+    ticketMedio: totalVendas > 0 ? round2(totalFaturamento / totalVendas) : 0,
+  };
+
+  return { products, totals };
 }
 
 export async function getAvailableAccounts() {
