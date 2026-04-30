@@ -216,7 +216,7 @@ export async function fetchShopeeOrders(shop: ShopeeShop, daysBack: number = 7):
         const orderIds = orderList.map((o: any) => o.order_sn).join(",");
         const detailData = await shopeeApiFetch("/api/v2/order/get_order_detail", shop, {
           order_sn_list: orderIds,
-          response_optional_fields: "buyer_username,item_list,total_amount,order_status,shipping_carrier,tracking_number",
+          response_optional_fields: "buyer_user_id,buyer_username,item_list,total_amount,order_status,shipping_carrier,tracking_number",
         });
 
         const detailResponse = detailData.response || detailData;
@@ -247,12 +247,14 @@ export async function fetchAndSaveShopeeOrders(daysBack: number = 7): Promise<nu
     for (const order of orders) {
       const externalId = `SHOPEE-${order.order_sn}`;
       const items = (order.item_list || []).map((item: any) => ({
+        itemId: String(item.item_id || ""),
         name: item.item_name || "Produto",
         quantity: item.model_quantity_purchased || item.quantity || 1,
         unitPrice: Number(item.model_discounted_price || item.model_original_price || 0),
         image: item.image_info?.image_url || "",
         sku: item.item_sku || item.model_sku || "",
       }));
+      const buyerId = order.buyer_user_id ? String(order.buyer_user_id) : null;
 
       const firstItem = items[0];
       const totalQty = items.reduce((s: number, it: any) => s + it.quantity, 0);
@@ -275,6 +277,7 @@ export async function fetchAndSaveShopeeOrders(daysBack: number = 7): Promise<nu
             status: status.toLowerCase(),
             statusLabel: SHOPEE_STATUS_MAP[status] || status,
             buyerName: order.buyer_username || "Comprador",
+            buyerExternalId: buyerId,
             buyerCity: null,
             buyerState: null,
             productName: firstItem?.name || "Produto",
@@ -288,10 +291,14 @@ export async function fetchAndSaveShopeeOrders(daysBack: number = 7): Promise<nu
           });
           saved++;
         } else {
+          // Backfill: re-escreve itemsJson + buyerExternalId quando voltar com a info nova
+          const hasItemIds = items.some((i: any) => i.itemId);
           await db.update(marketplaceOrders).set({
             status: status.toLowerCase(),
             statusLabel: SHOPEE_STATUS_MAP[status] || status,
             trackingCode: order.tracking_number || null,
+            ...(buyerId ? { buyerExternalId: buyerId } : {}),
+            ...(hasItemIds ? { itemsJson: JSON.stringify(items) } : {}),
           }).where(eq(marketplaceOrders.externalId, externalId));
         }
       } catch (dbErr) {
@@ -358,7 +365,7 @@ export async function getShopeeShopInfo(): Promise<any[]> {
 
 // ---------- Resumo de vendas (para Dashboard) ----------
 
-export async function getShopeeSalesSummary(): Promise<{
+export async function getShopeeSalesSummary(customDateFrom?: string, customDateTo?: string): Promise<{
   total: number;
   today: number;
   todayCount: number;
@@ -370,12 +377,8 @@ export async function getShopeeSalesSummary(): Promise<{
   const db = await getDb();
   if (!db) return { total: 0, today: 0, todayCount: 0, thisWeek: 0, thisMonth: 0, orderCount: 0, accounts: [] };
 
-  // Sincronizar pedidos recentes
-  try {
-    await fetchAndSaveShopeeOrders(15);
-  } catch (e) {
-    // non-fatal
-  }
+  // Sincronizar pedidos recentes (non-blocking)
+  fetchAndSaveShopeeOrders(15).catch(() => {});
 
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -383,6 +386,10 @@ export async function getShopeeSalesSummary(): Promise<{
   startOfWeek.setDate(now.getDate() - now.getDay());
   startOfWeek.setHours(0, 0, 0, 0);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Período customizado (segue filtro do dashboard)
+  const periodFrom = customDateFrom ? new Date(customDateFrom + "T00:00:00") : startOfDay;
+  const periodTo = customDateTo ? new Date(customDateTo + "T23:59:59.999") : new Date();
 
   try {
     const allOrders = await db.select()
@@ -393,7 +400,8 @@ export async function getShopeeSalesSummary(): Promise<{
       ));
 
     let total = 0, today = 0, todayCount = 0, thisWeek = 0, thisMonth = 0;
-    const accountMap = new Map<string, { total: number; today: number; todayCount: number; orders: number }>();
+    let periodTotal = 0, periodCount = 0;
+    const accountMap = new Map<string, { total: number; periodTotal: number; periodCount: number; today: number; todayCount: number; orders: number }>();
 
     for (const order of allOrders) {
       const amount = Number(order.totalAmount || 0);
@@ -403,26 +411,28 @@ export async function getShopeeSalesSummary(): Promise<{
       if (date >= startOfDay) { today += amount; todayCount++; }
       if (date >= startOfWeek) thisWeek += amount;
       if (date >= startOfMonth) thisMonth += amount;
+      if (date >= periodFrom && date <= periodTo) { periodTotal += amount; periodCount++; }
 
-      const acc = accountMap.get(order.accountName) || { total: 0, today: 0, todayCount: 0, orders: 0 };
+      const acc = accountMap.get(order.accountName) || { total: 0, periodTotal: 0, periodCount: 0, today: 0, todayCount: 0, orders: 0 };
       acc.total += amount;
       acc.orders++;
+      if (date >= periodFrom && date <= periodTo) { acc.periodTotal += amount; acc.periodCount++; }
       if (date >= startOfDay) { acc.today += amount; acc.todayCount++; }
       accountMap.set(order.accountName, acc);
     }
 
     const accounts = Array.from(accountMap.entries()).map(([name, data]) => ({
       name,
-      total: Math.round(data.total * 100) / 100,
-      today: Math.round(data.today * 100) / 100,
-      todayCount: data.todayCount,
+      total: Math.round(data.periodTotal * 100) / 100,
+      today: Math.round(data.periodTotal * 100) / 100,
+      todayCount: data.periodCount,
       orders: data.orders,
     }));
 
     return {
-      total: Math.round(total * 100) / 100,
-      today: Math.round(today * 100) / 100,
-      todayCount,
+      total: Math.round(periodTotal * 100) / 100,
+      today: Math.round(periodTotal * 100) / 100,
+      todayCount: periodCount,
       thisWeek: Math.round(thisWeek * 100) / 100,
       thisMonth: Math.round(thisMonth * 100) / 100,
       orderCount: allOrders.length,

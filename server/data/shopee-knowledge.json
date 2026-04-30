@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2026-04-12",
-  "version": 2,
+  "lastUpdated": "2026-04-27",
+  "version": 3,
   "source": "seller.shopee.com.br + WebSearch abril/2026",
   "sections": {
     "taxasComissoes2026": {
@@ -9,11 +9,31 @@
       "data": {
         "mudancaMar2026": "MUDANÇA GRANDE em março/2026: comissão agora é por FAIXA DE PREÇO. CPF e CNPJ pagam a MESMA tabela. Teto de R$105 de comissão ACABOU. Frete grátis agora é OBRIGATÓRIO.",
         "tabelaFaixas": [
-          { "faixa": "Até R$7,99", "comissao": "50% do valor do produto", "taxaFixa": "Nenhuma" },
-          { "faixa": "R$8,00 a R$79,99", "comissao": "20%", "taxaFixa": "R$4 por item" },
-          { "faixa": "R$80,00 a R$99,99", "comissao": "14%", "taxaFixa": "R$16 por item" },
-          { "faixa": "R$100,00 a R$199,99", "comissao": "14%", "taxaFixa": "R$20 por item" },
-          { "faixa": "Acima de R$200,00", "comissao": "14%", "taxaFixa": "R$26 por item" }
+          {
+            "faixa": "Até R$7,99",
+            "comissao": "50% do valor do produto",
+            "taxaFixa": "Nenhuma"
+          },
+          {
+            "faixa": "R$8,00 a R$79,99",
+            "comissao": "20%",
+            "taxaFixa": "R$4 por item"
+          },
+          {
+            "faixa": "R$80,00 a R$99,99",
+            "comissao": "14%",
+            "taxaFixa": "R$16 por item"
+          },
+          {
+            "faixa": "R$100,00 a R$199,99",
+            "comissao": "14%",
+            "taxaFixa": "R$20 por item"
+          },
+          {
+            "faixa": "Acima de R$200,00",
+            "comissao": "14%",
+            "taxaFixa": "R$26 por item"
+          }
         ],
         "freteGratis": "OBRIGATÓRIO para todos os vendedores ativos desde março/2026 — não é mais opcional. O custo do frete grátis JÁ ESTÁ EMBUTIDO na comissão por faixa (antes era +6% separado, agora está incluso nos 20%/14%)",
         "campanhasDestaque": "+2,5% adicional sobre a comissão durante o período da promoção",
@@ -101,5 +121,7 @@
         "Campanhas de Destaque cobram +2,5% adicional"
       ]
     }
-  }
+  },
+  "lastResearch": "# Relatório de Pesquisa sobre a Plataforma Shopee Brasil em 2026\n\n## 1. Taxas e Comissões para Vendedores CNPJ\n\n### Comissões e Taxas\nEm 2026, a Shopee Brasil mantém sua estrutura de taxas e comissões de forma competitiva para atrair vendedores. As principais taxas incluem:\n\n- **Comissão Padrão**: A Shopee cobra dos vendedores uma comissão que varia de 5% a 10% sobre o valor de venda, dependendo da categoria do produto.\n- **Frete Grátis**: A plataforma oferece promoções de frete grátis que podem ser subsidiadas parcialmente pelo vendedor. Geralmente, há uma parceria para casos especiais de frete grátis, onde o custo é dividido.\n- **Taxa Fixa por Item Vendido**: A Shopee tem uma taxa fixa simbólica de R$ 1,00 por item vendido para despesas administrativas.\n- **Campanhas de Destaque**: Para participar de campanhas publicitárias internas, os vendedores podem enfrentar taxas adicionais que variam dependendo da campanha e do tipo de destaque, geralmente entre 2% a 5% adicionais do valor da venda.\n\n## 2. GMV Max e Shopee Ads\n\n### Regras e Funcionamento\nO GMV Max em 2026 é uma plataforma avançada da Shopee Ads que otimiza automaticamente campanhas baseando-se em inteligência artificial:\n\n- **ROAS Target**: Os vendedores podem definir um Retorno sobre o Investimento em Anúncios (ROAS) desejado. O sistema ajustará lances automáticos para tentar atingir ou exceder esse valor.\n- **Fase de Aprendizado**: Durante uma fase de aprendizado que pode durar até duas semanas, o sistema ajusta lances para otimização máxima. Durante este período, ajustes manuais são recomendados para refinar a segmentação.\n- **Migração de Ads Manuais**: Os anúncios podem ser migrados para estratégias automáticas com apenas um clique, permitindo que o algoritmo assuma o controle sob supervisão. A Shopee destaca que 65% dos usuários relataram melhorias no ROAS após a migração.\n\n## 3. Otimização de Shopee Ads\n\n### Melhores Práticas\nPara 2026, as práticas eficazes de otimização incluem:\n\n- **CTR Ideal**: Um CTR (Click-Through Rate) ideal gira em torno de 1,5% a 2% para campanhas bem-sucedidas.\n- **CPC Eficiente**: O Custo por Clique (CPC) deve ser adequado ao nicho, variando entre R$ 0,10 a R$ 0,50 para a maioria dos setores.\n- **Palavras-Chave**: Utilização de palavras-chave long tail é crucial, dado que elas têm menor concorrência e frequentemente conversão mais alta.\n- **Fotos e Títulos**: Imagens de alta qualidade aumentam o engajamento em 40%. Títulos devem ser claros e conter as principais keywords.\n- **Teste A/B**: Realizar testes A/B de anúncios está cada vez mais comum, com softwares de analytics da própria Shopee ajudando na análise de resultados.\n\n## 4. Novidades e Mudanças na Plataforma\n\n### Novas Funcionalidades e Políticas\nEm 2026, a Shopee implementou as seguintes mudanças:\n\n- **Novas Ferramentas de Análise**: Lançou um painel de analytics mais robusto para vendedores, permitindo insights de comportamento do cliente em tempo real.\n- **Políticas de Reembolso**: Aperfeiçoou sua política de reembolso e devolução, oferecendo maior proteção tanto ao comprador quanto ao vendedor.\n- **Ferramentas de Automação**: Ampliação das ferramentas de automação para gestão de inventário e precificação dinâmica.\n\n## 5. Melhores Horários para Anunciar\n\n### Análise de Tráfego e Sazonalidade\nAnunciar nos horários ideais faz diferença:\n\n- **Picos de Tráfego**: Tipicamente ocorrem entre 12h e 14h, e das 19h às 22h, devido ao maior uso de dispositivos móveis nesses períodos.\n- **Dias de Maior Conversão**: Quartas e domingos são destacados como os dias com maior conversão em 2026, baseando-se em tendências de consumo.\n- **Sazonalidade**: Eventos como Black Friday e Dia das Mães continuam sendo períodos de alta tensão no tráfego e nas vendas.\n\n## 6. Algoritmo de Ranking da Shopee\n\n### Fatores de Influência\nO algoritmo de ranking da Shopee em 2026 é sofisticado, levando em consideração:\n\n- **Taxa de Conversão**: Produtos com melhores taxas de conversão tendem a ser promovidos organicamente.\n- **Avaliações e Retorno Positivo dos Usuários**: Feedback positivo prevalente leva a um aumento considerável na visibilidade.\n- **Atividade do Vendedor**: Engajamento do vendedor em campanhas, preços competitivos e taxas de resposta também afetam o ranking.\n- **Ads e Presença Orgânica**: Anúncios patrocinados equilibrados com boa presença orgânica otimizam a posição geral.\n\nEste relatório oferece uma visão detalhada da Shopee Brasil em 2026, fornecendo diretrizes fundamentadas atuais para otimização e melhorias no desempenho de vendas na plataforma.",
+  "lastResearchDate": "2026-04-27T11:00:19.924Z"
 }

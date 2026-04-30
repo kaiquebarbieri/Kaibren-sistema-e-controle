@@ -24,6 +24,7 @@ import {
   BarChart3,
   Wallet,
   Flame,
+  Store,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend,
@@ -55,9 +56,20 @@ function ChartTooltip({ active, payload, label, fmtFn }: any) {
 }
 
 export default function ShopeeIntelligence() {
-  const { data: dash, isLoading, refetch } = trpc.shopeeAds.dashboard.useQuery(undefined, {
-    refetchInterval: 5 * 60 * 1000,
-  });
+  const { data: shops = [] } = trpc.shopeeAds.shops.useQuery();
+  const [selectedShopId, setSelectedShopId] = useState<string | undefined>(undefined);
+
+  // Quando shops carregar pela primeira vez, fixa a primeira como selecionada
+  useEffect(() => {
+    if (!selectedShopId && shops.length > 0) {
+      setSelectedShopId(shops[0].shopId);
+    }
+  }, [shops, selectedShopId]);
+
+  const { data: dash, isLoading, refetch } = trpc.shopeeAds.dashboard.useQuery(
+    { shopId: selectedShopId },
+    { refetchInterval: 5 * 60 * 1000, enabled: shops.length === 0 || !!selectedShopId },
+  );
 
   const analyzeMutation = trpc.shopeeAds.analyze.useMutation();
   const askMutation = trpc.shopeeAds.askAi.useMutation();
@@ -93,7 +105,7 @@ export default function ShopeeIntelligence() {
     const q = question.trim();
     setChatHistory(prev => [...prev, { role: "user", text: q }]);
     setQuestion("");
-    askMutation.mutate({ question: q }, {
+    askMutation.mutate({ question: q, shopId: selectedShopId }, {
       onSuccess: (res) => {
         setChatHistory(prev => [...prev, { role: "assistant", text: res.answer }]);
       },
@@ -163,6 +175,22 @@ export default function ShopeeIntelligence() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {shops.length > 1 && (
+              <div className="relative flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/8">
+                <Store className="h-4 w-4 text-orange-400" />
+                <select
+                  value={selectedShopId || ""}
+                  onChange={(e) => setSelectedShopId(e.target.value)}
+                  className="bg-transparent text-xs text-white/80 font-medium pr-1 outline-none cursor-pointer"
+                >
+                  {shops.map((s: any) => (
+                    <option key={s.shopId} value={s.shopId} className="bg-[#1a1a2e] text-white">
+                      {s.shopName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <PeriodFilter value={period} onChange={setPeriod} customDate={customDate} customDateEnd={customDateEnd} onCustomDate={setCustomDate} onCustomDateEnd={setCustomDateEnd} />
             <button onClick={() => refetch()} className="p-2.5 rounded-xl bg-white/5 border border-white/8 hover:bg-white/10 transition-all"><RefreshCw className="h-4 w-4 text-white/50" /></button>
             <button onClick={handleDownloadPdf} disabled={pdfLoading} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/8 hover:bg-white/10 text-xs text-white/50 transition-all disabled:opacity-50">
@@ -284,6 +312,123 @@ export default function ShopeeIntelligence() {
             })}
           </div>
         )}
+
+        {/* ═══ ADS vs ORGANICO ═══ */}
+        {(() => {
+          const salesDb = dash?.dailySalesDb || [];
+          const salesMap = new Map<string, { gmv: number; orders: number }>();
+          for (const s of salesDb) salesMap.set(s.date, { gmv: s.gmv, orders: s.orders });
+
+          const adsData = filtered.length > 0 ? filtered : dailyPerf;
+
+          // Calcular organico dia-a-dia (evita distorcao de dias com sync incompleto)
+          let totalDbGmv = 0, totalOrgGmv = 0, totalOrgOrders = 0;
+          let totalAdsGmvShow = 0, totalAdsOrdersShow = 0, totalDbOrders = 0;
+
+          const combined = adsData.map((d: any) => {
+            const db = salesMap.get(d.date) || { gmv: 0, orders: 0 };
+            const adsOrd = Math.min(d.directOrders || 0, db.orders); // cap ads <= DB
+            const orgOrd = Math.max(0, db.orders - adsOrd);
+            const orgGmv = db.orders > 0 ? Math.round((orgOrd / db.orders) * db.gmv * 100) / 100 : 0;
+            const adsGmv = db.gmv - orgGmv;
+
+            totalDbGmv += db.gmv;
+            totalDbOrders += db.orders;
+            totalOrgGmv += orgGmv;
+            totalOrgOrders += orgOrd;
+            totalAdsGmvShow += adsGmv;
+            totalAdsOrdersShow += adsOrd;
+
+            return { date: d.date, ads: Math.round(adsGmv * 100) / 100, organic: orgGmv, total: db.gmv };
+          });
+
+          const pctAds = totalDbOrders > 0 ? Math.round((totalAdsOrdersShow / totalDbOrders) * 100) : 0;
+          const pctOrg = totalDbOrders > 0 ? 100 - pctAds : 0;
+
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {/* Total vendido */}
+                <div className="rounded-2xl p-5 bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/[0.06]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ShoppingCart className="h-4 w-4 text-white/40" />
+                    <span className="text-[11px] text-white/30 uppercase tracking-wider font-medium">Total Vendido</span>
+                  </div>
+                  <p className="text-2xl font-bold text-white">{fmt(totalDbGmv)}</p>
+                  <p className="text-[10px] text-white/20 mt-1">{totalDbOrders} pedidos no periodo</p>
+                </div>
+                {/* Via Ads */}
+                <div className="rounded-2xl p-5 bg-gradient-to-br from-orange-500/10 to-orange-600/5 border border-orange-500/15">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target className="h-4 w-4 text-orange-400" />
+                    <span className="text-[11px] text-orange-300/60 uppercase tracking-wider font-medium">Via Ads</span>
+                    {pctAds > 0 && <span className="ml-auto text-xs font-bold text-orange-400 bg-orange-500/15 px-2 py-0.5 rounded-lg">{pctAds}%</span>}
+                  </div>
+                  <p className="text-2xl font-bold text-orange-400">{fmt(totalAdsGmvShow)}</p>
+                  <p className="text-[10px] text-orange-300/30 mt-1">{totalAdsOrdersShow} pedidos via anuncios</p>
+                </div>
+                {/* Organico */}
+                <div className="rounded-2xl p-5 bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/15">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="h-4 w-4 text-emerald-400" />
+                    <span className="text-[11px] text-emerald-300/60 uppercase tracking-wider font-medium">Organico</span>
+                    {pctOrg > 0 && <span className="ml-auto text-xs font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-lg">{pctOrg}%</span>}
+                  </div>
+                  <p className="text-2xl font-bold text-emerald-400">{fmt(totalOrgGmv)}</p>
+                  <p className="text-[10px] text-emerald-300/30 mt-1">{totalOrgOrders} pedidos organicos</p>
+                </div>
+              </div>
+
+              {/* Barra de proporcao */}
+              {totalDbOrders > 0 && (
+                <div className="rounded-xl p-4 bg-[#1a1a2e]/40 border border-white/[0.04]">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] text-white/30 uppercase tracking-wider">Proporcao Ads vs Organico (por pedidos)</span>
+                  </div>
+                  <div className="flex h-4 rounded-full overflow-hidden bg-white/5">
+                    {pctAds > 0 && <div className="bg-gradient-to-r from-orange-500 to-orange-400 transition-all duration-500" style={{ width: `${pctAds}%` }} />}
+                    {pctOrg > 0 && <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" style={{ width: `${pctOrg}%` }} />}
+                  </div>
+                  <div className="flex justify-between mt-2 text-[10px]">
+                    <span className="text-orange-400">Ads {pctAds}% ({totalAdsOrdersShow} ped)</span>
+                    <span className="text-emerald-400">Organico {pctOrg}% ({totalOrgOrders} ped)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Grafico Ads vs Organico diario */}
+              {combined.some(c => c.total > 0) && (
+                <div className="rounded-2xl p-5 bg-[#1a1a2e]/40 border border-white/[0.04]">
+                  <h3 className="text-sm font-semibold text-white/60 mb-4 flex items-center gap-2">
+                    <div className="w-1.5 h-4 rounded-full bg-gradient-to-b from-orange-500 to-emerald-500" />
+                    Ads vs Organico — Diario
+                  </h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={combined.filter(c => c.total > 0)}>
+                      <defs>
+                        <linearGradient id="gAds" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f97316" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#f97316" stopOpacity={0.3} />
+                        </linearGradient>
+                        <linearGradient id="gOrg" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity={0.3} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                      <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip fmtFn={(v: number) => fmt(v)} />} />
+                      <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }} />
+                      <Bar dataKey="ads" name="Via Ads" fill="url(#gAds)" stackId="a" radius={[0, 0, 0, 0]} maxBarSize={28} />
+                      <Bar dataKey="organic" name="Organico" fill="url(#gOrg)" stackId="a" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ═══ GRAFICOS ═══ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
