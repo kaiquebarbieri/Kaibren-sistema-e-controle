@@ -31,6 +31,9 @@ import {
   mlCatalogProducts,
   MLCatalogProduct,
   InsertMLCatalogProduct,
+  marketplaceFees,
+  MarketplaceFee,
+  InsertMarketplaceFee,
   InsertTeamTask,
   InsertTeamRecord,
   InsertTeamCharge,
@@ -49,15 +52,43 @@ import {
   myCnpjs,
   orderItems,
   orders,
+  marketplaceOrders,
   productUploads,
   products,
+  productBrands,
+  productCategories,
+  productWarehouses,
+  productCostHistory,
+  productSaleHistory,
+  productFixedCosts,
+  productStocks,
+  productKitItems,
+  InsertProductBrand,
+  InsertProductCategory,
+  InsertProductWarehouse,
+  InsertProductCostHistory,
+  InsertProductSaleHistory,
+  InsertProductFixedCost,
+  InsertProductStock,
+  InsertProductKitItem,
   users,
   teamMembers,
   teamTasks,
   teamRecords,
   teamCharges,
+  systemSettings,
+  SystemSetting,
+  InsertSystemSetting,
+  companyTaxRates,
+  CompanyTaxRate,
+  InsertCompanyTaxRate,
+  companyTaxExceptions,
+  CompanyTaxException,
+  InsertCompanyTaxException,
+  integrations,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { calcEverton, calcEmbalagem, calcMlFeesPerUnit, IMPOSTO_PERCENT_FALLBACK, aliquotaEfetivaSimples } from "./_core/costing";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: mysql.Pool | null = null;
@@ -296,6 +327,180 @@ export async function listProducts(limit = 100) {
   return db.select().from(products).orderBy(products.titulo).limit(limit);
 }
 
+export async function getProductMarginAnalysis(
+  periodYear?: number,
+  periodMonth?: number,
+  periodStart?: Date,
+  periodEnd?: Date,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [
+    sql`${marketplaceOrders.status} NOT IN ('cancelled', 'to_return')`,
+  ];
+  if (periodStart && periodEnd) {
+    conditions.push(sql`${marketplaceOrders.platformCreatedAt} >= ${periodStart}`);
+    conditions.push(sql`${marketplaceOrders.platformCreatedAt} < ${periodEnd}`);
+  } else {
+    if (periodYear) conditions.push(sql`YEAR(${marketplaceOrders.platformCreatedAt}) = ${periodYear}`);
+    if (periodMonth) conditions.push(sql`MONTH(${marketplaceOrders.platformCreatedAt}) = ${periodMonth}`);
+  }
+
+  // Agrupa por (productSku se existe, senão productName) — agrega vendas que vieram sem SKU mas mesmo título
+  const rows = await db
+    .select({
+      sku: marketplaceOrders.productSku,
+      productName: marketplaceOrders.productName,
+      titulo: sql<string>`MAX(${marketplaceOrders.productName})`,
+      tituloProduto: sql<string>`MAX(${products.titulo})`,
+      vendas: sql<number>`coalesce(sum(${marketplaceOrders.quantity}), 0)`,
+      faturamento: sql<string>`coalesce(sum(${marketplaceOrders.totalAmount}), 0)`,
+      custoUnit: sql<string>`coalesce(max(${products.valorProduto}), 0)`,
+      // Fallback: custo do ml_catalog_products via título exato
+      custoMlCatalog: sql<string>`coalesce(max(${mlCatalogProducts.costPrice}), 0)`,
+      packagingMlCatalog: sql<string>`coalesce(max(${mlCatalogProducts.packagingCost}), 0)`,
+    })
+    .from(marketplaceOrders)
+    .leftJoin(products, eq(marketplaceOrders.productSku, products.sku))
+    .leftJoin(mlCatalogProducts, eq(marketplaceOrders.productName, mlCatalogProducts.title))
+    .where(and(...conditions))
+    .groupBy(marketplaceOrders.productSku, marketplaceOrders.productName);
+
+  const parsed = rows.map((r) => {
+    const faturamento = Number(r.faturamento ?? 0);
+    const vendas = Number(r.vendas ?? 0);
+    // Resolve custo: primeiro products (SKU bate), depois ml_catalog_products (título bate)
+    const custoProducts = Number(r.custoUnit ?? 0);
+    const custoMlCat = Number(r.custoMlCatalog ?? 0);
+    const custoUnit = custoProducts > 0 ? custoProducts : custoMlCat;
+    const temCusto = custoUnit > 0;
+    const ticketMedio = vendas > 0 ? faturamento / vendas : 0;
+    const tituloRef = String(r.tituloProduto ?? r.titulo ?? "");
+
+    // === Margem REAL (todos os custos descontados) ===
+    // 1. Custo direto: Mondial + Everton + Embalagem
+    const evertonUnit = calcEverton(custoUnit);
+    // Embalagem: usa packagingCost cadastrado se vier do ml_catalog (mais confiável); senão calcula pelo título
+    const packagingMl = Number(r.packagingMlCatalog ?? 0);
+    const embalagemUnit = (custoProducts === 0 && packagingMl > 0) ? packagingMl : calcEmbalagem(tituloRef);
+    const custoTotalUnit = custoUnit + evertonUnit + embalagemUnit;
+    const custoTotalAgg = custoTotalUnit * vendas;
+    const evertonTotal = evertonUnit * vendas;
+    const embalagemTotal = embalagemUnit * vendas;
+
+    // 2. Taxas marketplace (ML como base — produtos vendem majoritariamente em ML)
+    //    Aplica por unidade pra refletir taxa fixa por faixa de preço.
+    const fees = calcMlFeesPerUnit(ticketMedio);
+    const taxasMarketplaceTotal = fees.total * vendas;
+
+    // 3. Imposto: 9.3% Simples (fallback global — sem cnpjId aqui)
+    const impostoTotal = faturamento * (IMPOSTO_PERCENT_FALLBACK / 100);
+
+    // Margem real = receita - custo total - taxas - imposto
+    const margemRs = temCusto
+      ? faturamento - custoTotalAgg - taxasMarketplaceTotal - impostoTotal
+      : 0;
+    const margemPct = temCusto && faturamento > 0 ? margemRs / faturamento : 0;
+
+    // Chave estável: SKU se existe, senão usa o título do pedido (cobre pedidos ML sem SKU)
+    const key = (r.sku && r.sku.length > 0) ? r.sku : `t:${String(r.productName ?? r.titulo ?? "")}`;
+
+    return {
+      key,
+      sku: r.sku ?? "",
+      titulo: r.titulo ?? "",
+      vendas,
+      faturamento,
+      margemRs,
+      ticketMedio,
+      margemPct,
+      temCusto,
+      // Detalhamento (debug/tooltip)
+      custoBaseUnit: custoUnit,
+      evertonUnit,
+      embalagemUnit,
+      custoTotalAgg,
+      evertonTotal,
+      embalagemTotal,
+      taxasMarketplaceTotal,
+      impostoTotal,
+    };
+  });
+
+  const totalFaturamento = parsed.reduce((s, p) => s + p.faturamento, 0);
+  const totalMargem = parsed.reduce((s, p) => s + p.margemRs, 0);
+  const totalVendas = parsed.reduce((s, p) => s + p.vendas, 0);
+
+  const byFat = [...parsed].sort((a, b) => b.faturamento - a.faturamento);
+  let acumFat = 0;
+  const abcFatMap = new Map<string, "A" | "B" | "C">();
+  for (const p of byFat) {
+    acumFat += p.faturamento;
+    const pctAcum = totalFaturamento > 0 ? acumFat / totalFaturamento : 0;
+    abcFatMap.set(p.key, pctAcum <= 0.8 ? "A" : pctAcum <= 0.95 ? "B" : "C");
+  }
+
+  const comCusto = parsed.filter((p) => p.temCusto);
+  const totalMargemComCusto = comCusto.reduce((s, p) => s + p.margemRs, 0);
+  const byMargem = [...comCusto].sort((a, b) => b.margemRs - a.margemRs);
+  let acumMargem = 0;
+  const abcMargemMap = new Map<string, "A" | "B" | "C">();
+  for (const p of byMargem) {
+    acumMargem += p.margemRs;
+    const pctAcum = totalMargemComCusto > 0 ? acumMargem / totalMargemComCusto : 0;
+    abcMargemMap.set(p.key, pctAcum <= 0.8 ? "A" : pctAcum <= 0.95 ? "B" : "C");
+  }
+
+  const items = byFat.map((p) => ({
+    sku: p.sku,
+    titulo: p.titulo,
+    vendas: p.vendas,
+    faturamento: p.faturamento.toFixed(2),
+    ticketMedio: p.ticketMedio.toFixed(2),
+    margemRs: p.margemRs.toFixed(2),
+    margemPct: p.margemPct,
+    temCusto: p.temCusto,
+    share: totalFaturamento > 0 ? p.faturamento / totalFaturamento : 0,
+    abcFaturamento: abcFatMap.get(p.key) ?? "C",
+    abcMargem: p.temCusto ? (abcMargemMap.get(p.key) ?? "C") : null,
+    // Detalhamento de custos (UI pode mostrar em tooltip/expansão)
+    custoBaseUnit: p.custoBaseUnit.toFixed(2),
+    evertonUnit: p.evertonUnit.toFixed(2),
+    embalagemUnit: p.embalagemUnit.toFixed(2),
+    custoTotalAgg: p.custoTotalAgg.toFixed(2),
+    taxasMarketplaceTotal: p.taxasMarketplaceTotal.toFixed(2),
+    impostoTotal: p.impostoTotal.toFixed(2),
+  }));
+
+  const produtosSemCusto = parsed.length - comCusto.length;
+  const faturamentoComCusto = comCusto.reduce((s, p) => s + p.faturamento, 0);
+  const totalEverton = comCusto.reduce((s, p) => s + p.evertonTotal, 0);
+  const totalEmbalagem = comCusto.reduce((s, p) => s + p.embalagemTotal, 0);
+  const totalCustoMondial = comCusto.reduce((s, p) => s + p.custoBaseUnit * p.vendas, 0);
+  const totalTaxasMarketplace = comCusto.reduce((s, p) => s + p.taxasMarketplaceTotal, 0);
+  const totalImposto = comCusto.reduce((s, p) => s + p.impostoTotal, 0);
+
+  return {
+    items,
+    totals: {
+      vendas: totalVendas,
+      faturamento: totalFaturamento.toFixed(2),
+      margemRs: totalMargem.toFixed(2),
+      margemPct: faturamentoComCusto > 0 ? totalMargem / faturamentoComCusto : 0,
+      produtos: items.length,
+      produtosSemCusto,
+      coberturaCustoPct: parsed.length > 0 ? comCusto.length / parsed.length : 0,
+      // Breakdown agregado dos custos (transparência total)
+      custoMondial: totalCustoMondial.toFixed(2),
+      everton: totalEverton.toFixed(2),
+      embalagem: totalEmbalagem.toFixed(2),
+      taxasMarketplace: totalTaxasMarketplace.toFixed(2),
+      imposto: totalImposto.toFixed(2),
+    },
+  };
+}
+
 export async function updateProductPricingById(input: {
   id: number;
   valorProduto: string;
@@ -319,6 +524,46 @@ export async function updateProductPricingById(input: {
     .where(eq(products.id, input.id));
 
   const rows = await db.select().from(products).where(eq(products.id, input.id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateProductFullById(id: number, patch: {
+  sku?: string;
+  titulo?: string;
+  brandId?: number | null;
+  categoryId?: number | null;
+  internalCode?: string | null;
+  ncm?: string | null;
+  gtin?: string | null;
+  cest?: string | null;
+  taxOriginCode?: string | null;
+  unitOfMeasure?: string;
+  weightKg?: string | null;
+  notes?: string | null;
+  isKit?: number;
+  isActive?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const toSet: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v !== undefined) toSet[k] = v;
+  }
+  if (Object.keys(toSet).length === 0) {
+    const existing = await db.select().from(products).where(eq(products.id, id)).limit(1);
+    return existing[0] ?? null;
+  }
+
+  await db.update(products).set(toSet).where(eq(products.id, id));
+  const rows = await db.select().from(products).where(eq(products.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getProductById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(products).where(eq(products.id, id)).limit(1);
   return rows[0] ?? null;
 }
 
@@ -1452,4 +1697,889 @@ export async function deleteMLCatalogProduct(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(mlCatalogProducts).where(eq(mlCatalogProducts.id, id));
+}
+
+// ── Taxas de Marketplaces ─────────────────────────────────────────────────────
+export async function listMarketplaceFees(marketplace?: "mercado_livre" | "shopee") {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = marketplace
+    ? await db.select().from(marketplaceFees).where(eq(marketplaceFees.marketplace, marketplace)).orderBy(marketplaceFees.feeType, marketplaceFees.priceMin)
+    : await db.select().from(marketplaceFees).orderBy(marketplaceFees.marketplace, marketplaceFees.feeType, marketplaceFees.priceMin);
+  return rows;
+}
+
+export async function updateMarketplaceFee(id: number, patch: Partial<InsertMarketplaceFee>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(marketplaceFees).set(patch).where(eq(marketplaceFees.id, id));
+}
+
+export async function createMarketplaceFee(data: InsertMarketplaceFee) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(marketplaceFees).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function deleteMarketplaceFee(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(marketplaceFees).where(eq(marketplaceFees.id, id));
+}
+
+// ── DRE Gerencial ─────────────────────────────────────────────────────────────
+type FeeRow = typeof marketplaceFees.$inferSelect;
+
+function findFee(
+  fees: FeeRow[],
+  marketplace: "mercado_livre" | "shopee",
+  feeType: string,
+  unitPrice: number,
+): FeeRow | null {
+  const candidates = fees.filter(f =>
+    f.marketplace === marketplace && f.feeType === feeType && f.active === 1
+  );
+  for (const f of candidates) {
+    const min = f.priceMin != null ? Number(f.priceMin) : -Infinity;
+    const max = f.priceMax != null ? Number(f.priceMax) : Infinity;
+    if (unitPrice >= min && unitPrice < max) return f;
+  }
+  if (candidates.length === 1 && candidates[0].priceMin == null && candidates[0].priceMax == null) {
+    return candidates[0];
+  }
+  return null;
+}
+
+/**
+ * Build a map (platform, accountName) → cnpjId using integrations table.
+ * Slug conventions: "ml-<accountname-lower>", "shopee-<shopid>".
+ * For Shopee, since multiple accountNames in orders may share one shopId,
+ * we also register a wildcard `shopee::*` fallback.
+ */
+async function buildAccountCnpjMap(db: any): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ slug: integrations.slug, cnpjId: integrations.cnpjId, accountId: integrations.accountId })
+    .from(integrations)
+    .where(isNotNull(integrations.cnpjId));
+  const map = new Map<string, number>();
+  for (const r of rows as any[]) {
+    if (!r.cnpjId) continue;
+    if (typeof r.slug === "string" && r.slug.startsWith("ml-") && r.accountId) {
+      map.set(`ml::${String(r.accountId).toUpperCase()}`, r.cnpjId);
+    } else if (typeof r.slug === "string" && r.slug.startsWith("shopee-")) {
+      map.set("shopee::*", r.cnpjId);
+    }
+  }
+  return map;
+}
+
+function cnpjIdForOrder(map: Map<string, number>, platform: string, accountName: string): number | null {
+  if (platform === "ml") return map.get(`ml::${accountName.toUpperCase()}`) ?? null;
+  if (platform === "shopee") {
+    return map.get(`shopee::${accountName}`) ?? map.get("shopee::*") ?? null;
+  }
+  return null;
+}
+
+type CompanyAgg = {
+  cnpjId: number | null;
+  pedidos: number;
+  unidades: number;
+  receitaBruta: number;
+  comissoes: number;
+  taxasFixas: number;
+  taxaTransacao: number;
+  freteSeller: number;
+  cmv: number;
+  everton: number; // Comissão Everton (R$0,40 ou R$0,90 por peça)
+  embalagem: number; // Custo de embalagem por peça (R$0,30 / 0,95 / 1,00 / 3,45)
+  impostosFallback: number; // imposto calculado via products.imposto (fallback)
+  impostosConfigurado: number; // imposto via company_tax_rates (quando cadastrado)
+  difalTotal: number;
+  rateUsada: number | null; // % efetivo aplicado
+  rateFonte: "config" | "fallback";
+};
+
+async function computeRangeAggregate(
+  db: any,
+  start: Date,
+  end: Date,
+  fees: FeeRow[],
+  products149: Record<string, any>,
+  accountMap: Map<string, number>,
+  taxRatesByCnpj: Map<number, any>,
+  exceptionsByCnpj: Map<number, any[]>,
+  mlCatalogByTitle: Map<string, any>,
+  aliquotaEfetivaPctFallback: number,
+) {
+  const orders = await db
+    .select({
+      externalId: marketplaceOrders.externalId,
+      platform: marketplaceOrders.platform,
+      accountName: marketplaceOrders.accountName,
+      quantity: marketplaceOrders.quantity,
+      totalAmount: marketplaceOrders.totalAmount,
+      productSku: marketplaceOrders.productSku,
+      productName: marketplaceOrders.productName,
+      buyerState: marketplaceOrders.buyerState,
+      status: marketplaceOrders.status,
+    })
+    .from(marketplaceOrders)
+    .where(
+      and(
+        sql`${marketplaceOrders.platformCreatedAt} >= ${start}`,
+        sql`${marketplaceOrders.platformCreatedAt} < ${end}`,
+        sql`${marketplaceOrders.status} NOT IN ('cancelled','to_return')`,
+      ),
+    );
+
+  const mlOrderIds = (orders as any[])
+    .filter((o) => o.platform === "ml")
+    .map((o) => Number(String(o.externalId).replace(/^ML-/, "")))
+    .filter((n) => Number.isFinite(n));
+
+  let realFees = new Map<number, any>();
+  if (mlOrderIds.length > 0) {
+    const { getRealFeesByOrderIds } = await import("./mercadopago");
+    realFees = await getRealFeesByOrderIds(mlOrderIds);
+  }
+
+  const agg = {
+    pedidos: 0,
+    unidades: 0,
+    receitaBruta: { ml: 0, shopee: 0, total: 0 },
+    comissoes: { ml: 0, shopee: 0, total: 0 },
+    taxasFixas: { ml: 0, shopee: 0, total: 0 },
+    taxaTransacao: { shopee: 0, total: 0 },
+    freteSeller: { ml: 0, shopee: 0, total: 0 },
+    cmv: { total: 0, matched: 0, missing: 0 },
+    everton: { total: 0 },     // Comissão Everton (R$0,40 ou R$0,90 por peça vendida)
+    embalagem: { total: 0 },   // Custo embalagem por categoria do título
+    impostos: { total: 0, configurado: 0, fallback: 0, difal: 0 },
+    frete: { total: 0 },
+    feesSource: { mlReal: 0, mlEstimated: 0 },
+    byCompany: new Map<string, CompanyAgg>(), // key = cnpjId ou "sem-empresa"
+  };
+
+  const getOrCreateCompany = (cnpjId: number | null): CompanyAgg => {
+    const key = cnpjId == null ? "sem-empresa" : String(cnpjId);
+    let entry = agg.byCompany.get(key);
+    if (!entry) {
+      entry = {
+        cnpjId,
+        pedidos: 0,
+        unidades: 0,
+        receitaBruta: 0,
+        comissoes: 0,
+        taxasFixas: 0,
+        taxaTransacao: 0,
+        freteSeller: 0,
+        cmv: 0,
+        everton: 0,
+        embalagem: 0,
+        impostosFallback: 0,
+        impostosConfigurado: 0,
+        difalTotal: 0,
+        rateUsada: null,
+        rateFonte: "fallback",
+      };
+      agg.byCompany.set(key, entry);
+    }
+    return entry;
+  };
+
+  const FRETE_COPART_SHOPEE_PCT = 0.25;
+  const FRETE_MEDIO_ML_UNIT = 15.35;
+  // Alíquota efetiva (calculada via Simples Anexo I + RBT12, ou override por empresa)
+  const IMPOSTO_PCT_FALLBACK = aliquotaEfetivaPctFallback / 100;
+
+  for (const o of orders as any[]) {
+    agg.pedidos += 1;
+    const qty = Number(o.quantity) || 1;
+    agg.unidades += qty;
+    const total = Number(o.totalAmount) || 0;
+    const unit = total / qty;
+    const plat = o.platform === "shopee" ? "shopee" : o.platform === "ml" ? "mercado_livre" : null;
+
+    const cnpjId = cnpjIdForOrder(accountMap, String(o.platform), String(o.accountName ?? ""));
+    const company = getOrCreateCompany(cnpjId);
+    company.pedidos += 1;
+    company.unidades += qty;
+
+    let orderComissoes = 0;
+    let orderTaxasFixas = 0;
+    let orderTaxaTransacao = 0;
+    let orderFreteSeller = 0;
+
+    if (plat === "mercado_livre") {
+      agg.receitaBruta.ml += total;
+      company.receitaBruta += total;
+      const orderIdNum = Number(String(o.externalId).replace(/^ML-/, ""));
+      const real = realFees.get(orderIdNum);
+      if (real) {
+        orderComissoes = real.mlSaleFee;
+        orderTaxasFixas = real.mpProcessingFee + real.mpFinancingFee + real.otherFees;
+        orderFreteSeller = real.shippingAmount;
+        agg.comissoes.ml += orderComissoes;
+        agg.taxasFixas.ml += orderTaxasFixas;
+        agg.freteSeller.ml += orderFreteSeller;
+        agg.feesSource.mlReal += 1;
+      } else {
+        const commission = findFee(fees, "mercado_livre", "commission", unit);
+        const comPct = commission ? Number(commission.percentage) / 100 : 0.13;
+        orderComissoes = total * comPct;
+        agg.comissoes.ml += orderComissoes;
+
+        const fixed = findFee(fees, "mercado_livre", "fixed", unit);
+        if (fixed) {
+          orderTaxasFixas = Number(fixed.fixedAmount) * qty;
+          agg.taxasFixas.ml += orderTaxasFixas;
+        }
+
+        if (unit >= 79) {
+          orderFreteSeller = FRETE_MEDIO_ML_UNIT * qty;
+          agg.freteSeller.ml += orderFreteSeller;
+        }
+        agg.feesSource.mlEstimated += 1;
+      }
+    } else if (plat === "shopee") {
+      agg.receitaBruta.shopee += total;
+      company.receitaBruta += total;
+      const commission = findFee(fees, "shopee", "commission", unit);
+      if (commission) {
+        orderComissoes = total * (Number(commission.percentage) / 100);
+        orderTaxasFixas = Number(commission.fixedAmount) * qty;
+      } else {
+        orderComissoes = total * 0.14;
+        orderTaxasFixas = 20 * qty;
+      }
+      agg.comissoes.shopee += orderComissoes;
+      agg.taxasFixas.shopee += orderTaxasFixas;
+      orderTaxaTransacao = total * 0.02;
+      agg.taxaTransacao.shopee += orderTaxaTransacao;
+      orderFreteSeller = total * FRETE_COPART_SHOPEE_PCT * 0.2;
+      agg.freteSeller.shopee += orderFreteSeller;
+    }
+
+    company.comissoes += orderComissoes;
+    company.taxasFixas += orderTaxasFixas;
+    company.taxaTransacao += orderTaxaTransacao;
+    company.freteSeller += orderFreteSeller;
+
+    const prod = o.productSku ? products149[o.productSku] : null;
+    let orderCmv = 0;
+    let orderImpostoFallback = 0;
+    let orderEverton = 0;
+    let orderEmbalagem = 0;
+    let custoUnitResolvido = 0;
+    let tituloRef = String(prod?.titulo ?? o.productName ?? "");
+
+    if (prod && Number(prod.valorProduto) > 0) {
+      // Caminho A: SKU bate em products
+      custoUnitResolvido = Number(prod.valorProduto);
+      orderEmbalagem = calcEmbalagem(tituloRef) * qty;
+    } else if (o.productName) {
+      // Caminho B: fallback via título exato em ml_catalog_products (cobre pedidos ML sem SKU)
+      const mlc = mlCatalogByTitle.get(String(o.productName));
+      if (mlc && Number(mlc.costPrice) > 0) {
+        custoUnitResolvido = Number(mlc.costPrice);
+        // Usa packagingCost cadastrado (já calculado pela regra de embalagem)
+        const pkg = Number(mlc.packagingCost) || calcEmbalagem(String(o.productName));
+        orderEmbalagem = pkg * qty;
+        tituloRef = String(mlc.title || o.productName);
+      }
+    }
+
+    if (custoUnitResolvido > 0) {
+      orderCmv = custoUnitResolvido * qty;
+      orderEverton = calcEverton(custoUnitResolvido) * qty;
+      agg.cmv.total += orderCmv;
+      agg.cmv.matched += 1;
+    } else {
+      agg.cmv.missing += 1;
+      // Sem custo: ainda detecta embalagem pelo título do pedido
+      orderEmbalagem = calcEmbalagem(tituloRef) * qty;
+    }
+
+    // Imposto: sempre alíquota efetiva sobre receita (Simples Anexo I padronizado)
+    orderImpostoFallback = total * IMPOSTO_PCT_FALLBACK;
+
+    agg.everton.total += orderEverton;
+    agg.embalagem.total += orderEmbalagem;
+    company.cmv += orderCmv;
+    company.everton += orderEverton;
+    company.embalagem += orderEmbalagem;
+    company.impostosFallback += orderImpostoFallback;
+
+    // Aplicar exceções DIFAL/ST por UF destino (se empresa vinculada tem UF origem diferente)
+    if (cnpjId != null && o.buyerState) {
+      const excs = exceptionsByCnpj.get(cnpjId) ?? [];
+      for (const exc of excs) {
+        if (exc.exceptionType === "difal" && exc.ufDestino && String(exc.ufDestino).toUpperCase() === String(o.buyerState).toUpperCase().substring(0, 2)) {
+          company.difalTotal += total * (Number(exc.rate) / 100);
+          agg.impostos.difal += total * (Number(exc.rate) / 100);
+          break;
+        }
+      }
+    }
+  }
+
+  // Aplicar alíquota configurada por empresa (substitui fallback quando existe)
+  for (const company of Array.from(agg.byCompany.values())) {
+    if (company.cnpjId != null) {
+      const rate = taxRatesByCnpj.get(company.cnpjId);
+      if (rate && Number(rate.effectiveRate) > 0) {
+        company.rateUsada = Number(rate.effectiveRate);
+        company.rateFonte = "config";
+        company.impostosConfigurado = company.receitaBruta * (Number(rate.effectiveRate) / 100);
+        agg.impostos.configurado += company.impostosConfigurado;
+        agg.impostos.total += company.impostosConfigurado;
+        continue;
+      }
+    }
+    company.rateFonte = "fallback";
+    agg.impostos.fallback += company.impostosFallback;
+    agg.impostos.total += company.impostosFallback;
+  }
+  agg.impostos.total += agg.impostos.difal;
+
+  agg.receitaBruta.total = agg.receitaBruta.ml + agg.receitaBruta.shopee;
+  agg.comissoes.total = agg.comissoes.ml + agg.comissoes.shopee;
+  agg.taxasFixas.total = agg.taxasFixas.ml + agg.taxasFixas.shopee;
+  agg.taxaTransacao.total = agg.taxaTransacao.shopee;
+  agg.freteSeller.total = agg.freteSeller.ml + agg.freteSeller.shopee;
+  return agg;
+}
+
+export async function getDreGerencial(input: {
+  year?: number;
+  month?: number;
+  start?: Date;
+  end?: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Resolver range. Prioriza start/end; senão usa year/month como mês inteiro.
+  let start: Date;
+  let end: Date;
+  if (input.start && input.end) {
+    start = input.start;
+    end = input.end;
+  } else if (input.year && input.month) {
+    start = new Date(input.year, input.month - 1, 1);
+    end = new Date(input.year, input.month, 1);
+  } else {
+    const now = new Date();
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  // Período anterior = mesmo tamanho deslocado pra trás
+  const rangeMs = end.getTime() - start.getTime();
+  const prevEnd = start;
+  const prevStart = new Date(start.getTime() - rangeMs);
+
+  // Para taxas/alíquotas usamos o mês do meio do range (heurística simples)
+  const midPoint = new Date(start.getTime() + rangeMs / 2);
+  const year = midPoint.getFullYear();
+  const month = midPoint.getMonth() + 1;
+  const prevMid = new Date(prevStart.getTime() + rangeMs / 2);
+  const prevYear = prevMid.getFullYear();
+  const prevMonth = prevMid.getMonth() + 1;
+
+  const fees = (await db.select().from(marketplaceFees)) as FeeRow[];
+  const allProducts = await db
+    .select({
+      sku: products.sku,
+      titulo: products.titulo,
+      valorProduto: products.valorProduto,
+      imposto: products.imposto,
+      comissao: products.comissao,
+    })
+    .from(products)
+    .where(eq(products.isActive, 1));
+  const productsBySku: Record<string, any> = {};
+  for (const p of allProducts as any[]) productsBySku[p.sku] = p;
+
+  // Mapa de fallback: título → ml_catalog_products (cobre pedidos ML sem productSku populado)
+  const mlCatalogRows = await db
+    .select({
+      title: mlCatalogProducts.title,
+      costPrice: mlCatalogProducts.costPrice,
+      packagingCost: mlCatalogProducts.packagingCost,
+    })
+    .from(mlCatalogProducts);
+  const mlCatalogByTitle = new Map<string, any>();
+  for (const m of mlCatalogRows as any[]) {
+    if (m.title && Number(m.costPrice) > 0) {
+      // Se há duplicidade de título, mantém a primeira (todas devem ter o mesmo costPrice por matching tipo+modelo)
+      if (!mlCatalogByTitle.has(m.title)) mlCatalogByTitle.set(m.title, m);
+    }
+  }
+
+  const accountMap = await buildAccountCnpjMap(db);
+
+  // ===== RBT12 + alíquota efetiva Simples Anexo I =====
+  // Calcula receita bruta dos últimos 12 meses contados a partir do FIM do período corrente.
+  const rbt12RowsCurrent = await db
+    .select({
+      rbt12: sql<string>`coalesce(sum(${marketplaceOrders.totalAmount}), 0)`,
+    })
+    .from(marketplaceOrders)
+    .where(
+      and(
+        sql`${marketplaceOrders.platformCreatedAt} >= ${new Date(end.getTime() - 365 * 24 * 60 * 60 * 1000)}`,
+        sql`${marketplaceOrders.platformCreatedAt} < ${end}`,
+        sql`${marketplaceOrders.status} NOT IN ('cancelled','to_return')`,
+      ),
+    );
+  const rbt12Current = Number(rbt12RowsCurrent[0]?.rbt12 ?? 0);
+  const aliqCurrent = aliquotaEfetivaSimples(rbt12Current);
+
+  const rbt12RowsPrev = await db
+    .select({
+      rbt12: sql<string>`coalesce(sum(${marketplaceOrders.totalAmount}), 0)`,
+    })
+    .from(marketplaceOrders)
+    .where(
+      and(
+        sql`${marketplaceOrders.platformCreatedAt} >= ${new Date(prevEnd.getTime() - 365 * 24 * 60 * 60 * 1000)}`,
+        sql`${marketplaceOrders.platformCreatedAt} < ${prevEnd}`,
+        sql`${marketplaceOrders.status} NOT IN ('cancelled','to_return')`,
+      ),
+    );
+  const rbt12Previous = Number(rbt12RowsPrev[0]?.rbt12 ?? 0);
+  const aliqPrevious = aliquotaEfetivaSimples(rbt12Previous);
+
+  const ratesRows = await db
+    .select()
+    .from(companyTaxRates)
+    .where(
+      or(
+        and(eq(companyTaxRates.year, year), eq(companyTaxRates.month, month)),
+        and(eq(companyTaxRates.year, prevYear), eq(companyTaxRates.month, prevMonth)),
+      ),
+    );
+  const ratesCurrent = new Map<number, any>();
+  const ratesPrevious = new Map<number, any>();
+  for (const r of ratesRows as any[]) {
+    if (r.year === year && r.month === month) ratesCurrent.set(r.cnpjId, r);
+    else if (r.year === prevYear && r.month === prevMonth) ratesPrevious.set(r.cnpjId, r);
+  }
+
+  const exceptionsRows = await db.select().from(companyTaxExceptions);
+  const exceptionsByCnpj = new Map<number, any[]>();
+  for (const e of exceptionsRows as any[]) {
+    const list = exceptionsByCnpj.get(e.cnpjId) ?? [];
+    list.push(e);
+    exceptionsByCnpj.set(e.cnpjId, list);
+  }
+
+  // dateSource toggle (atualmente usa platformCreatedAt em ambos os casos;
+  // quando a integração fiscal expuser invoiceDate, o modo 'invoice' passa a usá-lo)
+  const dateSourceRow = await db
+    .select()
+    .from(systemSettings)
+    .where(eq(systemSettings.key, "dateSource"))
+    .limit(1);
+  const dateSource = (dateSourceRow[0]?.value ?? "sale") as "sale" | "invoice";
+
+  const [current, previous] = await Promise.all([
+    computeRangeAggregate(db, start, end, fees, productsBySku, accountMap, ratesCurrent, exceptionsByCnpj, mlCatalogByTitle, aliqCurrent.efetivaPct),
+    computeRangeAggregate(db, prevStart, prevEnd, fees, productsBySku, accountMap, ratesPrevious, exceptionsByCnpj, mlCatalogByTitle, aliqPrevious.efetivaPct),
+  ]);
+
+  const fixedCostsRows = await db
+    .select({ amount: fixedCosts.amount })
+    .from(fixedCosts)
+    .where(eq(fixedCosts.isActive, 1));
+  const despesasOperacionais = fixedCostsRows.reduce(
+    (s: number, r: any) => s + Number(r.amount),
+    0,
+  );
+
+  // Carregar dados das empresas (para labels no UI)
+  const cnpjRows = await db.select().from(myCnpjs).where(eq(myCnpjs.isActive, 1));
+  const cnpjsById = new Map<number, any>();
+  for (const c of cnpjRows as any[]) cnpjsById.set(c.id, c);
+
+  const build = (agg: Awaited<ReturnType<typeof computeRangeAggregate>>) => {
+    const totalDeducoes =
+      agg.comissoes.total +
+      agg.taxasFixas.total +
+      agg.taxaTransacao.total +
+      agg.freteSeller.total;
+    const receitaLiquida = agg.receitaBruta.total - totalDeducoes - agg.impostos.total;
+    const lucroBruto = receitaLiquida - agg.cmv.total;
+    // Margem de contribuição = lucro bruto - custos variáveis diretos (Everton + Embalagem)
+    const custosVariaveisDiretos = agg.everton.total + agg.embalagem.total;
+    const margemContribuicao = lucroBruto - custosVariaveisDiretos;
+    const lucroOperacional = margemContribuicao - despesasOperacionais;
+
+    // Serializar breakdown por empresa
+    const byCompany = Array.from(agg.byCompany.values()).map(c => {
+      const cnpj = c.cnpjId != null ? cnpjsById.get(c.cnpjId) : null;
+      const impostoAplicado = c.rateFonte === "config" ? c.impostosConfigurado : c.impostosFallback;
+      const totalDeducoesEmpresa = c.comissoes + c.taxasFixas + c.taxaTransacao + c.freteSeller;
+      const receitaLiquidaEmpresa = c.receitaBruta - totalDeducoesEmpresa - impostoAplicado - c.difalTotal;
+      const lucroBrutoEmpresa = receitaLiquidaEmpresa - c.cmv;
+      const margemContribuicaoEmpresa = lucroBrutoEmpresa - c.everton - c.embalagem;
+      return {
+        cnpjId: c.cnpjId,
+        razaoSocial: cnpj?.razaoSocial ?? null,
+        nomeFantasia: cnpj?.nomeFantasia ?? null,
+        regime: cnpj?.regime ?? null,
+        ufOrigem: cnpj?.ufOrigem ?? null,
+        pedidos: c.pedidos,
+        unidades: c.unidades,
+        receitaBruta: c.receitaBruta,
+        comissoes: c.comissoes,
+        taxasFixas: c.taxasFixas,
+        taxaTransacao: c.taxaTransacao,
+        freteSeller: c.freteSeller,
+        cmv: c.cmv,
+        everton: c.everton,
+        embalagem: c.embalagem,
+        impostoAplicado,
+        difalTotal: c.difalTotal,
+        rateUsada: c.rateUsada,
+        rateFonte: c.rateFonte,
+        receitaLiquida: receitaLiquidaEmpresa,
+        lucroBruto: lucroBrutoEmpresa,
+        margemContribuicao: margemContribuicaoEmpresa,
+      };
+    }).sort((a, b) => b.receitaBruta - a.receitaBruta);
+
+    const byCompanyObj = {
+      items: byCompany,
+      empresasVinculadas: byCompany.filter(c => c.cnpjId != null).length,
+      pedidosSemEmpresa: byCompany.find(c => c.cnpjId == null)?.pedidos ?? 0,
+    };
+
+    const { byCompany: _omitBC, ...rest } = agg;
+    return {
+      ...rest,
+      totalDeducoes,
+      receitaLiquida,
+      lucroBruto,
+      custosVariaveisDiretos,
+      margemContribuicao,
+      lucroOperacional,
+      despesasOperacionais,
+      byCompany: byCompanyObj,
+    };
+  };
+
+  return {
+    year,
+    month,
+    range: {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      prevStart: prevStart.toISOString(),
+      prevEnd: prevEnd.toISOString(),
+      days: Math.round(rangeMs / (1000 * 60 * 60 * 24)),
+    },
+    dateSource,
+    current: build(current),
+    previous: build(previous),
+    despesasOperacionaisCadastradas: fixedCostsRows.length,
+    aliquotaSimples: {
+      current: aliqCurrent,
+      previous: aliqPrevious,
+      fonte: "calculo_simples_anexo_I",
+    },
+  };
+}
+
+/* ── System Settings helpers ───────────────────────────────────────────── */
+
+export async function getSystemSetting(key: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(systemSettings).where(eq(systemSettings.key, key)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getAllSystemSettings() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(systemSettings).orderBy(systemSettings.key);
+}
+
+export async function setSystemSetting(key: string, value: string, description?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(systemSettings).where(eq(systemSettings.key, key)).limit(1);
+  if (existing[0]) {
+    await db.update(systemSettings).set({ value, description: description ?? existing[0].description }).where(eq(systemSettings.key, key));
+  } else {
+    await db.insert(systemSettings).values({ key, value, description: description ?? null });
+  }
+  return getSystemSetting(key);
+}
+
+/* ── Integrations linkCompany helper ───────────────────────────────────── */
+
+export async function setIntegrationCnpj(slug: string, cnpjId: number | null) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(integrations).set({ cnpjId }).where(eq(integrations.slug, slug));
+}
+
+/* ── Company Tax Rates helpers ─────────────────────────────────────────── */
+
+export async function listCompanyTaxRates(cnpjId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(companyTaxRates)
+    .where(eq(companyTaxRates.cnpjId, cnpjId))
+    .orderBy(desc(companyTaxRates.year), desc(companyTaxRates.month));
+}
+
+export async function upsertCompanyTaxRate(input: InsertCompanyTaxRate) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(companyTaxRates)
+    .where(
+      and(
+        eq(companyTaxRates.cnpjId, input.cnpjId),
+        eq(companyTaxRates.year, input.year),
+        eq(companyTaxRates.month, input.month),
+      ),
+    )
+    .limit(1);
+  if (existing[0]) {
+    await db.update(companyTaxRates).set(input).where(eq(companyTaxRates.id, existing[0].id));
+    return { ...existing[0], ...input };
+  }
+  const result = await db.insert(companyTaxRates).values(input).$returningId();
+  const id = result[0]?.id ?? 0;
+  const rows = await db.select().from(companyTaxRates).where(eq(companyTaxRates.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function deleteCompanyTaxRate(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(companyTaxRates).where(eq(companyTaxRates.id, id));
+}
+
+/* ── Company Tax Exceptions helpers ────────────────────────────────────── */
+
+export async function listCompanyTaxExceptions(cnpjId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(companyTaxExceptions)
+    .where(eq(companyTaxExceptions.cnpjId, cnpjId))
+    .orderBy(desc(companyTaxExceptions.validFrom));
+}
+
+export async function createCompanyTaxException(input: InsertCompanyTaxException) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(companyTaxExceptions).values(input).$returningId();
+  const id = result[0]?.id ?? 0;
+  const rows = await db.select().from(companyTaxExceptions).where(eq(companyTaxExceptions.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateCompanyTaxException(id: number, data: Partial<InsertCompanyTaxException>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(companyTaxExceptions).set(data).where(eq(companyTaxExceptions.id, id));
+  const rows = await db.select().from(companyTaxExceptions).where(eq(companyTaxExceptions.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function deleteCompanyTaxException(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(companyTaxExceptions).where(eq(companyTaxExceptions.id, id));
+}
+
+// ── Product Brands ────────────────────────────────────────────────────────
+export async function listProductBrands() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productBrands).orderBy(productBrands.name);
+}
+
+export async function createProductBrand(data: InsertProductBrand) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productBrands).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function updateProductBrand(id: number, patch: Partial<InsertProductBrand>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productBrands).set(patch).where(eq(productBrands.id, id));
+}
+
+export async function deleteProductBrand(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(productBrands).where(eq(productBrands.id, id));
+}
+
+// ── Product Categories ───────────────────────────────────────────────────
+export async function listProductCategories() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productCategories).orderBy(productCategories.name);
+}
+
+export async function createProductCategory(data: InsertProductCategory) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productCategories).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function updateProductCategory(id: number, patch: Partial<InsertProductCategory>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productCategories).set(patch).where(eq(productCategories.id, id));
+}
+
+export async function deleteProductCategory(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(productCategories).where(eq(productCategories.id, id));
+}
+
+// ── Product Warehouses ───────────────────────────────────────────────────
+export async function listProductWarehouses() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productWarehouses).orderBy(desc(productWarehouses.isDefault), productWarehouses.name);
+}
+
+export async function createProductWarehouse(data: InsertProductWarehouse) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productWarehouses).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function updateProductWarehouse(id: number, patch: Partial<InsertProductWarehouse>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productWarehouses).set(patch).where(eq(productWarehouses.id, id));
+}
+
+export async function deleteProductWarehouse(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(productWarehouses).where(eq(productWarehouses.id, id));
+}
+
+// ── Cost / Sale History ──────────────────────────────────────────────────
+export async function listProductCostHistory(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productCostHistory)
+    .where(eq(productCostHistory.productId, productId))
+    .orderBy(desc(productCostHistory.validFrom), desc(productCostHistory.id));
+}
+
+export async function createProductCostHistory(data: InsertProductCostHistory) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productCostHistory).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function listProductSaleHistory(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productSaleHistory)
+    .where(eq(productSaleHistory.productId, productId))
+    .orderBy(desc(productSaleHistory.validFrom), desc(productSaleHistory.id));
+}
+
+export async function createProductSaleHistory(data: InsertProductSaleHistory) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productSaleHistory).values(data);
+  return (res as any).insertId as number;
+}
+
+// ── Fixed Costs por produto ──────────────────────────────────────────────
+export async function listProductFixedCosts(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productFixedCosts)
+    .where(eq(productFixedCosts.productId, productId))
+    .orderBy(productFixedCosts.label);
+}
+
+export async function createProductFixedCost(data: InsertProductFixedCost) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productFixedCosts).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function updateProductFixedCost(id: number, patch: Partial<InsertProductFixedCost>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productFixedCosts).set(patch).where(eq(productFixedCosts.id, id));
+}
+
+export async function deleteProductFixedCost(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(productFixedCosts).where(eq(productFixedCosts.id, id));
+}
+
+// ── Multi-warehouse stocks ───────────────────────────────────────────────
+export async function listProductStocks(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productStocks).where(eq(productStocks.productId, productId));
+}
+
+export async function upsertProductStock(data: InsertProductStock) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(productStocks)
+    .where(and(eq(productStocks.productId, data.productId), eq(productStocks.warehouseId, data.warehouseId)))
+    .limit(1);
+  if (existing.length > 0) {
+    await db.update(productStocks).set(data).where(eq(productStocks.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [res] = await db.insert(productStocks).values(data);
+  return (res as any).insertId as number;
+}
+
+// ── Kit items ────────────────────────────────────────────────────────────
+export async function listProductKitItems(kitProductId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productKitItems).where(eq(productKitItems.kitProductId, kitProductId));
+}
+
+export async function addProductKitItem(data: InsertProductKitItem) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [res] = await db.insert(productKitItems).values(data);
+  return (res as any).insertId as number;
+}
+
+export async function removeProductKitItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(productKitItems).where(eq(productKitItems.id, id));
 }

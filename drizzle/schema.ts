@@ -46,8 +46,18 @@ export const productUploads = mysqlTable("product_uploads", {
 
 export const products = mysqlTable("products", {
   id: int("id").autoincrement().primaryKey(),
+  brandId: int("brandId"),
+  categoryId: int("categoryId"),
   uploadId: int("uploadId"),
   sku: varchar("sku", { length: 128 }).notNull().unique(),
+  internalCode: varchar("internalCode", { length: 64 }),
+  ncm: varchar("ncm", { length: 16 }),
+  gtin: varchar("gtin", { length: 20 }),
+  cest: varchar("cest", { length: 12 }),
+  taxOriginCode: varchar("taxOriginCode", { length: 4 }),
+  unitOfMeasure: varchar("unitOfMeasure", { length: 8 }).notNull().default("UN"),
+  weightKg: decimal("weightKg", { precision: 10, scale: 4 }),
+  notes: text("notes"),
   titulo: text("titulo").notNull(),
   tabelaNovaCk: decimal("tabelaNovaCk", { precision: 14, scale: 4 }).notNull().default("0.0000"),
   imposto: decimal("imposto", { precision: 14, scale: 4 }).notNull().default("0.0000"),
@@ -59,8 +69,95 @@ export const products = mysqlTable("products", {
   margemFinal: decimal("margemFinal", { precision: 14, scale: 6 }).notNull().default("0.000000"),
   lucro: decimal("lucro", { precision: 14, scale: 4 }).notNull().default("0.0000"),
   isActive: int("isActive").notNull().default(1),
+  isKit: int("isKit").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// ── Marcas, Categorias, Depósitos ─────────────────────────
+export const productBrands = mysqlTable("product_brands", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull().unique(),
+  notes: text("notes"),
+  isActive: int("isActive").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const productCategories = mysqlTable("product_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  parentId: int("parentId"),
+  name: varchar("name", { length: 160 }).notNull(),
+  slug: varchar("slug", { length: 180 }).notNull().unique(),
+  isActive: int("isActive").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const productWarehouses = mysqlTable("product_warehouses", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull().unique(),
+  address: varchar("address", { length: 255 }),
+  isDefault: int("isDefault").notNull().default(0),
+  isActive: int("isActive").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// ── Histórico de custo / venda ─────────────────────────────
+export const productCostHistory = mysqlTable("product_cost_history", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull(),
+  cost: decimal("cost", { precision: 14, scale: 4 }).notNull(),
+  validFrom: varchar("validFrom", { length: 10 }).notNull(),
+  supplier: varchar("supplier", { length: 160 }),
+  sourceDoc: varchar("sourceDoc", { length: 120 }),
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const productSaleHistory = mysqlTable("product_sale_history", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull(),
+  price: decimal("price", { precision: 14, scale: 4 }).notNull(),
+  validFrom: varchar("validFrom", { length: 10 }).notNull(),
+  channel: varchar("channel", { length: 64 }),
+  notes: text("notes"),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ── Custos fixos rateados ────────────────────────────────
+export const productFixedCosts = mysqlTable("product_fixed_costs", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull(),
+  label: varchar("label", { length: 160 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 4 }).notNull(),
+  period: mysqlEnum("period", ["por_unidade", "mensal", "anual"]).notNull().default("por_unidade"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// ── Multi-depósito ──────────────────────────────────────
+export const productStocks = mysqlTable("product_stocks", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull(),
+  warehouseId: int("warehouseId").notNull(),
+  quantity: int("quantity").notNull().default(0),
+  minStock: int("minStock").notNull().default(0),
+  maxStock: int("maxStock"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// ── Kit (SKU composto) ──────────────────────────────────
+export const productKitItems = mysqlTable("product_kit_items", {
+  id: int("id").autoincrement().primaryKey(),
+  kitProductId: int("kitProductId").notNull(),
+  componentProductId: int("componentProductId").notNull(),
+  quantity: int("quantity").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 // ── Estoque / Inventory ────────────────────────────────
@@ -300,6 +397,22 @@ export type ProductUpload = typeof productUploads.$inferSelect;
 export type InsertProductUpload = typeof productUploads.$inferInsert;
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = typeof products.$inferInsert;
+export type ProductBrand = typeof productBrands.$inferSelect;
+export type InsertProductBrand = typeof productBrands.$inferInsert;
+export type ProductCategory = typeof productCategories.$inferSelect;
+export type InsertProductCategory = typeof productCategories.$inferInsert;
+export type ProductWarehouse = typeof productWarehouses.$inferSelect;
+export type InsertProductWarehouse = typeof productWarehouses.$inferInsert;
+export type ProductCostHistory = typeof productCostHistory.$inferSelect;
+export type InsertProductCostHistory = typeof productCostHistory.$inferInsert;
+export type ProductSaleHistory = typeof productSaleHistory.$inferSelect;
+export type InsertProductSaleHistory = typeof productSaleHistory.$inferInsert;
+export type ProductFixedCost = typeof productFixedCosts.$inferSelect;
+export type InsertProductFixedCost = typeof productFixedCosts.$inferInsert;
+export type ProductStock = typeof productStocks.$inferSelect;
+export type InsertProductStock = typeof productStocks.$inferInsert;
+export type ProductKitItem = typeof productKitItems.$inferSelect;
+export type InsertProductKitItem = typeof productKitItems.$inferInsert;
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;
 export type Order = typeof orders.$inferSelect;
@@ -407,6 +520,11 @@ export const myCnpjs = mysqlTable("my_cnpjs", {
   cnpj: varchar("cnpj", { length: 32 }).notNull().unique(),
   nomeFantasia: varchar("nomeFantasia", { length: 255 }),
   inscricaoEstadual: varchar("inscricaoEstadual", { length: 64 }),
+  inscricaoMunicipal: varchar("inscricaoMunicipal", { length: 64 }),
+  regime: mysqlEnum("regime", ["mei", "simples", "presumido", "real"]),
+  ufOrigem: varchar("ufOrigem", { length: 2 }),
+  cnaePrincipal: varchar("cnaePrincipal", { length: 16 }),
+  dataInicioRegime: varchar("dataInicioRegime", { length: 10 }),
   notes: text("notes"),
   isActive: int("isActive").notNull().default(1),
   createdByUserId: int("createdByUserId"),
@@ -760,6 +878,8 @@ export const integrations = mysqlTable("integrations", {
   accountId: varchar("accountId", { length: 255 }),
   extraConfig: text("extraConfig"),
   status: mysqlEnum("status", ["pending", "connected", "error"]).default("pending").notNull(),
+  /** CNPJ vinculado à integração — define a empresa emissora das vendas */
+  cnpjId: int("cnpjId"),
   lastTestedAt: timestamp("lastTestedAt"),
   lastSyncAt: timestamp("lastSyncAt"),
   lastError: text("lastError"),
@@ -854,6 +974,8 @@ export const marketplaceOrders = mysqlTable("marketplace_orders", {
   statusLabel: varchar("statusLabel", { length: 128 }).notNull(),
   /** Comprador */
   buyerName: varchar("buyerName", { length: 255 }).notNull(),
+  /** ID externo do comprador na plataforma (ex: shopee buyer_user_id) — usado pra abrir chat */
+  buyerExternalId: varchar("buyerExternalId", { length: 64 }),
   buyerCity: varchar("buyerCity", { length: 160 }),
   buyerState: varchar("buyerState", { length: 80 }),
   /** Produto principal */
@@ -910,3 +1032,310 @@ export const mlCatalogProducts = mysqlTable("ml_catalog_products", {
 
 export type MLCatalogProduct = typeof mlCatalogProducts.$inferSelect;
 export type InsertMLCatalogProduct = typeof mlCatalogProducts.$inferInsert;
+
+// ── Taxas de Marketplaces (ML / Shopee) — editaveis em Configuracoes ────────
+export const marketplaceFees = mysqlTable("marketplace_fees", {
+  id: int("id").autoincrement().primaryKey(),
+  /** mercado_livre | shopee */
+  marketplace: mysqlEnum("marketplace", ["mercado_livre", "shopee"]).notNull(),
+  /** commission | fixed | transaction | shipping | storage */
+  feeType: mysqlEnum("feeType", ["commission", "fixed", "transaction", "shipping", "storage"]).notNull(),
+  /** Rotulo humano ex "Classico Eletronicos" ou "R$ 100-199,99" */
+  label: varchar("label", { length: 128 }).notNull(),
+  /** Categoria quando aplicavel (ex: eletronicos, casa_moveis) */
+  category: varchar("category", { length: 64 }),
+  /** ML: classico | premium | gratis | Shopee: regular | mall */
+  listingType: varchar("listingType", { length: 32 }),
+  /** Faixa de preco minima (inclusive). Null = sem limite */
+  priceMin: decimal("priceMin", { precision: 10, scale: 2 }),
+  /** Faixa de preco maxima (exclusive). Null = sem limite superior */
+  priceMax: decimal("priceMax", { precision: 10, scale: 2 }),
+  /** Percentual (ex: 14.00 = 14%) */
+  percentage: decimal("percentage", { precision: 5, scale: 2 }).notNull().default("0"),
+  /** Valor fixo em R$ (ex: 20.00 = R$ 20) */
+  fixedAmount: decimal("fixedAmount", { precision: 10, scale: 2 }).notNull().default("0"),
+  /** Ativa ou nao (permite "desligar" linha sem deletar) */
+  active: int("active").notNull().default(1),
+  /** Data inicio vigencia */
+  validFrom: varchar("validFrom", { length: 10 }).notNull(),
+  /** Data fim vigencia (null = vigente) */
+  validUntil: varchar("validUntil", { length: 10 }),
+  /** Fonte/observacao */
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MarketplaceFee = typeof marketplaceFees.$inferSelect;
+export type InsertMarketplaceFee = typeof marketplaceFees.$inferInsert;
+
+// ── Taxas REAIS por pagamento (puxadas do Mercado Pago API) ─────────────────
+export const mlPaymentFees = mysqlTable("ml_payment_fees", {
+  id: int("id").autoincrement().primaryKey(),
+  /** payment_id retornado pelo MP (chave natural, unique) */
+  paymentId: bigint("paymentId", { mode: "number" }).notNull().unique(),
+  /** ID do pedido ML correspondente (order.id) */
+  orderId: bigint("orderId", { mode: "number" }).notNull(),
+  /** Conta ML: clickmultii | duoultilidade | kaibrenltda */
+  account: varchar("account", { length: 32 }).notNull(),
+  /** Valor bruto da transação (transaction_amount) */
+  transactionAmount: decimal("transactionAmount", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Comissão ML real (charges_details onde name=ml_sale_fee) */
+  mlSaleFee: decimal("mlSaleFee", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Taxa processamento MP (name=mp_processing_fee) */
+  mpProcessingFee: decimal("mpProcessingFee", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Taxa financiamento MP (name=mp_financing_fee, parcelado) */
+  mpFinancingFee: decimal("mpFinancingFee", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Outras taxas (soma de charges_details não mapeadas acima) */
+  otherFees: decimal("otherFees", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Líquido recebido (net_received_amount de transaction_details) */
+  netReceivedAmount: decimal("netReceivedAmount", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Valor de frete debitado do seller (shipping_amount) */
+  shippingAmount: decimal("shippingAmount", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Data de aprovação do pagamento (date_approved) */
+  dateApproved: timestamp("dateApproved"),
+  /** JSON bruto do retorno MP (auditoria) */
+  rawJson: text("rawJson"),
+  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+});
+
+export type MlPaymentFee = typeof mlPaymentFees.$inferSelect;
+export type InsertMlPaymentFee = typeof mlPaymentFees.$inferInsert;
+
+// ── Configurações globais key/value do sistema ──────────────────────────────
+export const systemSettings = mysqlTable("system_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Chave única da configuração (ex: dateSource, defaultCnpjId) */
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  /** Valor serializado (string, número ou JSON) */
+  value: text("value").notNull(),
+  description: varchar("description", { length: 255 }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+export type InsertSystemSetting = typeof systemSettings.$inferInsert;
+
+// ── Alíquotas por empresa (mês/ano) ─────────────────────────────────────────
+export const companyTaxRates = mysqlTable("company_tax_rates", {
+  id: int("id").autoincrement().primaryKey(),
+  cnpjId: int("cnpjId").notNull(),
+  /** Ano de competência (ex: 2026) */
+  year: int("year").notNull(),
+  /** Mês de competência (1-12) */
+  month: int("month").notNull(),
+  /** Alíquota efetiva do Simples (%) ou combinada (IRPJ+CSLL+PIS+COFINS+ICMS) */
+  effectiveRate: decimal("effectiveRate", { precision: 6, scale: 3 }).notNull().default("0"),
+  /** Componentes individuais (opcional — para Lucro Presumido/Real) */
+  irpjRate: decimal("irpjRate", { precision: 6, scale: 3 }),
+  csllRate: decimal("csllRate", { precision: 6, scale: 3 }),
+  pisRate: decimal("pisRate", { precision: 6, scale: 3 }),
+  cofinsRate: decimal("cofinsRate", { precision: 6, scale: 3 }),
+  icmsRate: decimal("icmsRate", { precision: 6, scale: 3 }),
+  issRate: decimal("issRate", { precision: 6, scale: 3 }),
+  /** Receita bruta 12 meses (RBT12) — base do Simples */
+  rbt12: decimal("rbt12", { precision: 14, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompanyTaxRate = typeof companyTaxRates.$inferSelect;
+export type InsertCompanyTaxRate = typeof companyTaxRates.$inferInsert;
+
+// ── Exceções de alíquota (ICMS por UF destino / DIFAL / produto específico) ─
+export const companyTaxExceptions = mysqlTable("company_tax_exceptions", {
+  id: int("id").autoincrement().primaryKey(),
+  cnpjId: int("cnpjId").notNull(),
+  /** Tipo: icms_interestadual | difal | st | produto | outro */
+  exceptionType: mysqlEnum("exceptionType", ["icms_interestadual", "difal", "st", "produto", "outro"]).notNull(),
+  /** UF destino (quando aplicável) */
+  ufDestino: varchar("ufDestino", { length: 2 }),
+  /** NCM ou SKU (quando aplicável a produto específico) */
+  productRef: varchar("productRef", { length: 64 }),
+  /** Alíquota da exceção (%) */
+  rate: decimal("rate", { precision: 6, scale: 3 }).notNull(),
+  /** Vigência início (YYYY-MM-DD) */
+  validFrom: varchar("validFrom", { length: 10 }).notNull(),
+  /** Vigência fim (YYYY-MM-DD) — null = vigente */
+  validUntil: varchar("validUntil", { length: 10 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompanyTaxException = typeof companyTaxExceptions.$inferSelect;
+export type InsertCompanyTaxException = typeof companyTaxExceptions.$inferInsert;
+
+// ── Metas de venda — faturamento e margem por mes ──────────────────────────
+export const salesGoals = mysqlTable("sales_goals", {
+  id: int("id").autoincrement().primaryKey(),
+  year: int("year").notNull(),
+  month: int("month").notNull(),
+  /** 0 = meta consolidada | >0 = my_cnpjs.id */
+  cnpjId: int("cnpjId").notNull().default(0),
+  faturamentoMeta: decimal("faturamentoMeta", { precision: 14, scale: 2 }).notNull().default("0"),
+  /** Margem meta em decimal (ex: 0.2500 = 25%) */
+  margemMetaPct: decimal("margemMetaPct", { precision: 6, scale: 4 }).notNull().default("0"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SalesGoal = typeof salesGoals.$inferSelect;
+
+// ── Shopee Chat — Conversas, Mensagens, KB e Eventos ───────────────────────
+export const shopeeConversations = mysqlTable("shopee_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: varchar("shopId", { length: 32 }).notNull(),
+  conversationId: varchar("conversationId", { length: 64 }).notNull(),
+  buyerId: varchar("buyerId", { length: 64 }).notNull(),
+  buyerName: varchar("buyerName", { length: 255 }),
+  buyerAvatar: varchar("buyerAvatar", { length: 500 }),
+  unreadCount: int("unreadCount").default(0),
+  latestMessageId: varchar("latestMessageId", { length: 64 }),
+  latestMessageText: text("latestMessageText"),
+  latestMessageFrom: mysqlEnum("latestMessageFrom", ["buyer", "seller"]).default("buyer"),
+  latestMessageAt: timestamp("latestMessageAt"),
+  status: mysqlEnum("status", ["open", "answered", "escalated", "closed"]).default("open"),
+  agentLastAction: mysqlEnum("agentLastAction", ["none", "auto_replied", "shadow_drafted", "escalated", "kaique_replied"]).default("none"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ShopeeConversation = typeof shopeeConversations.$inferSelect;
+
+export const shopeeMessages = mysqlTable("shopee_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: varchar("shopId", { length: 32 }).notNull(),
+  conversationId: varchar("conversationId", { length: 64 }).notNull(),
+  messageId: varchar("messageId", { length: 64 }).notNull(),
+  fromId: varchar("fromId", { length: 64 }).notNull(),
+  fromRole: mysqlEnum("fromRole", ["buyer", "seller", "agent"]).notNull(),
+  messageType: varchar("messageType", { length: 32 }).default("text"),
+  content: text("content"),
+  /** Source da mensagem do agente: ai_auto | ai_shadow | kaique_refined | kaique_raw */
+  agentSource: mysqlEnum("agentSource", ["ai_auto", "ai_shadow", "kaique_refined", "kaique_raw"]),
+  /** Confiança do agente em % (0-100) — só pra mensagens geradas */
+  agentConfidence: int("agentConfidence"),
+  /** ID do anúncio Shopee referenciado, se houver */
+  itemId: varchar("itemId", { length: 64 }),
+  sentAt: timestamp("sentAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ShopeeMessage = typeof shopeeMessages.$inferSelect;
+
+export const shopeeChatKnowledge = mysqlTable("shopee_chat_knowledge", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Tipo: produto | regra_geral | tom_voz | aprendizado */
+  type: mysqlEnum("type", ["produto", "regra_geral", "tom_voz", "aprendizado"]).notNull(),
+  /** SKU ou itemId Shopee, quando aplicável */
+  scope: varchar("scope", { length: 128 }),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  /** Origem: curator (gerado IA) | kaique (humano) | learned (capturado de chat) */
+  source: mysqlEnum("source", ["curator", "kaique", "learned"]).notNull().default("curator"),
+  isActive: int("isActive").notNull().default(1),
+  /** JSON estruturado extraído do anúncio: marca, modelos_compativeis, capacidades, voltagens, alertas */
+  structuredData: text("structuredData"),
+  /** Status da extração: pending | complete | incomplete | failed */
+  extractionStatus: mysqlEnum("extractionStatus", ["pending", "complete", "incomplete", "failed"]).default("pending"),
+  /** Hash da descrição quando extraída — re-extrai se mudar */
+  descriptionHash: varchar("descriptionHash", { length: 64 }),
+  /** Última extração — null = nunca extraído */
+  extractedAt: timestamp("extractedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ShopeeChatKnowledge = typeof shopeeChatKnowledge.$inferSelect;
+
+export const shopeeProactiveMessages = mysqlTable("shopee_proactive_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: varchar("shopId", { length: 64 }).notNull(),
+  /** order_sn da Shopee — UNIQUE pra não duplicar */
+  orderSn: varchar("orderSn", { length: 100 }).notNull().unique(),
+  buyerId: varchar("buyerId", { length: 64 }).notNull(),
+  buyerName: varchar("buyerName", { length: 255 }),
+  itemId: varchar("itemId", { length: 64 }),
+  productName: varchar("productName", { length: 500 }),
+  /** Tipo: airfryer | liquidificador | ventilador | generic */
+  templateUsed: varchar("templateUsed", { length: 64 }),
+  messageSent: text("messageSent"),
+  messageId: varchar("messageId", { length: 100 }),
+  /** sent (autosend), shadow (notificou Telegram), failed (erro), skipped (não precisa) */
+  status: mysqlEnum("status", ["sent", "shadow", "failed", "skipped"]).notNull(),
+  errorMsg: text("errorMsg"),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+});
+
+export type ShopeeProactiveMessage = typeof shopeeProactiveMessages.$inferSelect;
+
+export const shopeeChatEvents = mysqlTable("shopee_chat_events", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: varchar("conversationId", { length: 64 }),
+  /** Evento: msg_received | ai_responded | ai_shadow | escalated | kaique_replied | refined | error */
+  eventType: varchar("eventType", { length: 64 }).notNull(),
+  payload: text("payload"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ShopeeChatEvent = typeof shopeeChatEvents.$inferSelect;
+
+/**
+ * Reviews / comentários dos clientes nas vendas (get_comment).
+ * Sam usa pra: detectar produtos com problema recorrente, responder agradecendo positivos e
+ * tratando negativos, treinar tom de voz a partir do que o cliente fala.
+ */
+export const shopeeFeedback = mysqlTable("shopee_feedback", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: varchar("shopId", { length: 32 }).notNull(),
+  commentId: varchar("commentId", { length: 64 }).notNull().unique(),
+  itemId: varchar("itemId", { length: 64 }),
+  orderSn: varchar("orderSn", { length: 100 }),
+  buyerName: varchar("buyerName", { length: 255 }),
+  rating: int("rating").notNull(),
+  commentText: text("commentText"),
+  mediaUrls: text("mediaUrls"),
+  hasVideo: int("hasVideo").default(0),
+  hidden: int("hidden").default(0),
+  sellerReplyText: text("sellerReplyText"),
+  sellerRepliedAt: timestamp("sellerRepliedAt"),
+  /** Origem da resposta: kaique (humano) | sam_auto | sam_shadow | none (sem resposta ainda) */
+  replySource: mysqlEnum("replySource", ["kaique", "sam_auto", "sam_shadow", "none"]).default("none"),
+  commentedAt: timestamp("commentedAt").notNull(),
+  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+});
+
+export type ShopeeFeedback = typeof shopeeFeedback.$inferSelect;
+
+/**
+ * Devoluções (get_return_list). Mostra produtos com defeito, peça errada,
+ * cliente arrependido. Cruzar com feedback e chat dá visão 360 do problema.
+ */
+export const shopeeReturns = mysqlTable("shopee_returns", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: varchar("shopId", { length: 32 }).notNull(),
+  returnSn: varchar("returnSn", { length: 64 }).notNull().unique(),
+  orderSn: varchar("orderSn", { length: 100 }),
+  buyerName: varchar("buyerName", { length: 255 }),
+  /** Enum Shopee: NOT_RECEIPT | FUNCTIONAL_DMG | MISSING_ITEM | EXPECTATION_FAIL | OTHER */
+  reason: varchar("reason", { length: 64 }),
+  textReason: text("textReason"),
+  imageUrls: text("imageUrls"),
+  videoUrls: text("videoUrls"),
+  /** Status Shopee: REQUESTED | PROCESSING | ACCEPTED | CANCELLED | JUDGING | REFUND_PAID | etc */
+  status: varchar("status", { length: 32 }),
+  refundAmount: decimal("refundAmount", { precision: 12, scale: 2 }),
+  itemId: varchar("itemId", { length: 64 }),
+  itemName: varchar("itemName", { length: 500 }),
+  itemSku: varchar("itemSku", { length: 100 }),
+  itemPrice: decimal("itemPrice", { precision: 12, scale: 2 }),
+  amount: int("amount"),
+  createdAt: timestamp("createdAt").notNull(),
+  updatedAt: timestamp("updatedAt").notNull(),
+  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+});
+
+export type ShopeeReturn = typeof shopeeReturns.$inferSelect;
+export type InsertSalesGoal = typeof salesGoals.$inferInsert;

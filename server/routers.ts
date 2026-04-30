@@ -8,11 +8,11 @@ import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
 import { getMLOrders, getMLSalesSummary, getMLDailySales, refreshAllMLTokens } from "./mercadolivre";
+import { getMLAdsDashboard } from "./mercadolivre-ads";
 import { getShopeeSalesSummary, refreshAllShopeeTokens } from "./shopee";
 import { getShopeeHealthData, generateShopeeAnalysis } from "./shopee-intelligence";
-import { getShopeeAdsDashboard, generateAdsAnalysis, askSamAds, getAdsCampaigns, getCampaignDailyPerformance, getRecommendedItems, getRecommendedKeywords, getStrategies, saveStrategy, updateStrategy, deleteStrategy, evaluateStrategy } from "./shopee-ads";
+import { getShopeeAdsDashboard, generateAdsAnalysis, askSamAds, getAdsCampaigns, getCampaignDailyPerformance, getRecommendedItems, getRecommendedKeywords, getStrategies, saveStrategy, updateStrategy, deleteStrategy, evaluateStrategy, listConnectedShopsPublic } from "./shopee-ads";
 import { runShopeeResearch } from "./shopee-research";
-import { getOperationsSnapshot, generateNoahBriefing, askNoah } from "./noah-command";
 import { sql as drizzleSql, eq, desc, and, lte, gte, between, count as drizzleCount, sum } from "drizzle-orm";
 import {
   inventory, inventoryEntries, inventoryCounts, inventoryCountItems,
@@ -20,19 +20,24 @@ import {
   orders, customers, marketplaceOrders, revenueSnapshots, mlMessages as mlMessagesTable,
 } from "../drizzle/schema";
 import { getMetaAdsSummary, getInstagramInsights, getFacebookAdsSummary, getInstagramMultiAccount } from "./marketing-meta";
-import { getRecentOrders, getFilteredOrders, getAvailableAccounts } from "./orders-marketplace";
+import { getRecentOrders, getFilteredOrders, getAvailableAccounts, getDetailedOrders, getProductAnalysis } from "./orders-marketplace";
 import { listIntegrations, upsertIntegration, deleteIntegration, testIntegration, decrypt } from "./integrations";
 import { syncMLMessages, replyMLMessage, getMLConversation, listMLConversations, syncMLClaims, replyMLClaim, listMLClaims, getClaimMessages, mlSyncStatus } from "./ml-messages";
 import { generateCreative, publishInstagramPost, contentStrategy } from "./studio";
+import { getYearGoals, getMonthDailyBreakdown, upsertSalesGoal, deleteYearGoals, listCompaniesForGoals } from "./sales-goals";
 import * as fs from "fs";
 
 // ── Cache server-side para queries lentas (APIs externas ML/Shopee) ──
 const _queryCache = new Map<string, { data: any; ts: number }>();
+const _inflight = new Map<string, Promise<any>>();
 const CACHE_TTL: Record<string, number> = {
-  mlSummary: 3 * 60_000,       // 3 min
-  shopeeSummary: 3 * 60_000,   // 3 min
+  mlSummary: 10 * 60_000,      // 10 min (stale-while-revalidate via cachedQueryNonBlocking)
+  shopeeSummary: 10 * 60_000,  // 10 min
   insights: 10 * 60_000,       // 10 min
+  shopeeAdsDash: 10 * 60_000,  // 10 min
+  mlAdsDash: 10 * 60_000,      // 10 min
 };
+
 async function cachedQuery<T>(key: string, fn: () => Promise<T>, ttlKey?: string): Promise<T> {
   const ttl = CACHE_TTL[ttlKey || key] || 3 * 60_000;
   const cached = _queryCache.get(key);
@@ -40,6 +45,63 @@ async function cachedQuery<T>(key: string, fn: () => Promise<T>, ttlKey?: string
   const data = await fn();
   _queryCache.set(key, { data, ts: Date.now() });
   return data;
+}
+
+/**
+ * Variante do cachedQuery com timeout no primeiro hit e stale-while-revalidate.
+ * Usado em endpoints multi-agregacao (ex: relatorios executivo) para evitar
+ * que uma chamada externa lenta (ML/Shopee API) trave o request inteiro.
+ */
+/**
+ * Pre-aquece os caches de summary usados pelo Dashboard. Chamado no boot do server
+ * para que o primeiro usuario do dia nao espere chamadas externas ML/Shopee.
+ */
+export async function warmupSummaryCaches() {
+  await Promise.allSettled([
+    cachedQueryNonBlocking("mlSummary::", () => getMLSalesSummary(), "mlSummary", 30_000),
+    cachedQueryNonBlocking("shopeeSummary", () => getShopeeSalesSummary(), "shopeeSummary", 30_000),
+    cachedQueryNonBlocking("shopeeAdsDash:default", () => getShopeeAdsDashboard(), "shopeeAdsDash", 30_000),
+  ]);
+}
+
+async function cachedQueryNonBlocking<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttlKey?: string,
+  firstHitTimeoutMs = 2500,
+): Promise<T | null> {
+  const ttl = CACHE_TTL[ttlKey || key] || 3 * 60_000;
+  const cached = _queryCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.ts < ttl) return cached.data as T;
+
+  let pending = _inflight.get(key) as Promise<T> | undefined;
+  if (!pending) {
+    pending = fn()
+      .then((data) => {
+        _queryCache.set(key, { data, ts: Date.now() });
+        return data;
+      })
+      .finally(() => { _inflight.delete(key); });
+    _inflight.set(key, pending);
+  }
+
+  // Se ja tem cache (mesmo que stale), retorna stale e atualiza em background
+  if (cached) {
+    pending.catch(() => {});
+    return cached.data as T;
+  }
+
+  // Primeiro hit: aguarda com timeout
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error("first-hit-timeout")), firstHitTimeoutMs)),
+    ]);
+  } catch {
+    pending.catch(() => {});
+    return null;
+  }
 }
 import {
   addCampaignProducts,
@@ -64,6 +126,7 @@ import {
   listCampaigns,
   listCustomers,
   listMarketingStrategies,
+  getProductMarginAnalysis,
   listOrders,
   listProductUploads,
   listProducts,
@@ -75,6 +138,8 @@ import {
   updateCampaignMessageStatus,
   updateOrderStatus,
   updateProductPricingById,
+  updateProductFullById,
+  getProductById,
   upsertMonthlySnapshot,
   getCustomerRanking,
   countCustomers,
@@ -133,11 +198,52 @@ import {
   getTeamDashboard,
   createTeamCharge,
   listMLCatalogProducts,
+  listMarketplaceFees,
+  updateMarketplaceFee,
+  createMarketplaceFee,
+  deleteMarketplaceFee,
+  getDreGerencial,
   upsertMLCatalogProduct,
   updateMLCatalogProductCosts,
   deleteMLCatalogProduct,
   getDb,
   rawQuery,
+  getSystemSetting,
+  getAllSystemSettings,
+  setSystemSetting,
+  setIntegrationCnpj,
+  listCompanyTaxRates,
+  upsertCompanyTaxRate,
+  deleteCompanyTaxRate,
+  listCompanyTaxExceptions,
+  createCompanyTaxException,
+  updateCompanyTaxException,
+  deleteCompanyTaxException,
+  listProductBrands,
+  createProductBrand,
+  updateProductBrand,
+  deleteProductBrand,
+  listProductCategories,
+  createProductCategory,
+  updateProductCategory,
+  deleteProductCategory,
+  listProductWarehouses,
+  createProductWarehouse,
+  updateProductWarehouse,
+  deleteProductWarehouse,
+  listProductCostHistory,
+  createProductCostHistory,
+  listProductSaleHistory,
+  createProductSaleHistory,
+  listProductFixedCosts,
+  createProductFixedCost,
+  updateProductFixedCost,
+  deleteProductFixedCost,
+  listProductStocks,
+  upsertProductStock,
+  listProductKitItems,
+  addProductKitItem,
+  removeProductKitItem,
 } from "./db";
 import { storageGet, storagePut } from "./storage";
 import * as XLSX from "xlsx";
@@ -1264,7 +1370,7 @@ const vendasRouter = router({
     }).optional())
     .query(async ({ input }) => {
       const cacheKey = `mlSummary:${input?.dateFrom || ""}:${input?.dateTo || ""}`;
-      return cachedQuery(cacheKey, () => getMLSalesSummary(input?.dateFrom, input?.dateTo), "mlSummary");
+      return cachedQueryNonBlocking(cacheKey, () => getMLSalesSummary(input?.dateFrom, input?.dateTo), "mlSummary");
     }),
   mlOrders: protectedProcedure
     .input(z.object({
@@ -1295,9 +1401,15 @@ const vendasRouter = router({
     return { ok: true, results };
   }),
 
-  shopeeSummary: protectedProcedure.query(async () => {
-    return cachedQuery("shopeeSummary", () => getShopeeSalesSummary());
-  }),
+  shopeeSummary: protectedProcedure
+    .input(z.object({
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const cacheKey = `shopeeSummary:${input?.dateFrom || ""}:${input?.dateTo || ""}`;
+      return cachedQueryNonBlocking(cacheKey, () => getShopeeSalesSummary(input?.dateFrom, input?.dateTo), "shopeeSummary");
+    }),
 
   shopeeRefreshTokens: adminProcedure.mutation(async () => {
     const results = await refreshAllShopeeTokens();
@@ -1693,53 +1805,55 @@ const relatoriosRouter = router({
 
     try {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Pedidos internos (safe query)
-    let allOrders: any[] = [];
-    let ordersMonth: any[] = [];
-    try {
-      allOrders = await db.select().from(orders);
-      ordersMonth = allOrders.filter((o: any) => o.createdAt && o.createdAt.toISOString().slice(0, 10) >= startOfMonth);
-    } catch (_) {}
+    // Executar queries pesadas em paralelo (antes rodavam sequenciais)
+    const [
+      ordersAgg,
+      invItems,
+      customersAgg,
+      mlSummary,
+      shopeeSummary,
+      recentMoves,
+    ] = await Promise.all([
+      // Pedidos: count + sum direto no SQL, sem carregar todos os registros
+      db.select({
+        total: drizzleSql<number>`count(*)`,
+        mesCount: drizzleSql<number>`sum(case when ${orders.createdAt} >= ${startOfMonth} then 1 else 0 end)`,
+        mesFaturamento: drizzleSql<string>`coalesce(sum(case when ${orders.createdAt} >= ${startOfMonth} then ${orders.totalCliente} else 0 end), 0)`,
+      }).from(orders).catch(() => [{ total: 0, mesCount: 0, mesFaturamento: "0" }] as any),
+      // Estoque (tabela pequena — carregamento completo OK)
+      db.select().from(inventory).catch(() => [] as any[]),
+      // Clientes: count direto
+      db.select({
+        total: drizzleSql<number>`count(*)`,
+        ativos: drizzleSql<number>`sum(case when ${customers.isActive} = 1 then 1 else 0 end)`,
+      }).from(customers).catch(() => [{ total: 0, ativos: 0 }] as any),
+      cachedQueryNonBlocking("executivo:mlSummary", () => getMLSalesSummary(), "mlSummary").catch(() => null),
+      cachedQueryNonBlocking("executivo:shopeeSummary", () => getShopeeSalesSummary(), "shopeeSummary").catch(() => null),
+      db.select().from(inventoryEntries).orderBy(desc(inventoryEntries.createdAt)).limit(5).catch(() => [] as any[]),
+    ]);
 
-    // Estoque resumo
-    let invItems: any[] = [];
-    try { invItems = await db.select().from(inventory); } catch (_) {}
-    const totalPecas = invItems.reduce((s: number, i: any) => s + (i.quantity || 0), 0);
-    const lowStock = invItems.filter((i: any) => i.quantity <= i.minStock);
-
-    // Clientes
-    let allCustomers: any[] = [];
-    try { allCustomers = await db.select().from(customers); } catch (_) {}
-
-    // ML vendas (do cache/API)
-    let mlSummary = null;
-    try { mlSummary = await getMLSalesSummary(); } catch (_) {}
-
-    // Shopee vendas
-    let shopeeSummary = null;
-    try { shopeeSummary = await getShopeeSalesSummary(); } catch (_) {}
-
-    // Movimentações estoque recentes
-    let recentMoves: any[] = [];
-    try { recentMoves = await db.select().from(inventoryEntries).orderBy(desc(inventoryEntries.createdAt)).limit(5); } catch (_) {}
+    const ordersRow = (ordersAgg as any)[0] || { total: 0, mesCount: 0, mesFaturamento: 0 };
+    const customersRow = (customersAgg as any)[0] || { total: 0, ativos: 0 };
+    const totalPecas = (invItems as any[]).reduce((s: number, i: any) => s + (i.quantity || 0), 0);
+    const lowStock = (invItems as any[]).filter((i: any) => i.quantity <= i.minStock);
 
     return {
       pedidos: {
-        total: allOrders.length,
-        mes: ordersMonth.length,
-        faturamentoMes: ordersMonth.reduce((s: number, o: any) => s + Number(o.totalCliente || 0), 0),
+        total: Number(ordersRow.total || 0),
+        mes: Number(ordersRow.mesCount || 0),
+        faturamentoMes: Number(ordersRow.mesFaturamento || 0),
       },
       estoque: {
-        totalSkus: invItems.length,
+        totalSkus: (invItems as any[]).length,
         totalPecas,
         lowStockCount: lowStock.length,
         lowStockItems: lowStock.slice(0, 5).map((i: any) => ({ sku: i.sku, qty: i.quantity, min: i.minStock })),
       },
       clientes: {
-        total: allCustomers.length,
-        ativos: allCustomers.filter((c: any) => c.isActive).length,
+        total: Number(customersRow.total || 0),
+        ativos: Number(customersRow.ativos || 0),
       },
       ml: mlSummary ? {
         today: mlSummary.totals?.today || 0,
@@ -1780,9 +1894,25 @@ const relatoriosRouter = router({
       margemFinal: products.margemFinal,
     }).from(products);
 
-    // Buscar vendas ML do banco
-    const mlOrders = await db.select().from(marketplaceOrders)
-      .where(eq(marketplaceOrders.platform, "mercadolivre"));
+    // Pré-indexar produtos por prefixo normalizado do título (lookup O(1) em vez de O(n))
+    const productByPrefix = new Map<string, { sku: string; valorProduto: any }>();
+    for (const p of allProducts as any[]) {
+      if (!p.titulo) continue;
+      const prefix = String(p.titulo).toLowerCase().slice(0, 20);
+      if (prefix && !productByPrefix.has(prefix)) {
+        productByPrefix.set(prefix, { sku: p.sku, valorProduto: p.valorProduto });
+      }
+    }
+
+    // Buscar vendas ML do banco — somente colunas necessárias e limitando aos últimos 500 pedidos
+    const mlOrders = await db.select({
+      productName: marketplaceOrders.productName,
+      itemsJson: marketplaceOrders.itemsJson,
+      totalAmount: marketplaceOrders.totalAmount,
+    }).from(marketplaceOrders)
+      .where(eq(marketplaceOrders.platform, "mercadolivre"))
+      .orderBy(desc(marketplaceOrders.platformCreatedAt))
+      .limit(500);
 
     // Cruzar vendas com custo
     const productSales: Record<string, { titulo: string; sku: string; custo: number; vendas: number; qtd: number; receita: number; lucro: number }> = {};
@@ -1795,8 +1925,15 @@ const relatoriosRouter = router({
           const title = item.title || order.productName || "—";
           const key = title.toLowerCase().slice(0, 50);
           if (!productSales[key]) {
-            // Tentar achar o produto pelo título
-            const match = allProducts.find((p: any) => p.titulo && title.toLowerCase().includes(p.titulo.toLowerCase().slice(0, 20)));
+            // Tentar achar o produto pelo título via lookup O(1)
+            const lowTitle = title.toLowerCase();
+            let match: { sku: string; valorProduto: any } | undefined;
+            // Checar até 3 prefixes (5, 10, 20 chars) para tentar casar — ainda O(1)
+            for (const len of [20, 10, 5]) {
+              const prefix = lowTitle.slice(0, len);
+              const hit = productByPrefix.get(prefix);
+              if (hit) { match = hit; break; }
+            }
             productSales[key] = {
               titulo: title,
               sku: match?.sku || "—",
@@ -1965,27 +2102,342 @@ const mlMessagesRouter = router({
     }),
 });
 
-const noahRouter = router({
-  chat: adminProcedure
-    .input(z.object({ message: z.string().min(1) }))
+// ========== Shopee Chat (Sam Chat) ==========
+import { shopeeConversations, shopeeMessages, shopeeChatKnowledge, shopeeChatEvents } from "../drizzle/schema";
+import { syncAllShops as syncShopeeChats, recordOutgoingMessage, sendTextMessage, logChatEvent } from "./shopee-chat";
+import { getConnectedShops as getConnectedShopeeShops } from "./shopee";
+import { runCurator as runSamCurator } from "./agents/sam-chat/curator";
+import { respondNewMessages as runSamResponder, refineKaiqueMessage, invalidateKbCache } from "./agents/sam-chat/responder";
+import { pollKaiqueReplies } from "./agents/sam-chat/telegram-poller";
+
+const shopeeChatRouter = router({
+  kpis: protectedProcedure.query(async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todayMsgs = await drizzleSql<any>`
+      SELECT
+        SUM(CASE WHEN agentSource = 'ai_auto' THEN 1 ELSE 0 END) as auto_count,
+        SUM(CASE WHEN agentSource = 'kaique_refined' THEN 1 ELSE 0 END) as kaique_count,
+        SUM(CASE WHEN agentSource = 'ai_shadow' THEN 1 ELSE 0 END) as shadow_count,
+        COUNT(*) as total
+      FROM shopee_messages
+      WHERE fromRole = 'agent' AND DATE(sentAt) = CURDATE()
+    `;
+
+    const escalationsOpen = await drizzleSql<any>`
+      SELECT COUNT(*) as c FROM shopee_conversations
+      WHERE status = 'escalated' AND agentLastAction IN ('escalated','shadow_drafted')
+    `;
+
+    const recentBuyer = await drizzleSql<any>`
+      SELECT MIN(TIMESTAMPDIFF(MINUTE, m1.sentAt, m2.sentAt)) as avg_minutes, COUNT(*) as n
+      FROM shopee_messages m1
+      INNER JOIN shopee_messages m2
+        ON m1.conversationId = m2.conversationId
+       AND m2.sentAt > m1.sentAt
+       AND m2.fromRole = 'agent'
+       AND m1.fromRole = 'buyer'
+      WHERE m1.sentAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+    `;
+
+    return {
+      today: {
+        total: Number(todayMsgs?.[0]?.total || 0),
+        auto: Number(todayMsgs?.[0]?.auto_count || 0),
+        kaique: Number(todayMsgs?.[0]?.kaique_count || 0),
+        shadow: Number(todayMsgs?.[0]?.shadow_count || 0),
+      },
+      escalationsOpen: Number(escalationsOpen?.[0]?.c || 0),
+      avgResponseMinutes: Number(recentBuyer?.[0]?.avg_minutes || 0),
+      autoSendEnabled: process.env.SHOPEE_CHAT_AUTOSEND === "true",
+    };
+  }),
+
+  list: protectedProcedure
+    .input(z.object({
+      filter: z.enum(["all", "open", "escalated", "answered", "shadow"]).default("all"),
+      search: z.string().optional(),
+      limit: z.number().int().min(1).max(200).default(50),
+    }))
+    .query(async ({ input }) => {
+      const where: any[] = [];
+      if (input.filter === "open") where.push(eq(shopeeConversations.status, "open"));
+      if (input.filter === "escalated") where.push(eq(shopeeConversations.status, "escalated"));
+      if (input.filter === "answered") where.push(eq(shopeeConversations.status, "answered"));
+      if (input.filter === "shadow") where.push(eq(shopeeConversations.agentLastAction, "shadow_drafted"));
+
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) return [];
+      let q: any = db.select().from(shopeeConversations);
+      if (where.length > 0) q = q.where(and(...where));
+      const rows = await q.orderBy(desc(shopeeConversations.latestMessageAt)).limit(input.limit);
+      const filtered = input.search
+        ? rows.filter((r: any) =>
+            (r.buyerName || "").toLowerCase().includes(input.search!.toLowerCase()) ||
+            (r.latestMessageText || "").toLowerCase().includes(input.search!.toLowerCase()),
+          )
+        : rows;
+      return filtered;
+    }),
+
+  detail: protectedProcedure
+    .input(z.object({ conversationId: z.string() }))
+    .query(async ({ input }) => {
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) return { conversation: null, messages: [] };
+      const convRows = await db
+        .select()
+        .from(shopeeConversations)
+        .where(eq(shopeeConversations.conversationId, input.conversationId))
+        .limit(1);
+      const msgRows = await db
+        .select()
+        .from(shopeeMessages)
+        .where(eq(shopeeMessages.conversationId, input.conversationId))
+        .orderBy(shopeeMessages.sentAt);
+      return { conversation: convRows[0] || null, messages: msgRows };
+    }),
+
+  reply: adminProcedure
+    .input(z.object({
+      conversationId: z.string(),
+      text: z.string().min(1).max(2000),
+      refine: z.boolean().default(true),
+    }))
     .mutation(async ({ input }) => {
-      console.log("[Noah Chat] Pergunta:", input.message.slice(0, 80));
-      const t0 = Date.now();
-      try {
-        const answer = await askNoah(input.message);
-        console.log("[Noah Chat] Resposta em", Date.now() - t0, "ms:", answer.slice(0, 80));
-        return { answer };
-      } catch (err: any) {
-        console.error("[Noah Chat] ERRO:", err.message);
-        return { answer: "Desculpe chefe, tive um problema técnico. Tenta de novo." };
-      }
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+      const conv = await db
+        .select()
+        .from(shopeeConversations)
+        .where(eq(shopeeConversations.conversationId, input.conversationId))
+        .limit(1);
+      if (conv.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Conversa não encontrada" });
+      const shops = await getConnectedShopeeShops();
+      const shop = shops.find((s) => s.shopId === conv[0].shopId);
+      if (!shop) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Loja Shopee não conectada" });
+      const finalText = input.refine ? await refineKaiqueMessage(input.text) : input.text;
+      const sent = await sendTextMessage(shop, Number(conv[0].buyerId), finalText);
+      await recordOutgoingMessage(
+        shop,
+        input.conversationId,
+        sent.messageId,
+        finalText,
+        input.refine ? "kaique_refined" : "kaique_raw",
+      );
+      await db
+        .update(shopeeConversations)
+        .set({ status: "answered", agentLastAction: "kaique_replied" })
+        .where(eq(shopeeConversations.id, conv[0].id));
+      await logChatEvent("kaique_replied_ui", { raw: input.text, refined: finalText }, input.conversationId);
+      return { ok: true, sent: finalText };
+    }),
+
+  kb: router({
+    list: protectedProcedure
+      .input(z.object({ type: z.enum(["produto", "regra_geral", "tom_voz", "aprendizado"]).optional() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) return [];
+        let q: any = db.select().from(shopeeChatKnowledge);
+        if (input.type) q = q.where(eq(shopeeChatKnowledge.type, input.type));
+        return q.orderBy(desc(shopeeChatKnowledge.updatedAt));
+      }),
+    upsert: adminProcedure
+      .input(z.object({
+        id: z.number().int().optional(),
+        type: z.enum(["produto", "regra_geral", "tom_voz", "aprendizado"]),
+        scope: z.string().optional(),
+        title: z.string().min(1).max(255),
+        body: z.string().min(1),
+        isActive: z.number().int().default(1),
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+        if (input.id) {
+          await db.update(shopeeChatKnowledge).set({
+            type: input.type,
+            scope: input.scope || null,
+            title: input.title,
+            body: input.body,
+            isActive: input.isActive,
+            source: "kaique",
+          }).where(eq(shopeeChatKnowledge.id, input.id));
+        } else {
+          await db.insert(shopeeChatKnowledge).values({
+            type: input.type,
+            scope: input.scope || null,
+            title: input.title,
+            body: input.body,
+            isActive: input.isActive,
+            source: "kaique",
+          });
+        }
+        invalidateKbCache();
+        return { ok: true };
+      }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+        await db.delete(shopeeChatKnowledge).where(eq(shopeeChatKnowledge.id, input.id));
+        invalidateKbCache();
+        return { ok: true };
+      }),
+  }),
+
+  runCurator: adminProcedure.mutation(async () => {
+    return runSamCurator();
+  }),
+
+  runProactive: adminProcedure
+    .input(z.object({ force: z.boolean().default(false), limit: z.number().int().default(50) }))
+    .mutation(async ({ input }) => {
+      const { runProactiveMessages } = await import("./agents/sam-chat/proactive-messages");
+      return runProactiveMessages(input);
+    }),
+
+  proactiveList: protectedProcedure
+    .input(z.object({ limit: z.number().int().default(30) }))
+    .query(async ({ input }) => {
+      const { getDb } = await import("./db");
+      const { shopeeProactiveMessages } = await import("../drizzle/schema");
+      const db = await getDb();
+      if (!db) return [];
+      return db
+        .select()
+        .from(shopeeProactiveMessages)
+        .orderBy(desc(shopeeProactiveMessages.sentAt))
+        .limit(input.limit);
+    }),
+
+  runSyncAndRespond: adminProcedure.mutation(async () => {
+    const sync = await syncShopeeChats();
+    const resp = await runSamResponder();
+    const poll = await pollKaiqueReplies();
+    return { sync, resp, poll };
+  }),
+
+  // Catálogo de anúncios extraídos — base de conhecimento estruturada do Sam
+  catalog: router({
+    list: protectedProcedure
+      .input(z.object({
+        status: z.enum(["all", "pending", "complete", "incomplete", "failed"]).default("all"),
+        search: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) return [];
+        let q: any = db.select().from(shopeeChatKnowledge).where(eq(shopeeChatKnowledge.type, "produto"));
+        const rows = await q.orderBy(desc(shopeeChatKnowledge.updatedAt));
+        let filtered = rows;
+        if (input.status !== "all") {
+          filtered = filtered.filter((r: any) => (r.extractionStatus || "pending") === input.status);
+        }
+        if (input.search) {
+          const s = input.search.toLowerCase();
+          filtered = filtered.filter((r: any) =>
+            (r.title || "").toLowerCase().includes(s) ||
+            (r.structuredData || "").toLowerCase().includes(s),
+          );
+        }
+        return filtered.map((r: any) => {
+          let parsed: any = null;
+          if (r.structuredData) {
+            try { parsed = JSON.parse(r.structuredData); } catch {}
+          }
+          return {
+            id: r.id,
+            scope: r.scope,
+            title: r.title,
+            extractionStatus: r.extractionStatus || "pending",
+            extractedAt: r.extractedAt,
+            updatedAt: r.updatedAt,
+            structured: parsed,
+            descriptionHash: r.descriptionHash,
+          };
+        });
+      }),
+    detail: protectedProcedure
+      .input(z.object({ id: z.number().int() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) return null;
+        const rows = await db.select().from(shopeeChatKnowledge).where(eq(shopeeChatKnowledge.id, input.id)).limit(1);
+        if (rows.length === 0) return null;
+        const r: any = rows[0];
+        let parsed: any = null;
+        if (r.structuredData) { try { parsed = JSON.parse(r.structuredData); } catch {} }
+        return {
+          ...r,
+          structured: parsed,
+        };
+      }),
+    updateStructured: adminProcedure
+      .input(z.object({
+        id: z.number().int(),
+        structuredData: z.string(), // JSON stringified
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+        // valida JSON
+        try { JSON.parse(input.structuredData); } catch {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "JSON inválido" });
+        }
+        await db.update(shopeeChatKnowledge).set({
+          structuredData: input.structuredData,
+          extractionStatus: "complete", // editado manualmente vira complete
+        }).where(eq(shopeeChatKnowledge.id, input.id));
+        return { ok: true };
+      }),
+    reextract: adminProcedure
+      .input(z.object({ id: z.number().int().optional() }))
+      .mutation(async ({ input }) => {
+        const { runExtractor } = await import("./agents/sam-chat/product-extractor");
+        if (input.id) {
+          // força re-extração de um item específico — limpa hash
+          const { getDb } = await import("./db");
+          const db = await getDb();
+          if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+          await db.update(shopeeChatKnowledge).set({
+            descriptionHash: null,
+            extractionStatus: "pending",
+          }).where(eq(shopeeChatKnowledge.id, input.id));
+        }
+        const result = await runExtractor({ force: !!input.id, limit: input.id ? 1 : 100 });
+        return result;
+      }),
+  }),
+
+  events: protectedProcedure
+    .input(z.object({ conversationId: z.string().optional(), limit: z.number().int().default(50) }))
+    .query(async ({ input }) => {
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) return [];
+      let q: any = db.select().from(shopeeChatEvents);
+      if (input.conversationId) q = q.where(eq(shopeeChatEvents.conversationId, input.conversationId));
+      return q.orderBy(desc(shopeeChatEvents.createdAt)).limit(input.limit);
     }),
 });
 
 export const appRouter = router({
   system: systemRouter,
+  shopeeChat: shopeeChatRouter,
   agent: agentRouter,
-  noah: noahRouter,
   vendas: vendasRouter,
   agentes: agentesRouter,
   equipe: equipeRouter,
@@ -2004,6 +2456,41 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+  }),
+  metas: router({
+    year: adminProcedure
+      .input(z.object({ year: z.number().int(), cnpjId: z.number().int().min(0).default(0) }))
+      .query(async ({ input }) => {
+        return getYearGoals(input.year, input.cnpjId);
+      }),
+    monthDaily: adminProcedure
+      .input(z.object({
+        year: z.number().int(),
+        month: z.number().int().min(1).max(12),
+        cnpjId: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        return getMonthDailyBreakdown(input.year, input.month, input.cnpjId);
+      }),
+    companies: adminProcedure.query(async () => {
+      return listCompaniesForGoals();
+    }),
+    upsert: adminProcedure
+      .input(z.object({
+        year: z.number().int(),
+        month: z.number().int().min(1).max(12),
+        cnpjId: z.number().int().min(0),
+        faturamentoMeta: z.number().min(0),
+        margemMetaPct: z.number().min(0).max(1),
+      }))
+      .mutation(async ({ input }) => {
+        return upsertSalesGoal(input);
+      }),
+    deleteYear: adminProcedure
+      .input(z.object({ year: z.number().int(), cnpjId: z.number().int().min(0) }))
+      .mutation(async ({ input }) => {
+        return deleteYearGoals(input.year, input.cnpjId);
+      }),
   }),
   products: router({
     list: protectedProcedure
@@ -2046,6 +2533,52 @@ export const appRouter = router({
       .input(z.object({ query: z.string().optional(), limit: z.number().int().min(1).max(100).default(25) }).optional())
       .query(async ({ input }) => {
         return searchProducts(input?.query, input?.limit ?? 25);
+      }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const row = await getProductById(input.id);
+        if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });
+        return row;
+      }),
+    update: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        sku: z.string().min(1).max(128).optional(),
+        titulo: z.string().min(1).optional(),
+        brandId: z.number().int().positive().nullable().optional(),
+        categoryId: z.number().int().positive().nullable().optional(),
+        internalCode: z.string().max(64).nullable().optional(),
+        ncm: z.string().max(16).nullable().optional(),
+        gtin: z.string().max(20).nullable().optional(),
+        cest: z.string().max(12).nullable().optional(),
+        taxOriginCode: z.string().max(4).nullable().optional(),
+        unitOfMeasure: z.string().max(8).optional(),
+        weightKg: decimalString.nullable().optional(),
+        notes: z.string().nullable().optional(),
+        isKit: z.number().int().min(0).max(1).optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...patch } = input;
+        const updated = await updateProductFullById(id, patch as any);
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });
+        return updated;
+      }),
+    marginAnalysis: protectedProcedure
+      .input(z.object({
+        periodYear: z.number().int().optional(),
+        periodMonth: z.number().int().min(1).max(12).optional(),
+        start: z.coerce.date().optional(),
+        end: z.coerce.date().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return getProductMarginAnalysis(
+          input?.periodYear,
+          input?.periodMonth,
+          input?.start,
+          input?.end,
+        );
       }),
     latestUpload: protectedProcedure.query(async () => {
       return getLatestProductUpload();
@@ -2162,6 +2695,215 @@ export const appRouter = router({
           uploaded,
           replaced,
         };
+      }),
+  }),
+  productCatalog: router({
+    // ── Marcas ──
+    brandList: protectedProcedure.query(async () => listProductBrands()),
+    brandCreate: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(160),
+        notes: z.string().optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createProductBrand(input);
+        return { id };
+      }),
+    brandUpdate: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        name: z.string().min(1).max(160).optional(),
+        notes: z.string().optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...patch } = input;
+        await updateProductBrand(id, patch);
+        return { ok: true };
+      }),
+    brandDelete: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteProductBrand(input.id);
+        return { ok: true };
+      }),
+
+    // ── Categorias ──
+    categoryList: protectedProcedure.query(async () => listProductCategories()),
+    categoryCreate: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(160),
+        slug: z.string().min(1).max(180),
+        parentId: z.number().int().positive().optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createProductCategory(input);
+        return { id };
+      }),
+    categoryUpdate: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        name: z.string().min(1).max(160).optional(),
+        slug: z.string().min(1).max(180).optional(),
+        parentId: z.number().int().positive().nullable().optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...patch } = input;
+        await updateProductCategory(id, patch);
+        return { ok: true };
+      }),
+    categoryDelete: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteProductCategory(input.id);
+        return { ok: true };
+      }),
+
+    // ── Depósitos ──
+    warehouseList: protectedProcedure.query(async () => listProductWarehouses()),
+    warehouseCreate: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(160),
+        address: z.string().max(255).optional(),
+        isDefault: z.number().int().min(0).max(1).optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createProductWarehouse(input);
+        return { id };
+      }),
+    warehouseUpdate: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        name: z.string().min(1).max(160).optional(),
+        address: z.string().max(255).optional(),
+        isDefault: z.number().int().min(0).max(1).optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...patch } = input;
+        await updateProductWarehouse(id, patch);
+        return { ok: true };
+      }),
+    warehouseDelete: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteProductWarehouse(input.id);
+        return { ok: true };
+      }),
+
+    // ── Histórico de custo ──
+    costHistoryList: protectedProcedure
+      .input(z.object({ productId: z.number().int().positive() }))
+      .query(async ({ input }) => listProductCostHistory(input.productId)),
+    costHistoryCreate: adminProcedure
+      .input(z.object({
+        productId: z.number().int().positive(),
+        cost: decimalString,
+        validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        supplier: z.string().max(160).optional(),
+        sourceDoc: z.string().max(120).optional(),
+        notes: z.string().optional(),
+        createdByUserId: z.number().int().positive().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createProductCostHistory(input);
+        return { id };
+      }),
+
+    // ── Histórico de venda ──
+    saleHistoryList: protectedProcedure
+      .input(z.object({ productId: z.number().int().positive() }))
+      .query(async ({ input }) => listProductSaleHistory(input.productId)),
+    saleHistoryCreate: adminProcedure
+      .input(z.object({
+        productId: z.number().int().positive(),
+        price: decimalString,
+        validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        channel: z.string().max(64).optional(),
+        notes: z.string().optional(),
+        createdByUserId: z.number().int().positive().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createProductSaleHistory(input);
+        return { id };
+      }),
+
+    // ── Custos fixos ──
+    fixedCostList: protectedProcedure
+      .input(z.object({ productId: z.number().int().positive() }))
+      .query(async ({ input }) => listProductFixedCosts(input.productId)),
+    fixedCostCreate: adminProcedure
+      .input(z.object({
+        productId: z.number().int().positive(),
+        label: z.string().min(1).max(160),
+        amount: decimalString,
+        period: z.enum(["por_unidade", "mensal", "anual"]).default("por_unidade"),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createProductFixedCost(input);
+        return { id };
+      }),
+    fixedCostUpdate: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        label: z.string().min(1).max(160).optional(),
+        amount: decimalString.optional(),
+        period: z.enum(["por_unidade", "mensal", "anual"]).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...patch } = input;
+        await updateProductFixedCost(id, patch);
+        return { ok: true };
+      }),
+    fixedCostDelete: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteProductFixedCost(input.id);
+        return { ok: true };
+      }),
+
+    // ── Multi-depósito ──
+    stockList: protectedProcedure
+      .input(z.object({ productId: z.number().int().positive() }))
+      .query(async ({ input }) => listProductStocks(input.productId)),
+    stockUpsert: adminProcedure
+      .input(z.object({
+        productId: z.number().int().positive(),
+        warehouseId: z.number().int().positive(),
+        quantity: z.number().int().min(0).default(0),
+        minStock: z.number().int().min(0).default(0),
+        maxStock: z.number().int().min(0).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await upsertProductStock(input);
+        return { id };
+      }),
+
+    // ── Kit items ──
+    kitItemList: protectedProcedure
+      .input(z.object({ kitProductId: z.number().int().positive() }))
+      .query(async ({ input }) => listProductKitItems(input.kitProductId)),
+    kitItemAdd: adminProcedure
+      .input(z.object({
+        kitProductId: z.number().int().positive(),
+        componentProductId: z.number().int().positive(),
+        quantity: z.number().int().min(1).default(1),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await addProductKitItem(input);
+        return { id };
+      }),
+    kitItemRemove: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await removeProductKitItem(input.id);
+        return { ok: true };
       }),
   }),
   customers: router({
@@ -2742,6 +3484,38 @@ export const appRouter = router({
     accounts: protectedProcedure.query(async () => {
       return getAvailableAccounts();
     }),
+    listDetailed: protectedProcedure
+      .input(z.object({
+        accounts: z.array(z.string()).optional(),
+        status: z.string().optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
+        search: z.string().optional(),
+        condition: z.enum(["margem-negativa", "custo-faltante", "tarifa-faltante", "imposto-faltante"]).optional(),
+        sortBy: z.enum([
+          "createdAt", "id", "buyerName", "accountName", "buyerCity", "buyerState", "statusLabel",
+          "totalCusto", "valorProdVendido", "desconto", "totalProdVendidos", "freteRecebido",
+          "totalVenda", "repasse", "comissao", "comissaoFinal", "fretePago", "rebateFrete",
+          "difFrete", "imposto", "valorLiquido", "margem", "percentCusto", "percentVenda",
+        ]).optional(),
+        sortDir: z.enum(["asc", "desc"]).optional(),
+        limit: z.number().int().min(1).max(100).default(10),
+        offset: z.number().int().min(0).default(0),
+      }).optional())
+      .query(async ({ input }) => {
+        return getDetailedOrders(input ?? {});
+      }),
+    productAnalysis: protectedProcedure
+      .input(z.object({
+        accounts: z.array(z.string()).optional(),
+        status: z.string().optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
+        search: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return getProductAnalysis(input ?? {});
+      }),
   }),
 
   integrations: router({
@@ -2771,6 +3545,107 @@ export const appRouter = router({
         await deleteIntegration(input.slug);
         return { success: true };
       }),
+    linkCompany: adminProcedure
+      .input(z.object({
+        slug: z.string().min(1),
+        cnpjId: z.number().int().positive().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        await setIntegrationCnpj(input.slug, input.cnpjId);
+        return { success: true };
+      }),
+  }),
+
+  systemSettings: router({
+    list: adminProcedure.query(async () => {
+      return getAllSystemSettings();
+    }),
+    get: adminProcedure
+      .input(z.object({ key: z.string().min(1) }))
+      .query(async ({ input }) => {
+        return getSystemSetting(input.key);
+      }),
+    set: adminProcedure
+      .input(z.object({
+        key: z.string().min(1),
+        value: z.string(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return setSystemSetting(input.key, input.value, input.description);
+      }),
+  }),
+
+  companyTaxes: router({
+    listRates: adminProcedure
+      .input(z.object({ cnpjId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        return listCompanyTaxRates(input.cnpjId);
+      }),
+    upsertRate: adminProcedure
+      .input(z.object({
+        cnpjId: z.number().int().positive(),
+        year: z.number().int().min(2020).max(2100),
+        month: z.number().int().min(1).max(12),
+        effectiveRate: z.string().or(z.number()).transform(v => String(v)),
+        irpjRate: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        csllRate: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        pisRate: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        cofinsRate: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        icmsRate: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        issRate: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        rbt12: z.string().or(z.number()).nullable().optional().transform(v => v == null ? null : String(v)),
+        notes: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return upsertCompanyTaxRate(input);
+      }),
+    deleteRate: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteCompanyTaxRate(input.id);
+        return { success: true };
+      }),
+    listExceptions: adminProcedure
+      .input(z.object({ cnpjId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        return listCompanyTaxExceptions(input.cnpjId);
+      }),
+    createException: adminProcedure
+      .input(z.object({
+        cnpjId: z.number().int().positive(),
+        exceptionType: z.enum(["icms_interestadual", "difal", "st", "produto", "outro"]),
+        ufDestino: z.string().length(2).nullable().optional(),
+        productRef: z.string().nullable().optional(),
+        rate: z.string().or(z.number()).transform(v => String(v)),
+        validFrom: z.string().min(10),
+        validUntil: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return createCompanyTaxException(input);
+      }),
+    updateException: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        exceptionType: z.enum(["icms_interestadual", "difal", "st", "produto", "outro"]).optional(),
+        ufDestino: z.string().length(2).nullable().optional(),
+        productRef: z.string().nullable().optional(),
+        rate: z.string().or(z.number()).optional().transform(v => v == null ? undefined : String(v)),
+        validFrom: z.string().min(10).optional(),
+        validUntil: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return updateCompanyTaxException(id, data);
+      }),
+    deleteException: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteCompanyTaxException(input.id);
+        return { success: true };
+      }),
   }),
 
   myCnpjs: router({
@@ -2788,6 +3663,11 @@ export const appRouter = router({
         cnpj: z.string().min(1),
         nomeFantasia: z.string().optional().nullable(),
         inscricaoEstadual: z.string().optional().nullable(),
+        inscricaoMunicipal: z.string().optional().nullable(),
+        regime: z.enum(["mei", "simples", "presumido", "real"]).optional().nullable(),
+        ufOrigem: z.string().length(2).optional().nullable(),
+        cnaePrincipal: z.string().optional().nullable(),
+        dataInicioRegime: z.string().optional().nullable(),
         notes: z.string().optional().nullable(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -2796,6 +3676,11 @@ export const appRouter = router({
           cnpj: input.cnpj,
           nomeFantasia: input.nomeFantasia ?? null,
           inscricaoEstadual: input.inscricaoEstadual ?? null,
+          inscricaoMunicipal: input.inscricaoMunicipal ?? null,
+          regime: input.regime ?? null,
+          ufOrigem: input.ufOrigem ?? null,
+          cnaePrincipal: input.cnaePrincipal ?? null,
+          dataInicioRegime: input.dataInicioRegime ?? null,
           notes: input.notes ?? null,
           createdByUserId: ctx.user.id,
         });
@@ -2808,11 +3693,70 @@ export const appRouter = router({
         cnpj: z.string().min(1).optional(),
         nomeFantasia: z.string().optional().nullable(),
         inscricaoEstadual: z.string().optional().nullable(),
+        inscricaoMunicipal: z.string().optional().nullable(),
+        regime: z.enum(["mei", "simples", "presumido", "real"]).optional().nullable(),
+        ufOrigem: z.string().length(2).optional().nullable(),
+        cnaePrincipal: z.string().optional().nullable(),
+        dataInicioRegime: z.string().optional().nullable(),
         notes: z.string().optional().nullable(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
         return updateMyCnpj(id, data);
+      }),
+    lookupCnpj: adminProcedure
+      .input(z.object({ cnpj: z.string().min(14) }))
+      .query(async ({ input }) => {
+        const clean = input.cnpj.replace(/\D/g, "");
+        if (clean.length !== 14) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "CNPJ deve ter 14 dígitos." });
+        }
+        try {
+          const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Kaibren-CRM/1.0)",
+              "Accept": "application/json",
+            },
+          });
+          if (!res.ok) {
+            if (res.status === 404) {
+              throw new TRPCError({ code: "NOT_FOUND", message: "CNPJ não encontrado na Receita." });
+            }
+            throw new TRPCError({ code: "BAD_REQUEST", message: `BrasilAPI retornou ${res.status}. Verifique o CNPJ.` });
+          }
+          const data = await res.json() as {
+            razao_social?: string;
+            nome_fantasia?: string;
+            uf?: string;
+            cnae_fiscal?: number;
+            cnae_fiscal_descricao?: string;
+            opcao_pelo_simples?: boolean;
+            opcao_pelo_mei?: boolean;
+            data_opcao_pelo_simples?: string | null;
+            data_opcao_pelo_mei?: string | null;
+          };
+          let regimeSugerido: "mei" | "simples" | "presumido" | "real" | null = null;
+          let dataInicioSugerida: string | null = null;
+          if (data.opcao_pelo_mei) {
+            regimeSugerido = "mei";
+            dataInicioSugerida = data.data_opcao_pelo_mei ?? null;
+          } else if (data.opcao_pelo_simples) {
+            regimeSugerido = "simples";
+            dataInicioSugerida = data.data_opcao_pelo_simples ?? null;
+          }
+          return {
+            razaoSocial: data.razao_social ?? "",
+            nomeFantasia: data.nome_fantasia ?? "",
+            ufOrigem: data.uf ?? "",
+            cnaePrincipal: data.cnae_fiscal ? String(data.cnae_fiscal) : "",
+            cnaeDescricao: data.cnae_fiscal_descricao ?? "",
+            regimeSugerido,
+            dataInicioSugerida,
+          };
+        } catch (err) {
+          if (err instanceof TRPCError) throw err;
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Erro ao consultar BrasilAPI. Tente novamente." });
+        }
       }),
     delete: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
@@ -2836,6 +3780,29 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const year = input?.periodYear ?? new Date().getFullYear();
         return getCnpjEvolution(year);
+      }),
+  }),
+  lia: router({
+    send: adminProcedure
+      .input(z.object({
+        messages: z.array(z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string(),
+        })).min(1),
+        screenContext: z.string().optional(),
+        pageData: z.string().optional(),
+        cnpjId: z.number().int().positive().optional(),
+        images: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { liaChat } = await import("./agents/lia/chat");
+        return liaChat({
+          messages: input.messages,
+          screenContext: input.screenContext,
+          pageData: input.pageData,
+          cnpjId: input.cnpjId,
+          images: input.images,
+        });
       }),
   }),
   bankStatements: router({
@@ -3468,41 +4435,207 @@ export const appRouter = router({
       return { ok: true };
     }),
 
+  // ===== TAXAS MARKETPLACES (ML / Shopee) =====
+  listMarketplaceFees: adminProcedure
+    .input(z.object({ marketplace: z.enum(["mercado_livre", "shopee"]).optional() }).optional())
+    .query(async ({ input }) => {
+      return listMarketplaceFees(input?.marketplace);
+    }),
+
+  updateMarketplaceFee: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      label: z.string().optional(),
+      category: z.string().nullable().optional(),
+      listingType: z.string().nullable().optional(),
+      priceMin: z.string().nullable().optional(),
+      priceMax: z.string().nullable().optional(),
+      percentage: z.string().optional(),
+      fixedAmount: z.string().optional(),
+      active: z.number().optional(),
+      validFrom: z.string().optional(),
+      validUntil: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...patch } = input;
+      await updateMarketplaceFee(id, patch as any);
+      return { ok: true };
+    }),
+
+  createMarketplaceFee: adminProcedure
+    .input(z.object({
+      marketplace: z.enum(["mercado_livre", "shopee"]),
+      feeType: z.enum(["commission", "fixed", "transaction", "shipping", "storage"]),
+      label: z.string(),
+      category: z.string().nullable().optional(),
+      listingType: z.string().nullable().optional(),
+      priceMin: z.string().nullable().optional(),
+      priceMax: z.string().nullable().optional(),
+      percentage: z.string().default("0"),
+      fixedAmount: z.string().default("0"),
+      validFrom: z.string(),
+      validUntil: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const id = await createMarketplaceFee(input as any);
+      return { ok: true, id };
+    }),
+
+  deleteMarketplaceFee: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteMarketplaceFee(input.id);
+      return { ok: true };
+    }),
+
+  // ===== DRE Gerencial =====
+  dreGerencial: adminProcedure
+    .input(z.object({
+      year: z.number().optional(),
+      month: z.number().min(1).max(12).optional(),
+      start: z.coerce.date().optional(),
+      end: z.coerce.date().optional(),
+    }))
+    .query(async ({ input }) => {
+      return getDreGerencial(input);
+    }),
+
+  // ===== Marketing Spend (agregado Meta + ML + Shopee, rateado pelo período) =====
+  marketingSpend: adminProcedure
+    .input(z.object({
+      start: z.coerce.date(),
+      end: z.coerce.date(),
+    }))
+    .query(async ({ input }) => {
+      const days = Math.max(1, Math.round((input.end.getTime() - input.start.getTime()) / (1000 * 60 * 60 * 24)));
+
+      const [meta, ml, shopee] = await Promise.allSettled([
+        getMetaAdsSummary(),
+        cachedQueryNonBlocking("mlAdsDash", () => getMLAdsDashboard(), "mlAdsDash"),
+        cachedQueryNonBlocking("shopeeAdsDash:default", () => getShopeeAdsDashboard(), "shopeeAdsDash"),
+      ]);
+
+      // Meta: trata totalSpend como gasto mensal (~30d)
+      const metaTotalLifetime = meta.status === "fulfilled" ? Number((meta.value as any)?.totalSpend ?? 0) : 0;
+      const metaPeriod = metaTotalLifetime * Math.min(days, 30) / 30;
+
+      // ML: totalCost vem dos últimos 29 dias agregado por conta
+      const mlAccounts: any[] = ml.status === "fulfilled" ? ((ml.value as any)?.accounts ?? []) : [];
+      const ml29d = mlAccounts.reduce((acc, a: any) => acc + Number(a?.adsData?.totalCost ?? 0), 0);
+      const mlPeriod = ml29d * Math.min(days, 29) / 29;
+
+      // Shopee: expose 7d e 14d. Usa o melhor pra escala.
+      const shopeeKpis = shopee.status === "fulfilled" ? ((shopee.value as any)?.kpis ?? {}) : {};
+      const shopee7d = Number(shopeeKpis.expense7d ?? 0);
+      const shopee14d = Number(shopeeKpis.expense14d ?? 0);
+      const shopeePeriod = days <= 7
+        ? shopee7d * days / 7
+        : shopee14d * Math.min(days, 14) / 14;
+
+      const total = metaPeriod + mlPeriod + shopeePeriod;
+      return {
+        period: { start: input.start.toISOString(), end: input.end.toISOString(), days },
+        meta: { lifetime: metaTotalLifetime, periodEstimated: metaPeriod, error: meta.status === "rejected" ? String(meta.reason?.message ?? meta.reason) : null },
+        ml: { last29d: ml29d, periodEstimated: mlPeriod, error: ml.status === "rejected" ? String(ml.reason?.message ?? ml.reason) : null },
+        shopee: { last7d: shopee7d, last14d: shopee14d, periodEstimated: shopeePeriod, error: shopee.status === "rejected" ? String(shopee.reason?.message ?? shopee.reason) : null },
+        total,
+      };
+    }),
+
+  financeHealth: adminProcedure.query(async () => {
+    const { getFinanceHealth } = await import("./finance/health");
+    return getFinanceHealth();
+  }),
+
+  noah: router({
+    runRecap: adminProcedure
+      .input(z.object({ kind: z.enum(["daily", "weekly", "monthly", "urgent"]) }))
+      .mutation(async ({ input }) => {
+        const { runNoahManual } = await import("./agents/noah/cron");
+        return runNoahManual(input.kind);
+      }),
+    testTelegram: adminProcedure
+      .input(z.object({ message: z.string() }))
+      .mutation(async ({ input }) => {
+        const { sendTelegram } = await import("./agents/noah/telegram");
+        return sendTelegram(input.message);
+      }),
+  }),
+
+  // ===== Taxas REAIS (Mercado Pago API) =====
+  syncMlFeesForOrder: adminProcedure
+    .input(z.object({ orderId: z.union([z.string(), z.number()]) }))
+    .mutation(async ({ input }) => {
+      const { syncFeesForOrder } = await import("./mercadopago");
+      const breakdown = await syncFeesForOrder(input.orderId);
+      if (!breakdown) return { ok: false as const, error: "pedido ou payment_id não encontrado em nenhuma conta" };
+      return { ok: true as const, breakdown };
+    }),
+
+  syncMlFeesForMonth: adminProcedure
+    .input(z.object({ year: z.number(), month: z.number().min(1).max(12) }))
+    .mutation(async ({ input }) => {
+      const { syncFeesForMonth } = await import("./mercadopago");
+      return syncFeesForMonth(input.year, input.month);
+    }),
+
+  // ═══════════════ ML ADS ═══════════════
+  mlAds: router({
+    dashboard: protectedProcedure.query(async () => {
+      return cachedQueryNonBlocking("mlAdsDash", () => getMLAdsDashboard(), "mlAdsDash");
+    }),
+  }),
+
   // ═══════════════ SHOPEE ADS ═══════════════
   shopeeAds: router({
-    dashboard: protectedProcedure.query(async () => {
-      return getShopeeAdsDashboard();
+    shops: protectedProcedure.query(async () => {
+      return listConnectedShopsPublic();
     }),
-    analyze: adminProcedure.mutation(async () => {
-      const dash = await getShopeeAdsDashboard();
-      if (!dash) return { analysis: "Nenhuma loja Shopee conectada.", dashboard: null };
-      const analysis = await generateAdsAnalysis(dash);
-      return { analysis, dashboard: dash };
-    }),
-    // Rotina diaria automatica — Sam analisa e gera plano de acao
-    dailyRoutine: adminProcedure.mutation(async () => {
-      const dash = await getShopeeAdsDashboard();
-      if (!dash) return { report: "Nenhuma loja Shopee conectada." };
-      const analysis = await generateAdsAnalysis(dash);
-      return { report: analysis, dashboard: dash, generatedAt: new Date().toISOString() };
-    }),
-    campaignPerformance: adminProcedure
-      .input(z.object({ campaignIds: z.string(), days: z.number().optional() }))
+    dashboard: protectedProcedure
+      .input(z.object({ shopId: z.string().optional() }).optional())
       .query(async ({ input }) => {
-        return getCampaignDailyPerformance(input.campaignIds, input.days || 14);
+        const shopId = input?.shopId;
+        const cacheKey = `shopeeAdsDash:${shopId || "default"}`;
+        return cachedQueryNonBlocking(cacheKey, () => getShopeeAdsDashboard(shopId), "shopeeAdsDash");
       }),
-    recommendedItems: adminProcedure.query(async () => {
-      return getRecommendedItems();
-    }),
-    recommendedKeywords: adminProcedure
-      .input(z.object({ itemId: z.number() }))
+    analyze: adminProcedure
+      .input(z.object({ shopId: z.string().optional() }).optional())
+      .mutation(async ({ input }) => {
+        const dash = await getShopeeAdsDashboard(input?.shopId);
+        if (!dash) return { analysis: "Nenhuma loja Shopee conectada.", dashboard: null };
+        const analysis = await generateAdsAnalysis(dash);
+        return { analysis, dashboard: dash };
+      }),
+    // Rotina diaria automatica — Sam analisa e gera plano de acao
+    dailyRoutine: adminProcedure
+      .input(z.object({ shopId: z.string().optional() }).optional())
+      .mutation(async ({ input }) => {
+        const dash = await getShopeeAdsDashboard(input?.shopId);
+        if (!dash) return { report: "Nenhuma loja Shopee conectada." };
+        const analysis = await generateAdsAnalysis(dash);
+        return { report: analysis, dashboard: dash, generatedAt: new Date().toISOString() };
+      }),
+    campaignPerformance: adminProcedure
+      .input(z.object({ campaignIds: z.string(), days: z.number().optional(), shopId: z.string().optional() }))
       .query(async ({ input }) => {
-        return getRecommendedKeywords(input.itemId);
+        return getCampaignDailyPerformance(input.campaignIds, input.days || 14, input.shopId);
+      }),
+    recommendedItems: adminProcedure
+      .input(z.object({ shopId: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        return getRecommendedItems(input?.shopId);
+      }),
+    recommendedKeywords: adminProcedure
+      .input(z.object({ itemId: z.number(), shopId: z.string().optional() }))
+      .query(async ({ input }) => {
+        return getRecommendedKeywords(input.itemId, input.shopId);
       }),
     askAi: adminProcedure
-      .input(z.object({ question: z.string().min(1) }))
+      .input(z.object({ question: z.string().min(1), shopId: z.string().optional() }))
       .mutation(async ({ input }) => {
-        const dash = await getShopeeAdsDashboard();
+        const dash = await getShopeeAdsDashboard(input.shopId);
         if (!dash) return { answer: "Nenhuma loja Shopee conectada." };
         const answer = await askSamAds(input.question, dash);
         return { answer };
@@ -3513,8 +4646,10 @@ export const appRouter = router({
       return { research: result };
     }),
     // Gerar estrategia com analise de brechas e oportunidades
-    generateStrategy: adminProcedure.mutation(async () => {
-      const dash = await getShopeeAdsDashboard();
+    generateStrategy: adminProcedure
+      .input(z.object({ shopId: z.string().optional() }).optional())
+      .mutation(async ({ input }) => {
+      const dash = await getShopeeAdsDashboard(input?.shopId);
       if (!dash) return { strategy: "Nenhuma loja Shopee conectada." };
       const { invokeLLM } = await import("./_core/llm");
       const fs = await import("fs");
@@ -3633,9 +4768,9 @@ Seja ESPECÍFICO com números. Nada genérico.`;
       }),
     // Sam avalia nova estrategia proposta pelo usuario
     evaluateStrategy: adminProcedure
-      .input(z.object({ question: z.string().min(1) }))
+      .input(z.object({ question: z.string().min(1), shopId: z.string().optional() }))
       .mutation(async ({ input }) => {
-        const dash = await getShopeeAdsDashboard();
+        const dash = await getShopeeAdsDashboard(input.shopId);
         if (!dash) return { answer: "Nenhuma loja Shopee conectada.", strategy: null };
         return evaluateStrategy(input.question, dash);
       }),

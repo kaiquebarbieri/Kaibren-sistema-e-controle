@@ -11,6 +11,7 @@ import { registerBankStatementUploadRoute } from "../bankStatementUpload";
 import { registerNoahBridgeRoutes } from "../noah-bridge";
 import { startMLTokenCron, refreshAllMLTokens } from "../mercadolivre";
 import { syncMLMessages, syncMLClaims } from "../ml-messages";
+import { warmupSummaryCaches } from "../routers";
 import { generateOAuthUrl, handleOAuthCallback } from "../meta-oauth";
 import { generateMLOAuthUrl, handleMLOAuthCallback } from "../ml-oauth";
 import { generateShopeeAuthUrl, handleShopeeCallback } from "../shopee-oauth";
@@ -48,47 +49,6 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Bank statement PDF upload
   registerBankStatementUploadRoute(app);
-  // Noah TTS — OpenAI Text-to-Speech (voz JARVIS) — antes do bridge pra nao cair no auth
-  app.post("/api/tts", async (req: any, res: any) => {
-    try {
-      const { text } = req.body;
-      if (!text || typeof text !== "string") {
-        return res.status(400).json({ error: "text is required" });
-      }
-      const apiKey = process.env.BUILT_IN_FORGE_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "OpenAI API key not configured" });
-      }
-      // Limitar texto a 4096 chars (limite OpenAI TTS)
-      const trimmed = text.slice(0, 4096);
-      const response = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "tts-1",
-          input: trimmed,
-          voice: "onyx",
-          response_format: "mp3",
-          speed: 1.05,
-        }),
-      });
-      if (!response.ok) {
-        const err = await response.text();
-        console.error("[Noah TTS] OpenAI error:", err);
-        return res.status(500).json({ error: "TTS failed" });
-      }
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("Cache-Control", "no-cache");
-      const arrayBuffer = await response.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
-    } catch (err: any) {
-      console.error("[Noah TTS] Error:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   // Noah Bridge API (REST)
   registerNoahBridgeRoutes(app);
@@ -119,16 +79,16 @@ async function startServer() {
   app.get("/api/meta/oauth/callback", async (req: any, res: any) => {
     const { code, state, error } = req.query as any;
     if (error || !code || !state) {
-      return res.redirect(`/configuracoes?tab=Marketing&oauth=error&reason=${error || "cancelled"}`);
+      return res.redirect(`/integracoes?oauth=error&reason=${error || "cancelled"}`);
     }
     try {
       const result = await handleOAuthCallback(code as string, state as string);
       if (!result.success) {
-        return res.redirect(`/configuracoes?tab=Marketing&oauth=error&reason=${result.error || "unknown"}`);
+        return res.redirect(`/integracoes?oauth=error&reason=${result.error || "unknown"}`);
       }
-      return res.redirect(`/configuracoes?tab=Marketing&oauth=success&accounts=${result.accountsFound}`);
+      return res.redirect(`/integracoes?oauth=success&accounts=${result.accountsFound}`);
     } catch (e: any) {
-      return res.redirect(`/configuracoes?tab=Marketing&oauth=error&reason=${e.message}`);
+      return res.redirect(`/integracoes?oauth=error&reason=${e.message}`);
     }
   });
 
@@ -141,16 +101,16 @@ async function startServer() {
   app.get("/api/ml/oauth/callback", async (req: any, res: any) => {
     const { code, state, error } = req.query as any;
     if (error || !code || !state) {
-      return res.redirect(`/configuracoes?tab=Marketplaces&oauth=error&reason=${error || "cancelled"}&provider=ml`);
+      return res.redirect(`/integracoes?oauth=error&reason=${error || "cancelled"}&provider=ml`);
     }
     try {
       const result = await handleMLOAuthCallback(code as string, state as string);
       if (!result.success) {
-        return res.redirect(`/configuracoes?tab=Marketplaces&oauth=error&reason=${result.error || "unknown"}&provider=ml`);
+        return res.redirect(`/integracoes?oauth=error&reason=${result.error || "unknown"}&provider=ml`);
       }
-      return res.redirect(`/configuracoes?tab=Marketplaces&oauth=success&provider=ml&account=${encodeURIComponent(result.accountName || "")}`);
+      return res.redirect(`/integracoes?oauth=success&provider=ml&account=${encodeURIComponent(result.accountName || "")}`);
     } catch (e: any) {
-      return res.redirect(`/configuracoes?tab=Marketplaces&oauth=error&reason=${e.message}&provider=ml`);
+      return res.redirect(`/integracoes?oauth=error&reason=${e.message}&provider=ml`);
     }
   });
 
@@ -164,22 +124,22 @@ async function startServer() {
     const { code, shop_id, error } = req.query as any;
     if (error || !code || !shop_id) {
       return res.redirect(
-        `/configuracoes?tab=Marketplaces&oauth=error&reason=${error || "cancelled"}&provider=shopee`
+        `/integracoes?oauth=error&reason=${error || "cancelled"}&provider=shopee`
       );
     }
     try {
       const result = await handleShopeeCallback(code as string, shop_id as string);
       if (!result.success) {
         return res.redirect(
-          `/configuracoes?tab=Marketplaces&oauth=error&reason=${result.error || "unknown"}&provider=shopee`
+          `/integracoes?oauth=error&reason=${result.error || "unknown"}&provider=shopee`
         );
       }
       return res.redirect(
-        `/configuracoes?tab=Marketplaces&oauth=success&provider=shopee&account=${encodeURIComponent(result.shopName || "")}`
+        `/integracoes?oauth=success&provider=shopee&account=${encodeURIComponent(result.shopName || "")}`
       );
     } catch (e: any) {
       return res.redirect(
-        `/configuracoes?tab=Marketplaces&oauth=error&reason=${e.message}&provider=shopee`
+        `/integracoes?oauth=error&reason=${e.message}&provider=shopee`
       );
     }
   });
@@ -273,6 +233,12 @@ async function startServer() {
     startMLTokenCron();
     startShopeeTokenCron();
     startShopeeResearchCron();
+    // Noah CEO — recaps Telegram diário/semanal/mensal + alertas urgentes
+    const { startNoahCronJobs } = await import("../agents/noah/cron");
+    startNoahCronJobs();
+    // Sam Chat — sync Shopee chat + responder + capturar replies Kaique
+    const { startSamChatCron } = await import("../agents/sam-chat/cron");
+    startSamChatCron();
     // Sync automático de mensagens e reclamações ML a cada 10 minutos
     const ML_SYNC_INTERVAL = 10 * 60 * 1000; // 10 min
     // Primeiro sync 2min após boot (após renovação de tokens que roda em 1min)
@@ -286,6 +252,17 @@ async function startServer() {
       try { const r = await syncMLMessages(); console.log(`[ML Sync] Mensagens: ${r.synced} sincronizadas`, r.errors.length ? r.errors : ""); } catch (e: any) { console.error("[ML Sync] Erro mensagens:", e.message); }
       try { const r = await syncMLClaims(); console.log(`[ML Sync] Reclamações: ${r.synced} sincronizadas`, r.errors.length ? r.errors : ""); } catch (e: any) { console.error("[ML Sync] Erro reclamações:", e.message); }
     }, ML_SYNC_INTERVAL);
+
+    // Warm-up dos caches de summary — evita que o primeiro usuario do dia espere chamadas externas
+    setTimeout(() => {
+      console.log("[Warmup] Pre-carregando caches de summary...");
+      warmupSummaryCaches().then(() => console.log("[Warmup] Concluido")).catch((e) => console.warn("[Warmup] Erro:", e?.message));
+    }, 90_000); // 1min30s apos boot (da tempo dos tokens renovarem)
+
+    // Re-aquecer periodicamente (a cada 8min) para manter cache sempre quente
+    setInterval(() => {
+      warmupSummaryCaches().catch(() => null);
+    }, 8 * 60_000);
   });
 }
 
